@@ -1,0 +1,68 @@
+{
+  "summary": "Retest of GYMBOSS_VVO Milestone 1 after iteration_1 fixes. Backend: full pytest suite 33/33 PASSED (cd /app/backend && python -m pytest tests/ -v -p no:randomly), including the previously failing TestBruteForce::test_lockout_via_public_ingress. Independently reproduced lockout through the PUBLIC URL: 6 consecutive wrong passwords on one identifier returned [401,401,401,401,401,429]. Auth-playbook checks verified: bcrypt hashes are $2b$12$ for both demo owner and super admin, login sets httpOnly+Secure+SameSite=None access_token and refresh_token cookies, cookie-only GET /auth/me and /dashboard/summary return 200, password_reset_tokens store only sha256 token_hash (no raw token), CORS-with-credentials asserted at app level. Dashboard summary for demo returns today_collection=6000, active_members=22 (IST day bounds now used). Frontend: all 8 claimed fixes verified plus the full regression happy path — landing + WhatsApp glyph FAB, fresh 3-step registration (10-day trial, empty-state KPIs, onboarding checklist), demo login, KPI grid (8 cards, ₹ formatted) + 7 secondary metrics + 10 recent transaction rows, outlet switcher refetch (All ₹6,000 -> Indiranagar ₹4,500), theme dark/light/system with gb-theme persistence across reload, onboarding dismiss persists after reload, logout -> /login and protected-route redirect, super admin GymBoss -> /superadmin, mobile 390px drawer with -mobile scoped testids and working navigation. Zero React console errors (no BrowserRouter render-phase warning). Cleanup done: lockout probe rows removed, QA-created org deleted, demo org onboarding.dismissed restored to false. Seeded Iron Paradise Fitness data untouched.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Successful login clears only the ip:identifier bucket (delete_many({'identifier': lock_key})). The new per-identifier cap (10 rows in 15 min, matched on the 'email' field) still counts failed rows recorded under other proxy IPs, so a legitimate user who just authenticated can still be 429'd by residual rows. Suggest also deleting by {'email': ident.lower()} on success."
+      },
+      {
+        "endpoint": "POST /api/auth/forgot-password",
+        "issue": "Threshold is now checked before insert (good), but the counter is still keyed on email only with no IP dimension, so 5 anonymous requests can block password resets for a known address for 15 minutes. Low severity DoS; consider IP+email keying."
+      },
+      {
+        "endpoint": "GET /api/dashboard/summary",
+        "issue": "Still loads every member document with find(member_q).to_list(10000) (line 463) and aggregates in Python. Correct now, but move to an aggregation pipeline before larger tenants land in Milestone 2."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Dashboard (initial load / after outlet switch)",
+        "issues": [
+          "While summary is loading, the KPI area shows skeletons but the Recent Transactions card immediately renders the 'No transactions yet' empty state (transactions.length===0 before fetch resolves), producing a misleading flash for accounts that do have payments. Gate transactions-empty on a loaded flag instead of length only."
+        ]
+      },
+      {
+        "screen": "App shell — My Profile",
+        "issues": [
+          "/app/profile has no dedicated route; it resolves via the catch-all <Route path=':module'> to the generic ComingSoon page. Functionally fine as a placeholder (verified coming-soon-page renders), just noting there is no explicit profile route."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/retest_checks.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (minor): on successful login also clear login_attempts by identifier/email so residual cross-IP rows cannot 429 a legitimate user.",
+    "OPTIONAL (minor): add an IP dimension to the forgot-password rate limiter.",
+    "OPTIONAL (minor): gate the Recent Transactions empty state on a loaded flag to avoid the 'No transactions yet' flash during load.",
+    "OPTIONAL (perf): replace the 10k-member in-memory scan in /api/dashboard/summary with an aggregation pipeline before Milestone 2."
+  ],
+  "critical_code_review_comments": [
+    "server.py login(): X-Forwarded-For left-most parsing + per-identifier cap now works end-to-end through the ingress (verified 429 on the 6th attempt via the public URL). Only gap left is the asymmetric reset on success (lock_key-only delete).",
+    "server.py dashboard_summary(): IST day bounds correctly implemented (IST tz + now_utc().astimezone(IST).date()); the full-collection member scan remains the main scalability concern.",
+    "AppLayout.jsx: sidebarContent(scope) now suffixes every testid with -desktop/-mobile; verified zero duplicate/unscoped ids in the DOM at both 1920px and 390px.",
+    "Login.jsx/Register.jsx: redirects now use <Navigate replace /> — no setState-in-render console error observed across login, registration and logout flows."
+  ],
+  "updated_files": [
+    "/app/backend/tests/retest_checks.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {"backend": "100% (33/33 pytest + all ad-hoc auth/lockout/cookie checks)", "frontend": "100% of tested flows; 8/8 claimed fixes verified"},
+  "seed_data_creation": "Created one throwaway account via the UI 3-step registration (qa_retest_1788429303@testgym.in / QA Retest Gym) and deleted its user, org, outlet and subscription afterwards. Lockout probe identifier lockout_probe_retest@testgym.in rows removed from db.login_attempts. Demo org onboarding.dismissed toggled during the dismiss test and restored to false. Iron Paradise Fitness seeded data not modified.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 and super admin GymBoss / GymBoss@2026 — both verified working through the public URL.",
+  "context_for_next_testing_agent": "All iteration_1 issues are fixed and verified; no HIGH/CRITICAL defects remain. Correct testids (iteration_1 report had some wrong guesses): login inputs are login-identifier / login-password / login-submit-button; register uses register-next-1, register-next-2, register-finish-button (step1 = name+email, step2 = phone+password+confirm, step3 = gym+outlet+city); dashboard primary KPIs are kpi-today-collection etc. and secondary are metric-active-members / metric-total-members; theme trigger is topbar-theme-toggle in the app shell and auth-theme-toggle on auth pages (localStorage key gb-theme); forgot page uses forgot-email / forgot-submit-button / forgot-success. Sidebar testids are scoped with -desktop/-mobile. /app/backend/tests/retest_checks.py holds the public-URL lockout, cookie, bcrypt and DB-cleanup probes — rerun it after any lockout test to purge db.login_attempts.",
+  "rca_of_the_issue": "Not applicable — the iteration_1 HIGH lockout defect is resolved. Root cause was request.client.host resolving to rotating ingress pod IPs; login() now takes the left-most X-Forwarded-For entry and additionally caps failures per identifier (10/15min), which restores the 401x5 -> 429 behaviour through the public URL."
+}

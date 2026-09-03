@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+    :root {
+        --background: 210 40% 98%;
+        --foreground: 222 47% 11%;
+        --card: 0 0% 100%;
+        --card-foreground: 222 47% 11%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 222 47% 11%;
+        --primary: 18 100% 56%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 210 40% 94%;
+        --secondary-foreground: 222 47% 11%;
+        --muted: 210 40% 94%;
+        --muted-foreground: 215 16% 47%;
+        --accent: 20 100% 96%;
+        --accent-foreground: 18 100% 40%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 214 32% 91%;
+        --input: 214 32% 91%;
+        --ring: 18 100% 56%;
+        --radius: 0.625rem;
+        --sidebar: 0 0% 100%;
+        --surface-elevated: 214 32% 91%;
+    }
+    .dark {
+        --background: 222 52% 7%;
+        --foreground: 210 40% 98%;
+        --card: 222 47% 11%;
+        --card-foreground: 210 40% 98%;
+        --popover: 222 47% 11%;
+        --popover-foreground: 210 40% 98%;
+        --primary: 18 100% 56%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 217 33% 17%;
+        --secondary-foreground: 210 40% 98%;
+        --muted: 217 33% 17%;
+        --muted-foreground: 215 20% 65%;
+        --accent: 18 80% 14%;
+        --accent-foreground: 20 100% 68%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 217 33% 17%;
+        --input: 217 33% 20%;
+        --ring: 18 100% 56%;
+        --sidebar: 221 48% 9%;
+        --surface-elevated: 215 28% 24%;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+    body {
+        @apply bg-background text-foreground;
+    }
+    ::selection {
+        background: hsl(18 100% 56% / 0.25);
+    }
+}
+
+.font-display {
+    font-family: "Outfit", "DM Sans", sans-serif;
+}
+.font-num {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+.bg-sidebar {
+    background-color: hsl(var(--sidebar));
+}
+.bg-elevated {
+    background-color: hsl(var(--surface-elevated));
+}
+
+.badge-status {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border;
+}
+.badge-active {
+    color: #10b981;
+    background: rgb(16 185 129 / 0.12);
+    border-color: rgb(16 185 129 / 0.25);
+}
+.badge-expiring {
+    color: #f59e0b;
+    background: rgb(245 158 11 / 0.12);
+    border-color: rgb(245 158 11 / 0.25);
+}
+.badge-expired {
+    color: #ef4444;
+    background: rgb(239 68 68 / 0.12);
+    border-color: rgb(239 68 68 / 0.25);
+}
+.badge-frozen {
+    color: #3b82f6;
+    background: rgb(59 130 246 / 0.12);
+    border-color: rgb(59 130 246 / 0.25);
+}
+
+@keyframes fade-up {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+.animate-fade-up {
+    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit;
+        margin-right: inherit;
+        margin-top: inherit;
+        margin-bottom: inherit;
+        padding-left: inherit;
+        padding-right: inherit;
+        padding-top: inherit;
+        padding-bottom: inherit;
+        column-gap: inherit;
+        row-gap: inherit;
+        gap: inherit;
+        border-left-width: inherit;
+        border-right-width: inherit;
+        border-top-width: inherit;
+        border-bottom-width: inherit;
+        border-left-style: inherit;
+        border-right-style: inherit;
+        border-top-style: inherit;
+        border-bottom-style: inherit;
+        border-left-color: inherit;
+        border-right-color: inherit;
+        border-top-color: inherit;
+        border-bottom-color: inherit;
+    }
+}

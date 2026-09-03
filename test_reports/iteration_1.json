@@ -1,0 +1,114 @@
+{
+  "summary": "First full test run of GYMBOSS_VVO Milestone 1 (backend + frontend). Backend: 33 pytest cases across public config, login (email/mobile/username), /auth/me, refresh/logout, protected + role-gated routes, dashboard summary & recent-transactions (incl. outlet filtering), onboarding CRUD, registration + validation + tenant isolation, forgot/reset password (sha256 token_hash, single-use, token_version bump, lockout clear), brute-force lockout and CORS. 32/33 passed. Frontend: landing page, 3-step registration with per-field validation, login (email + mobile + wrong password), dashboard KPIs/secondary metrics/recent transactions, outlet switcher refetch, sidebar collapse, theme Light/Dark/System + persistence, user menu navigation, quick actions, logout, protected-route redirect, super admin login/logout, forgot/reset password, onboarding dismiss persistence, and 390px mobile viewport. All core flows pass; issues found are 1 HIGH security gap (brute-force lockout ineffective through the public ingress) plus several minor/cosmetic items.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Brute-force lockout does NOT trigger through the public URL. 9 consecutive bad-password attempts all returned 401 (never 429). The lock key is f\"{request.client.host}:{identifier}\" and behind the k8s/Cloudflare ingress request.client.host resolves to rotating proxy pod IPs (observed 10.208.134.66 and 10.208.134.70 for the same session), so the counter is split and never reaches 5. Same test against http://localhost:8001 correctly returns 429 after 5 fails. Fix: derive the client IP from the left-most X-Forwarded-For entry (or key the counter on the identifier alone / identifier + IP with an identifier-only fallback cap).",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/auth/forgot-password",
+        "issue": "Rate limiter inserts into password_reset_requests BEFORE the >=5 check, and the counter is keyed only on email (no IP), so a single attacker can permanently rate-limit password resets for any known email address (enumeration-free DoS). Low severity but worth hardening."
+      },
+      {
+        "endpoint": "GET /api/dashboard/summary",
+        "issue": "Loads every member document into memory (find(...).to_list(10000)) and iterates in Python for each KPI. Correct today, but will not scale; move to an aggregation pipeline before Milestone 2 adds larger tenants."
+      },
+      {
+        "endpoint": "GET /api/dashboard/summary",
+        "issue": "day_bounds() uses UTC day boundaries while the product is India-only (IST, UTC+5:30). 'Today's Collection' will roll over at 05:30 IST, so payments recorded between 00:00 and 05:30 IST are counted against the previous day."
+      },
+      {
+        "endpoint": "GET /api/onboarding, PUT /api/onboarding",
+        "issue": "Reads org.get('onboarding') without a None guard on the org document; PUT accepts a raw dict body instead of a Pydantic model (no schema validation, only key allow-listing)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login.jsx / Register.jsx",
+        "issue": "navigate() is called inside the render body (`if (user) { navigate(...); return null; }`), producing a React console error on every login/registration: 'Cannot update a component (BrowserRouter) while rendering a different component (Login)'. Use <Navigate to=... replace /> or a useEffect instead.",
+        "selector": "N/A (console)",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "AppLayout user dropdown",
+        "issue": "'My Profile' (data-testid=menu-my-profile) and 'Gym Settings' both navigate to /app/settings, so the two menu items land on the identical placeholder page. No /app/profile route exists.",
+        "selector": "[data-testid=\"menu-my-profile\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "AppLayout sidebar",
+        "issue": "sidebarContent is rendered twice (desktop <aside> and mobile drawer), so data-testid values sidebar-nav, sidebar-gym-name, trial-badge, trial-days-left, upgrade-now-button and all nav-* are duplicated in the DOM. Playwright strict-mode violations require .first. Add a scope suffix (e.g. sidebar-nav-desktop / sidebar-nav-mobile).",
+        "selector": "[data-testid=\"sidebar-nav\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "ForgotPassword.jsx",
+        "issue": "Confirmation echoes the submitted address ('If demo@gymbossvvo.in is registered, a reset link has been sent.'), so the message is not byte-identical between registered and unregistered emails as specified. No enumeration leak (both wordings are the same), but it deviates from the 'same generic confirmation' requirement.",
+        "selector": "[data-testid=\"forgot-success\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "App shell top bar (desktop)",
+        "issues": [
+          "sidebar-collapse-button shows an X (close) icon while the sidebar is expanded, which reads as 'close/dismiss' rather than 'collapse panel'. PanelLeftClose/PanelLeftOpen would be clearer."
+        ]
+      },
+      {
+        "screen": "Auth pages footer (login / register / forgot)",
+        "issues": [
+          "'Back to website' link and the adjacent theme toggle are rendered in a light grey on the near-white page background - contrast is visibly below WCAG AA for body text."
+        ]
+      },
+      {
+        "screen": "Landing - floating WhatsApp button",
+        "issues": [
+          "Button is correctly pinned bottom-right and green, but uses lucide MessageCircle (generic chat bubble) rather than the WhatsApp glyph, so it does not read as WhatsApp."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix brute-force lockout so it works behind the ingress - use the left-most X-Forwarded-For IP (or key on identifier) in the login_attempts lock key. Currently unlimited password guessing is possible via the public URL.",
+    "MEDIUM: Replace the render-time navigate() calls in Login.jsx and Register.jsx with <Navigate replace /> to remove the React setState-in-render error.",
+    "LOW: Point 'My Profile' at its own route/placeholder instead of /app/settings.",
+    "LOW: De-duplicate sidebar data-testids between the desktop aside and the mobile drawer.",
+    "LOW: Make the forgot-password confirmation text fully static (no echoed email) to match spec.",
+    "LOW: Use IST day boundaries in /api/dashboard/summary instead of UTC.",
+    "LOW: Improve contrast of the auth-page 'Back to website' link; swap the WhatsApp FAB icon for a WhatsApp glyph; use a panel-collapse icon instead of X."
+  ],
+  "critical_code_review_comments": [
+    "server.py login(): lock_key uses request.client.host which is the reverse-proxy pod IP in this deployment - the rate limiter is effectively disabled in production. Trust X-Forwarded-For (left-most) or fall back to identifier-only counting.",
+    "server.py forgot_password(): the request record is inserted before the >=5 threshold check and the counter has no IP dimension, allowing a targeted reset-DoS against a known email.",
+    "server.py dashboard_summary(): full-collection scan + Python aggregation over up to 10k member docs per request; also UTC-based 'today' for an India-only product.",
+    "server.py update_onboarding(): untyped dict body - should be a Pydantic model.",
+    "Login.jsx:20 and Register.jsx:50: navigate() during render violates React rules; use <Navigate /> or useEffect.",
+    "AppLayout.jsx: sidebarContent JSX is mounted twice, duplicating every data-testid inside it."
+  ],
+  "updated_files": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_1.json"
+  ],
+  "success_rate": {"backend": "97% (32/33)", "frontend": "100% of tested flows functional (5 non-blocking defects)"},
+  "seed_data_creation": "Created and then deleted several throwaway gyms via /api/auth/register (test_qa_*@testgym.in, QA Reg Gym, TEST_* gyms) plus reset-password fixtures. All created orgs/users/outlets and login_attempts/password_reset_tokens rows were cleaned up in teardown. Demo org onboarding.dismissed was toggled during the dismiss test and restored to false. Seeded demo data (Iron Paradise Fitness, 26 members) was not modified.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (also logs in via mobile 9876500001); super admin GymBoss / GymBoss@2026. Both verified working.",
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/ -v -p no:randomly --junitxml=/app/test_reports/pytest/pytest_results.xml`. conftest.py parses /app/memory/test_credentials.md and exposes `client`, `demo_client`, `creds` fixtures; backend_test.py also defines LOCAL_API=http://localhost:8001/api for the two checks the edge proxy masks (CORS preflight and brute-force lockout). The only expected failure is TestBruteForce::test_lockout_via_public_ingress - it will pass once the login lock key uses X-Forwarded-For. Note: the public ingress rewrites OPTIONS preflight responses (returns Access-Control-Allow-Origin: * with no allow-credentials), so app-level CORS must be asserted against localhost. Milestone-gated sidebar modules render [data-testid=\"coming-soon-page\"] and are intentional. Sidebar testids are duplicated (desktop + mobile drawer) - use .first.",
+  "rca_of_the_issue": "Brute-force lockout: login() builds the counter key from request.client.host. In this Kubernetes/Cloudflare deployment the ASGI peer address is the ingress pod, and requests from one client are load-balanced across multiple pods (observed 10.208.134.66 / 10.208.134.70). Each pod IP gets its own bucket in db.login_attempts, so the 5-attempt threshold is never reached and every request returns 401 instead of 429. Reproduction: POST /api/auth/login with a fixed identifier and a wrong password 9x against the public URL -> all 401; the same loop against http://localhost:8001 returns 429 from the 6th attempt. Mitigation: parse the left-most entry of the X-Forwarded-For header for the client IP, and additionally cap failures per identifier regardless of IP."
+}

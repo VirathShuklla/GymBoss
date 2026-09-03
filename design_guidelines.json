@@ -1,0 +1,143 @@
+{
+  "appName": "GymBoss_VVO",
+  "companyName": "BuildVVO Technologies Private Limited",
+  "targetMarket": "India (INR ₹, +91 phone formatting, Indian gym operational context)",
+  "pricing": "₹999/month after 10-day free trial (No credit card required)",
+  "designSystem": {
+    "archetype": "The Performance Pro & Tactical SaaS",
+    "themeConcept": "Deep Navy / Obsidian Charcoal canvas paired with Kinetic Amber Blaze (#FF5A1F) and Volt Emerald (#10B981). High density, precision tactical borders, ultra-legible typography.",
+    "typography": {
+      "headingFont": "Outfit, sans-serif",
+      "bodyFont": "DM Sans, sans-serif",
+      "monoFont": "JetBrains Mono, monospace",
+      "fontImportUrl": "https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap",
+      "scale": {
+        "h1": "text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1]",
+        "h2": "text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-snug",
+        "h3": "text-xl sm:text-2xl font-semibold tracking-tight",
+        "h4": "text-lg sm:text-xl font-semibold",
+        "body": "text-sm sm:text-base leading-relaxed",
+        "bodyCompact": "text-xs sm:text-sm leading-normal",
+        "label": "text-xs font-semibold uppercase tracking-wider"
+      }
+    },
+    "colors": {
+      "marketing": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "surfaceSecondary": "#F1F5F9",
+        "textPrimary": "#0F172A",
+        "textSecondary": "#475569",
+        "textMuted": "#64748B",
+        "primary": "#FF5A1F",
+        "primaryHover": "#E04810",
+        "primaryLight": "#FFF1EC",
+        "accent": "#0284C7",
+        "border": "#E2E8F0"
+      },
+      "appDark": {
+        "background": "#080D1A",
+        "surface": "#0F172A",
+        "surfaceSecondary": "#1E293B",
+        "surfaceElevated": "#334155",
+        "textPrimary": "#F8FAFC",
+        "textSecondary": "#94A3B8",
+        "textMuted": "#64748B",
+        "primary": "#FF5A1F",
+        "primaryHover": "#FF733E",
+        "primaryMuted": "#FF5A1F1A",
+        "border": "#1E293B",
+        "borderHover": "#334155"
+      },
+      "appLight": {
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "surfaceSecondary": "#F1F5F9",
+        "surfaceElevated": "#E2E8F0",
+        "textPrimary": "#0F172A",
+        "textSecondary": "#475569",
+        "textMuted": "#64748B",
+        "primary": "#FF5A1F",
+        "primaryHover": "#E04810",
+        "primaryMuted": "#FF5A1F12",
+        "border": "#E2E8F0",
+        "borderHover": "#CBD5E1"
+      },
+      "statusBadges": {
+        "active": {
+          "bg": "#10B9811F",
+          "text": "#10B981",
+          "border": "#10B98140"
+        },
+        "expiring": {
+          "bg": "#F59E0B1F",
+          "text": "#F59E0B",
+          "border": "#F59E0B40"
+        },
+        "expired": {
+          "bg": "#EF44441F",
+          "text": "#EF4444",
+          "border": "#EF444440"
+        },
+        "frozen": {
+          "bg": "#3B82F61F",
+          "text": "#3B82F6",
+          "border": "#3B82F640"
+        }
+      },
+      "trialBadge": {
+        "normalBg": "#1E293B",
+        "normalText": "#FF5A1F",
+        "warningBg": "#451A03",
+        "warningText": "#F97316",
+        "warningBorder": "#7C2D12"
+      }
+    },
+    "spacingAndRadii": {
+      "cardRadius": "rounded-xl",
+      "buttonRadius": "rounded-lg",
+      "badgeRadius": "rounded-full",
+      "inputRadius": "rounded-lg",
+      "paddingContainer": "p-4 sm:p-6 lg:p-8"
+    }
+  },
+  "sectionsAndComponents": {
+    "landingPage": {
+      "navbar": "Sticky header with backdrop-blur-md bg-white/80 dark:bg-slate-900/80, brand logo with orange icon, links (Features, How It Works, Pricing, FAQ), and right-aligned 'Start Free Trial' + 'Login' CTAs.",
+      "hero": "Asymmetric hero section. Left: H1 'Run Your Gym on Autopilot', badge '₹999/mo after 10-day trial', bullets with green checkmarks, primary CTA button + Secondary demo button. Right: High-fidelity interactive mock dashboard preview with glow.",
+      "featuresGrid": "3x3 bento grid with high-contrast icon tiles: Member Check-ins, Automated WhatsApp Alerts, Fee Due Management, Multi-branch/Outlets, Attendance Tracker, Trainer Commission, Reports & Analytics, Expense Logger, Custom Catalogue.",
+      "howItWorks": "3-step visual stepper (1. Register Gym & Branches -> 2. Add Plans & Members -> 3. Collect Payments & Track Growth).",
+      "pricing": "Transparent single tier card highlighting ₹999/month, 10-day free trial, no credit card required, feature breakdown list.",
+      "faq": "Accordion component with clear questions on Indian payment modes (UPI/QR), WhatsApp integration, multi-branch, and data security.",
+      "finalCta": "Gradient contrast card inviting gym owners to start trial now.",
+      "footer": "Dark slate footer with legal info, copyright BuildVVO Technologies Private Limited, quick links.",
+      "floatingWhatsapp": "Pill button bottom-right with WhatsApp green badge (#25D366) and direct chat action."
+    },
+    "authPages": {
+      "login": "Clean card layout with GymBoss_VVO branding, email/password input, forgot password link, light/dark toggle, and direct submit button.",
+      "registrationStepper": "3-step progress bar (Step 1: Account Info -> Step 2: Contact & Security -> Step 3: Gym Setup). Active step highlighted, completed steps marked green.",
+      "forgotPassword": "Simple recovery request form with instant status toast confirmation."
+    },
+    "appShell": {
+      "sidebar": "Fixed/collapsible dark sidebar with logo, navigation links (Dashboard, Members, Attendance, Plans, Payments, Enquiries, Expenses, Outlets, Staff, Reports, Settings), and trial timer widget ('10-Day Free Trial — X Days Left' with 'Upgrade Now' CTA).",
+      "topBar": "Top bar containing outlet selector dropdown (e.g., 'Indiranagar Branch', 'HSR Layout Branch'), theme toggle (Light / Dark / System), search trigger, notifications trigger, and user profile avatar dropdown.",
+      "dashboard": "Business operations layout: compact metric cards (Today's Collection in ₹, Admissions, Renewals, Due Payments, Active Enquiries, Total Active Members), quick action bar, and Recent Transactions compact table."
+    }
+  },
+  "image_urls": {
+    "heroMockupBg": "https://images.unsplash.com/photo-1712220403561-bcf3f59d5927?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHw0fHxtb2Rlcm4lMjBneW0lMjBmaXRuZXNzJTIwY2VudGVyJTIwaW50ZXJpb3IlMjB0cmFpbmVyfGVufDB8fHx8MTc4ODQyNjg1Nnww&ixlib=rb-4.1.0&q=85",
+    "gymInterior1": "https://images.unsplash.com/photo-1637666062717-1c6bcfa4a4df?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBneW0lMjBmaXRuZXNzJTIwY2VudGVyJTIwaW50ZXJpb3IlMjB0cmFpbmVyfGVufDB8fHx8MTc4ODQyNjg1Nnww&ixlib=rb-4.1.0&q=85",
+    "gymInterior2": "https://images.unsplash.com/photo-1637430308606-86576d8fef3c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBneW0lMjBmaXRuZXNzJTIwY2VudGVyJTIwaW50ZXJpb3IlMjB0cmFpbmVyfGVufDB8fHx8MTc4ODQyNjg1Nnww&ixlib=rb-4.1.0&q=85",
+    "gymEquipment": "https://images.unsplash.com/photo-1593079831268-3381b0db4a77?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBneW0lMjBmaXRuZXNzJTIwY2VudGVyJTIwaW50ZXJpb3IlMjB0cmFpbmVyfGVufDB8fHx8MTc4ODQyNjg1Nnww&ixlib=rb-4.1.0&q=85"
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "All interactive elements and key data containers MUST have data-testid attributes formatted in kebab-case (e.g. data-testid='login-submit-button', data-testid='kpi-today-collection').",
+    "Do NOT use pure #000000 or plain gray-50 backgrounds; tint neutral dark colors with deep navy tone (#080D1A, #0F172A).",
+    "Do NOT use transparent backgrounds for header menus or dropdown overlays.",
+    "Dashboard tables MUST be compact and density-focused with minimal vertical padding (e.g. py-2.5 px-3) for business operations clarity.",
+    "India-first currency formatting is mandatory: Always format currency using ₹ INR symbol with Indian numbering system (e.g., ₹1,25,000).",
+    "Phone numbers must follow Indian formatting (+91 98765 43210).",
+    "Use sonner for toast notifications across the application.",
+    "Ensure complete support for Light, Dark, and System theme switching in both app shell and dashboard."
+  ]
+}
