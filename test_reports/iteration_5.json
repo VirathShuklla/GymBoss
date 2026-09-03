@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 5 final verification. Full backend regression: 114/114 pytest passed (cleanup before + after). Added /app/backend/tests/test_iter5_fixes.py (6 new tests, all pass) covering counter/member_code, catalogue rows and report projections. All 5 targeted fixes verified end-to-end via UI: (1) member_code collision fixed — sequential unique codes (IPF-1030/31/32 via API, IPF-1033 via UI), unique compound index (organisation_id, member_code) present, counters collection initialised (member seq, receipt seq) and monotonic; (2) Plans PT/Service/Product tabs each render 1 catalogue row (PT price/sessions render correctly); (3) /app/reports Outstanding Dues (6 rows) and Membership Expiry (15 rows) render with zero console errors — no duplicate-key warnings, all API rows carry unique id; (4) MemberDrawer Record Payment (Rs.500) and Renew with amount>0 (Rs.700) both open the receipt modal with correct amount; (5) Freeze modal prefills Freeze Until = 03 Oct 2026 (today+30). Smoke pass: landing page violet theme renders, demo login, dashboard KPIs (26 members / 22 active / 12 attendance / Rs.6,000 collection), members drawer action sheet, announcements page + create modal, super admin console (3 gyms, KPIs, Gyms/Platform Settings/Audit Logs tabs). All test-created data purged; demo gym restored to exactly 26 members.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "N/A (test data hygiene)", "issue": "Leftover tenant orgs 'Test Gym' and 'H3' (0 and 2 members, trial) from earlier registration tests still appear in the super admin console; cleanup_test_data.py only purges orgs matching the TEST_ regex. Consider widening the cleanup regex or deleting these two orgs before delivery."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Announcements → Create Announcement modal", "issues": ["Schedule field uses the native browser datetime-local picker (mm/dd/yyyy, --:-- --) instead of the app's shadcn DateField/Calendar used for member DOB and freeze dates — inconsistent look and US date format"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5_fixes.py",
+    "/app/test_reports/pytest/pytest_iter5.xml"
+  ],
+  "action_items": [
+    "Optional: purge leftover test tenant orgs 'Test Gym' and 'H3' so the super admin console shows only the demo gym",
+    "Optional polish: replace native datetime-local input in the Create Announcement Schedule field with the shadcn date/time control"
+  ],
+  "critical_code_review_comments": [
+    "Member codes are now allocated purely from db.counters, so codes are monotonic but not gapless — after test runs the demo gym's next code is IPF-1033 rather than IPF-1027. This is correct/expected (no collision) but worth noting the review's expected 'IPF-1027' will not match after any prior member creation.",
+    "GET /api/members/{id} returns a nested shape {member, payments, attendance} — documented here for future test authors (earlier assumption of a flat member object failed)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter5_fixes.py"],
+  "success_rate": {"backend": "100% (120/120: 114 regression + 6 new)", "frontend": "100% of verified flows (5/5 fixes + smoke)"},
+  "seed_data_creation": "Created 4 temporary demo-gym members (TEST_Iter5 Counter 0-2 via API, TEST_Iter5 UICode via UI) plus 3 payments; all hard-purged after testing. Demo gym back to 26 members.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 ; super admin GymBoss / GymBoss@2026 (both work)",
+  "context_for_next_testing_agent": "Run pytest as: cd /app/backend && python tests/cleanup_test_data.py && python -m pytest tests/ -q -p no:randomly -n 0 && python tests/cleanup_test_data.py. Note member DELETE is a soft delete (deleted_at), so cleanup_test_data leaves soft-deleted members in the collection unless hard-deleted. Report endpoints are /api/reports/outstanding-dues and /api/reports/membership-expiry (no /api/reports/dues). Members list search input has no data-testid — verify created members via the drawer instead. All iteration_4 fixes verified; nothing outstanding except two cosmetic/hygiene items.",
+  "rca_of_the_issue": "No new defects. member_code collision fix confirmed at three levels: counters doc seeded/migrated above max existing code, next_member_code uses findAndModify $inc, and a unique compound index guards against duplicates."
+}

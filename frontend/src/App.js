@@ -10,6 +10,22 @@ import ResetPassword from "./pages/auth/ResetPassword";
 import SuperAdmin from "./pages/SuperAdmin";
 import AppLayout from "./layouts/AppLayout";
 import Dashboard from "./pages/app/Dashboard";
+import Members from "./pages/app/Members";
+import Plans from "./pages/app/Plans";
+import Attendance from "./pages/app/Attendance";
+import Payments from "./pages/app/Payments";
+import Enquiries from "./pages/app/Enquiries";
+import Announcements from "./pages/app/Announcements";
+import Expenses from "./pages/app/Expenses";
+import Outlets from "./pages/app/Outlets";
+import Staff from "./pages/app/Staff";
+import Finance from "./pages/app/Finance";
+import Reports from "./pages/app/Reports";
+import ExportCenter from "./pages/app/ExportCenter";
+import Settings from "./pages/app/Settings";
+import Subscription from "./pages/app/Subscription";
+import Support from "./pages/app/Support";
+import Profile from "./pages/app/Profile";
 import ComingSoon from "./pages/app/ComingSoon";
 
 function FullPageLoader() {
@@ -51,6 +67,22 @@ function App() {
             <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
+              <Route path="members" element={<Members />} />
+              <Route path="attendance" element={<Attendance />} />
+              <Route path="plans" element={<Plans />} />
+              <Route path="payments" element={<Payments />} />
+              <Route path="enquiries" element={<Enquiries />} />
+              <Route path="announcements" element={<Announcements />} />
+              <Route path="expenses" element={<Expenses />} />
+              <Route path="outlets" element={<Outlets />} />
+              <Route path="staff" element={<Staff />} />
+              <Route path="finance" element={<Finance />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="export-center" element={<ExportCenter />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="subscription" element={<Subscription />} />
+              <Route path="support" element={<Support />} />
+              <Route path="profile" element={<Profile />} />
               <Route path=":module" element={<ComingSoon />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

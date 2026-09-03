@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink, Outlet, useNavigate, Link } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import {
   LayoutDashboard, Users, ClipboardCheck, Layers, IndianRupee, UserPlus, Megaphone,
   Receipt, Building2, UserCog, BarChart3, FileBarChart, Download, Settings,
@@ -34,8 +34,7 @@ const NAV = [
   { to: "/app/support", label: "Help & Support", icon: LifeBuoy },
 ];
 
-function TrialExpired({ onLogout }) {
-  const config = usePublicConfig();
+function TrialExpired({ onSubscribe, onLogout }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center" data-testid="trial-expired-screen">
       <Logo />
@@ -48,11 +47,9 @@ function TrialExpired({ onLogout }) {
           Your gym data is safe and exactly where you left it. Continue using GymBoss_VVO for just{" "}
           <span className="font-num font-bold text-foreground">{inr(999)}</span>/month.
         </p>
-        <Button className="mt-6 w-full rounded-lg bg-brand font-semibold hover:bg-brand-hover" data-testid="subscribe-now-button"
-                onClick={() => window.open(config?.whatsapp_number ? waLink(config.whatsapp_number, "Hi, I want to subscribe to GymBoss_VVO.") : "#", "_blank")}>
+        <Button className="mt-6 w-full rounded-lg bg-brand font-semibold hover:bg-brand-hover" data-testid="subscribe-now-button" onClick={onSubscribe}>
           Subscribe Now — {inr(999)}/month
         </Button>
-        <p className="mt-3 text-xs text-muted-foreground">Online payments via Razorpay are being enabled. Reach out and we'll activate your account right away.</p>
         <button onClick={onLogout} className="mt-5 text-sm font-medium text-muted-foreground hover:text-foreground" data-testid="trial-expired-logout">
           Logout
         </button>
@@ -67,10 +64,13 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [outletId, setOutletId] = useState(() => localStorage.getItem("gb-outlet") || "all");
   const navigate = useNavigate();
+  const location = useLocation();
   const config = usePublicConfig();
 
-  if (subscription?.status === "expired") {
-    return <TrialExpired onLogout={async () => { await logout(); navigate("/login"); }} />;
+  const expired = ["expired", "payment_due"].includes(subscription?.status);
+  const allowedWhenExpired = ["/app/subscription", "/app/support", "/app/profile", "/app/settings"];
+  if (expired && !allowedWhenExpired.some((p) => location.pathname.startsWith(p))) {
+    return <TrialExpired onSubscribe={() => navigate("/app/subscription")} onLogout={async () => { await logout(); navigate("/login"); }} />;
   }
 
   const daysLeft = subscription?.trial_days_left ?? 0;

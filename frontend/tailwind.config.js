@@ -49,9 +49,9 @@ module.exports = {
           foreground: 'hsl(var(--destructive-foreground))'
         },
         brand: {
-          DEFAULT: '#FF5A1F',
-          hover: '#E04810',
-          soft: '#FFF1EC'
+          DEFAULT: '#7C3AED',
+          hover: '#6D28D9',
+          soft: '#F5F0FF'
         },
         success: '#10B981',
         warning: '#F59E0B',
@@ -71,7 +71,7 @@ module.exports = {
       boxShadow: {
         card: '0 1px 2px rgb(15 23 42 / 0.05), 0 4px 16px -4px rgb(15 23 42 / 0.06)',
         lift: '0 8px 30px -6px rgb(15 23 42 / 0.16)',
-        glow: '0 0 80px -12px rgb(255 90 31 / 0.45)'
+        glow: '0 0 80px -12px rgb(124 58 237 / 0.45)'
       },
       keyframes: {
         'accordion-down': {

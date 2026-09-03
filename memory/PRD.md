@@ -5,8 +5,8 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 
 ## User Decisions (confirmed)
 - Pricing: **₹999/month** after 10-day free trial
-- Milestone 1: click-to-WhatsApp (wa.me) only; Razorpay/official WhatsApp API deferred
-- Color scheme: original amber/orange (#FF5A1F) + deep navy — NOT the reference purple
+- WhatsApp: click-to-WhatsApp (wa.me) for individuals; bulk announcements via official WhatsApp Business API only (honest "integration required" state until connected)
+- Color scheme: premium **violet (#7C3AED)** + deep navy (user requested change from initial amber) — full light/dark/system theming
 - Demo account with rich seeded Indian data: demo@gymbossvvo.in
 - Super admin: GymBoss / GymBoss@2026
 - Page title: GymBoss_VVO; "Made with Emergent" watermark removed
@@ -31,23 +31,28 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Super admin login → /superadmin placeholder (console in M5)
 - Testing: 33/33 backend pytest + full frontend regression pass (iterations 1–2, all defects fixed)
 
+## Implemented — Milestones 0–5 (2026-09-03)
+**M1 — Website + Auth**: Landing page (navbar, hero + dashboard mockup, 9 feature cards, how-it-works, pricing FREE 10d → ₹999/mo, FAQ, final CTA, dark BuildVVO footer, floating WhatsApp button with configurable number, apps "coming soon"); login (email/mobile/username), 3-step registration → org+outlet+10-day trial, forgot/reset password (secure single-use tokens, anti-enumeration), brute-force lockout (XFF-aware), protected routes, refresh-token interceptor; app shell (collapsible sidebar, trial badge + Upgrade Now, outlet switcher, Light/Dark/System persisted, trial-expired paywall that still allows Subscription/Support/Profile/Settings); dashboard with real IST-day KPIs + recent transactions + onboarding checklist.
+**M2 — Core**: Plans & Catalogue (Membership/PT/Service/Product CRUD), Members CRUD + auto expiry calc + due calc + receipt on admission, member detail drawer + action sheet (Freeze with expiry extension / Unfreeze / More Info / Edit / Delete-with-confirm / Attendance History / Renew / Record Payment / Payment Reminder / Transaction History / Receipt print), WhatsApp template picker (wa.me).
+**M3 — Operations**: Attendance (check-in/out, duplicate-guard, today list, monthly history), Enquiries CRM (follow-ups, convert→member prefill), Expenses (month/year/category/outlet filters), Outlets (multi-branch, primary protected, disable/enable), Staff (roles, optional login accounts, disable blocks login + session), role guard (owner/admin/manager) for sensitive mutations.
+**M4 — Communications**: Announcements composer (template placeholders, 5 audience types, preview with exact recipient count, send now/schedule, cancel, history, per-recipient wa.me links, honest `integration_required` status until official WhatsApp API connected), individual WhatsApp templates (welcome/reminder/expiring/expired/birthday/follow-up/custom), receipts/invoices (view + print).
+**M5 — Business + Billing**: Finance (range filters, revenue/expense/net/outstanding, by-method, by-category, transactions), Reports (revenue trend, member growth, outstanding dues, membership expiry, enquiry conversion), Export Center (7 datasets CSV), Subscription page + Razorpay order/verify/webhook flow (honest 503 until keys configured), BuildVVO Super Admin console (overview KPIs, gyms table, gym detail, disable/reactivate with audit, platform settings incl. support WhatsApp/email/store URLs, audit logs), support requests.
+**Quality**: 114/114 pytest + full Playwright regression across iterations 1–5; startup migrations keep seeded data upgrade-safe (plan type backfill, staff role casing, member/receipt counter init + unique (org, member_code) index, demo catalogue backfill); DateField (dd MMM yyyy) pickers; filtered-vs-first-run empty states; tenant isolation verified both directions (404 cross-tenant); receipt parity across payment flows.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
 
-## Backlog (by priority)
-### P0 — Milestone 2 (Core Application)
-Members CRUD, add/edit member modal with plan+expiry auto-calc, member detail drawer, member action sheet (Freeze / More Info / Edit / Delete with confirm / Attendance History), member payments + transaction history, Plans & Catalogue tabs (Membership/PT/Service/Product)
-### P1 — Milestone 3 (Operations)
-Attendance (check-in/out, history), Enquiries CRM (+ convert to member), Expenses, Outlets management, Staff + role permissions
-### P1 — Milestone 4 (Communications)
-Individual WhatsApp actions + templates, payment reminder, invoice/receipt, announcements composer with audience selection + preview + scheduling, official WhatsApp Business API architecture, delivery tracking, message queue
-### P2 — Milestone 5 (Business + Billing)
-Finance reports, export center (CSV), reports, Razorpay ₹999/month billing + webhooks, BuildVVO super admin console (gyms, MRR, conversion, disable/reactivate), audit log UI, support request system, platform settings editing (WhatsApp number, store URLs)
-### P2 — Tech debt
-- Dashboard summary: replace in-memory member scan with Mongo aggregation pipeline (flagged in testing)
-- /app/profile dedicated page
-- Member CSV import
+## Backlog
+### P0 — External credentials (user action)
+- Razorpay: add RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET (+ RAZORPAY_WEBHOOK_SECRET) to backend/.env to activate ₹999/mo online billing
+- Official WhatsApp Business API credentials for bulk announcements (Settings → Integrations)
+### P1 — Product polish
+- CSV member import, QR check-in, SMS/Email channels, push notifications
+- Mongo aggregation pipelines for dashboard/finance/reports (scale hardening)
+- Granular per-role permission matrix UI (currently owner/admin/manager vs staff split)
+### P2 — Future
+- Android/iOS apps on the same backend, store badges when live, multi-language
 
 ## Known Limitations (M1, intentional)
 - Sidebar modules other than Dashboard render milestone-gated placeholders

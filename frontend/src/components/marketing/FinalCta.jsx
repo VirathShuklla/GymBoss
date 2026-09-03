@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export function FinalCta() {
   return (
-    <section className="bg-gradient-to-br from-brand via-[#F14A12] to-[#C73A0C] py-20 sm:py-24" data-testid="final-cta-section">
+    <section className="bg-gradient-to-br from-brand via-[#6D28D9] to-[#4C1D95] py-20 sm:py-24" data-testid="final-cta-section">
       <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
         <h2 className="font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl">
           Ready to Take Control of Your Gym?

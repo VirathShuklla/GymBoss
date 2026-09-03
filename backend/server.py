@@ -13,141 +13,34 @@ from urllib.parse import urlparse
 from datetime import datetime, timezone, timedelta, date
 from typing import Optional, List
 
-import bcrypt
 import jwt
 import httpx
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, BackgroundTasks
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
+
+from deps import (
+    db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
+    create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
+    get_org_user, derive_subscription, public_user, org_public, audit,
+    TRIAL_DAYS, PLAN_PRICE_INR,
+)
+from members import router as members_router
+from ops import router as ops_router
+from comms import router as comms_router
+from finance import router as finance_router
+from billing import router as billing_router
+from admin import router as admin_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
-
 app = FastAPI(title="GymBoss_VVO API")
 api = APIRouter(prefix="/api")
-
-JWT_ALGORITHM = "HS256"
-TRIAL_DAYS = 10
-PLAN_PRICE_INR = 999
 
 EMAIL_BASE_URL = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip().rstrip("/") or "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "GymBoss_VVO"
-
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def new_id() -> str:
-    return str(uuid.uuid4())
-
-
-def normalize_phone(phone: str) -> str:
-    digits = re.sub(r"\D", "", phone or "")
-    if len(digits) > 10:
-        digits = digits[-10:]
-    return digits
-
-
-# ---------------- Password / JWT ----------------
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
-
-
-def create_access_token(user: dict) -> str:
-    payload = {
-        "sub": user["id"],
-        "email": user.get("email", ""),
-        "ver": user.get("token_version", 0),
-        "org": user.get("organisation_id"),
-        "role": user.get("role"),
-        "exp": now_utc() + timedelta(minutes=30),
-        "type": "access",
-    }
-    return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
-
-
-def create_refresh_token(user: dict) -> str:
-    payload = {"sub": user["id"], "ver": user.get("token_version", 0), "exp": now_utc() + timedelta(days=7), "type": "refresh"}
-    return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
-
-
-def set_auth_cookies(response: Response, user: dict):
-    response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/")
-    response.set_cookie("refresh_token", create_refresh_token(user), httponly=True, secure=True, samesite="none", max_age=604800, path="/")
-
-
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        if payload.get("type") != "access":
-            raise HTTPException(status_code=401, detail="Invalid token type")
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    user = await db.users.find_one({"id": payload["sub"]})
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    if payload.get("ver", 0) != user.get("token_version", 0):
-        raise HTTPException(status_code=401, detail="Session expired")
-    user.pop("password_hash", None)
-    user.pop("_id", None)
-    return user
-
-
-async def get_org_user(user: dict = Depends(get_current_user)) -> dict:
-    if user.get("role") == "super_admin" or not user.get("organisation_id"):
-        raise HTTPException(status_code=403, detail="Organisation account required")
-    return user
-
-
-# ---------------- Subscription derivation ----------------
-
-def derive_subscription(org: Optional[dict]) -> dict:
-    if not org:
-        return {"status": "none", "trial_days_left": 0, "plan_price_inr": PLAN_PRICE_INR}
-    sub = org.get("subscription", {})
-    status = sub.get("status", "trial")
-    trial_ends = sub.get("trial_ends_at")
-    if isinstance(trial_ends, str):
-        trial_ends = datetime.fromisoformat(trial_ends)
-    if isinstance(trial_ends, datetime) and trial_ends.tzinfo is None:
-        trial_ends = trial_ends.replace(tzinfo=timezone.utc)
-    days_left = 0
-    if trial_ends:
-        days_left = max(0, (trial_ends.date() - now_utc().date()).days)
-    effective = status
-    if status == "trial" and trial_ends and now_utc() > trial_ends:
-        effective = "expired"
-    return {
-        "status": effective,
-        "trial_days_left": days_left,
-        "trial_ends_at": trial_ends.isoformat() if trial_ends else None,
-        "plan_price_inr": PLAN_PRICE_INR,
-    }
 
 
 # ---------------- Email (password reset only) ----------------
@@ -211,6 +104,14 @@ class ResetBody(BaseModel):
     password: str = Field(min_length=8, max_length=100)
 
 
+class OnboardingBody(BaseModel):
+    plan: Optional[bool] = None
+    member: Optional[bool] = None
+    staff: Optional[bool] = None
+    payment: Optional[bool] = None
+    dismissed: Optional[bool] = None
+
+
 # ---------------- Auth endpoints ----------------
 
 @api.post("/auth/register")
@@ -242,42 +143,28 @@ async def register(body: RegisterBody, response: Response):
         "organisation_id": org_id,
         "password_hash": hash_password(body.password),
         "token_version": 0,
+        "status": "active",
         "created_at": ts,
     }
     await db.organisations.insert_one(org)
     await db.outlets.insert_one(outlet)
     await db.users.insert_one(user)
-    await db.audit_logs.insert_one({"id": new_id(), "actor": user["id"], "action": "org.registered", "target": org_id, "created_at": ts})
+    await audit(user["id"], "org.registered", org_id, {"gym": org["name"]}, org_id)
     set_auth_cookies(response, user)
     return {"user": public_user(user), "organisation": org_public(org)}
-
-
-def public_user(user: dict) -> dict:
-    return {
-        "id": user["id"],
-        "full_name": user.get("full_name"),
-        "email": user.get("email"),
-        "phone": user.get("phone"),
-        "role": user.get("role"),
-        "organisation_id": user.get("organisation_id"),
-    }
-
-
-def org_public(org: dict) -> dict:
-    return {"id": org["id"], "name": org.get("name"), "city": org.get("city"), "onboarding": org.get("onboarding", {})}
 
 
 async def find_user_by_identifier(identifier: str) -> Optional[dict]:
     ident = (identifier or "").strip()
     user = await db.users.find_one({"username": ident})
+    if not user:
+        user = await db.users.find_one({"email": ident.lower()})
+    if not user:
+        digits = normalize_phone(ident)
+        if len(digits) == 10:
+            user = await db.users.find_one({"phone": f"+91{digits}"})
     if user:
-        return user
-    user = await db.users.find_one({"email": ident.lower()})
-    if user:
-        return user
-    digits = normalize_phone(ident)
-    if len(digits) == 10:
-        user = await db.users.find_one({"phone": f"+91{digits}"})
+        user.pop("_id", None)
     return user
 
 
@@ -296,6 +183,8 @@ async def login(body: LoginBody, request: Request, response: Response):
     if not user or not verify_password(body.password, user["password_hash"]):
         await db.login_attempts.insert_one({"identifier": lock_key, "email": ident.lower(), "created_at": now_utc()})
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.get("status") == "disabled":
+        raise HTTPException(status_code=403, detail="This account has been disabled.")
     await db.login_attempts.delete_many({"$or": [{"identifier": lock_key}, {"email": ident.lower()}]})
     set_auth_cookies(response, user)
     return {"user": public_user(user)}
@@ -314,7 +203,7 @@ async def refresh(request: Request, response: Response):
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
     try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=["HS256"])
         if payload.get("type") != "refresh":
             raise HTTPException(status_code=401, detail="Invalid token type")
     except jwt.InvalidTokenError:
@@ -405,14 +294,6 @@ async def list_outlets(user: dict = Depends(get_org_user)):
     return await db.outlets.find({"organisation_id": user["organisation_id"]}, {"_id": 0}).to_list(50)
 
 
-class OnboardingBody(BaseModel):
-    plan: Optional[bool] = None
-    member: Optional[bool] = None
-    staff: Optional[bool] = None
-    payment: Optional[bool] = None
-    dismissed: Optional[bool] = None
-
-
 @api.get("/onboarding")
 async def get_onboarding(user: dict = Depends(get_org_user)):
     org = await db.organisations.find_one({"id": user["organisation_id"]})
@@ -430,10 +311,8 @@ async def update_onboarding(body: OnboardingBody, user: dict = Depends(get_org_u
 
 # ---------------- Dashboard ----------------
 
-IST = timezone(timedelta(hours=5, minutes=30))
-
-
 def day_bounds(d: date):
+    from deps import IST
     start = datetime(d.year, d.month, d.day, tzinfo=IST)
     return start, start + timedelta(days=1)
 
@@ -451,7 +330,7 @@ async def dashboard_summary(outlet_id: Optional[str] = None, user: dict = Depend
         att_q["outlet_id"] = outlet_id
         enq_q["outlet_id"] = outlet_id
 
-    today = now_utc().astimezone(IST).date()
+    today = today_ist()
     start, end = day_bounds(today)
 
     payments_today = await db.payments.find({**pay_q, "created_at": {"$gte": start, "$lt": end}}).to_list(1000)
@@ -470,10 +349,10 @@ async def dashboard_summary(outlet_id: Optional[str] = None, user: dict = Depend
     for m in members:
         expiry = m.get("membership_expiry")
         if isinstance(expiry, str):
-            expiry = datetime.fromisoformat(expiry).date()
+            expiry = date.fromisoformat(expiry[:10])
         frozen_until = m.get("frozen_until")
         if isinstance(frozen_until, str):
-            frozen_until = datetime.fromisoformat(frozen_until).date()
+            frozen_until = date.fromisoformat(frozen_until[:10])
         frozen = bool(frozen_until and frozen_until >= today)
         if not frozen and expiry and expiry >= today:
             active += 1
@@ -486,7 +365,7 @@ async def dashboard_summary(outlet_id: Optional[str] = None, user: dict = Depend
         dob = m.get("dob")
         if isinstance(dob, str):
             try:
-                dob = datetime.fromisoformat(dob).date()
+                dob = date.fromisoformat(dob[:10])
             except ValueError:
                 dob = None
         if dob and dob.month == today.month and dob.day == today.day:
@@ -518,8 +397,7 @@ async def recent_transactions(outlet_id: Optional[str] = None, user: dict = Depe
     q = {"organisation_id": user["organisation_id"]}
     if outlet_id:
         q["outlet_id"] = outlet_id
-    payments = await db.payments.find(q, {"_id": 0}).sort("created_at", -1).to_list(10)
-    return payments
+    return await db.payments.find(q, {"_id": 0}).sort("created_at", -1).to_list(10)
 
 
 # ---------------- Seeding ----------------
@@ -569,6 +447,7 @@ async def seed_super_admin():
             "organisation_id": None,
             "password_hash": hash_password(password),
             "token_version": 0,
+            "status": "active",
             "created_at": now_utc(),
         })
         logger.info("Seeded super admin '%s'", username)
@@ -582,7 +461,7 @@ async def seed_demo():
         return
     password = os.environ.get("DEMO_OWNER_PASSWORD", "Demo@2026")
     ts = now_utc()
-    today = ts.date()
+    today = today_ist()
     org_id = new_id()
     outlet1, outlet2 = new_id(), new_id()
     org = {
@@ -607,20 +486,24 @@ async def seed_demo():
         "organisation_id": org_id,
         "password_hash": hash_password(password),
         "token_version": 0,
+        "status": "active",
         "created_at": ts,
     }
     plans = [
-        {"id": new_id(), "organisation_id": org_id, "name": "Monthly", "category": "membership", "duration_type": "months", "duration": 1, "price": 1500, "status": "active", "created_at": ts},
-        {"id": new_id(), "organisation_id": org_id, "name": "Quarterly", "category": "membership", "duration_type": "months", "duration": 3, "price": 4000, "status": "active", "created_at": ts},
-        {"id": new_id(), "organisation_id": org_id, "name": "Half-Yearly", "category": "membership", "duration_type": "months", "duration": 6, "price": 7000, "status": "active", "created_at": ts},
-        {"id": new_id(), "organisation_id": org_id, "name": "Annual", "category": "membership", "duration_type": "months", "duration": 12, "price": 12000, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Monthly", "type": "membership", "category": "General", "duration_type": "months", "duration": 1, "price": 1500, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Quarterly", "type": "membership", "category": "General", "duration_type": "months", "duration": 3, "price": 4000, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Half-Yearly", "type": "membership", "category": "General", "duration_type": "months", "duration": 6, "price": 7000, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Annual", "type": "membership", "category": "Premium", "duration_type": "months", "duration": 12, "price": 12000, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "PT — 12 Sessions", "type": "pt", "category": "Personal Training", "duration_type": "months", "duration": 1, "sessions": 12, "price": 6000, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Steam & Sauna", "type": "service", "category": "Recovery", "price": 800, "status": "active", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Whey Protein 1kg", "type": "product", "category": "Supplements", "price": 2400, "inventory": 15, "status": "active", "created_at": ts},
     ]
     rng = random.Random(42)
     members, payments, attendance = [], [], []
     receipt = 1000
     for i, (name, phone, gender, dob) in enumerate(DEMO_MEMBERS):
         outlet = outlet1 if i % 3 else outlet2
-        plan = plans[i % len(plans)]
+        plan = plans[i % 4]
         joined_days_ago = rng.randint(20, 300)
         joined = ts - timedelta(days=joined_days_ago)
         scenario = i % 10
@@ -646,7 +529,7 @@ async def seed_demo():
             "email": f"{name.split()[0].lower()}{i}@example.in",
             "gender": gender,
             "dob": dob,
-            "joining_date": joined.date().isoformat(),
+            "joining_date": (joined.date()).isoformat(),
             "plan_id": plan["id"],
             "plan_name": plan["name"],
             "plan_price": plan["price"],
@@ -654,6 +537,7 @@ async def seed_demo():
             "membership_expiry": expiry.isoformat(),
             "due_amount": due,
             "frozen_until": (today + timedelta(days=10)).isoformat() if scenario == 9 else None,
+            "freeze_history": [],
             "whatsapp_opt_in": True,
             "created_at": joined,
             "deleted_at": None,
@@ -682,7 +566,8 @@ async def seed_demo():
                 "outlet_id": outlet,
                 "member_id": mid,
                 "member_name": name,
-                "check_in": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=6 + i % 6, minutes=rng.randint(0, 59)),
+                "member_code": f"IPF-{1001 + i}",
+                "check_in": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=6 + i % 6, minutes=rng.randint(0, 59)) - timedelta(hours=5, minutes=30),
                 "check_out": None,
             })
     for k, (name, method, amount, ptype) in enumerate([
@@ -720,6 +605,7 @@ async def seed_demo():
         **e,
         "follow_up_date": (today + timedelta(days=i + 1)).isoformat(),
         "notes": "",
+        "follow_ups": [],
         "created_at": ts - timedelta(hours=i * 5) if i == 0 else ts - timedelta(days=i, hours=3),
     } for i, e in enumerate(enquiries)]
     enquiry_docs[0]["created_at"] = ts - timedelta(hours=4)
@@ -744,7 +630,7 @@ async def seed_demo():
         {"name": "Anita Desai", "role": "Receptionist", "phone": "+919845000102", "email": "anita@example.in", "outlet_id": outlet1},
         {"name": "Imran Ali", "role": "Manager", "phone": "+919845000103", "email": "imran@example.in", "outlet_id": outlet2},
     ]
-    staff_docs = [{"id": new_id(), "organisation_id": org_id, **s, "status": "active", "joining_date": (today - timedelta(days=180)).isoformat(), "created_at": ts} for s in staff]
+    staff_docs = [{"id": new_id(), "organisation_id": org_id, **s, "status": "active", "joining_date": (today - timedelta(days=180)).isoformat(), "has_login": False, "created_at": ts} for s in staff]
 
     await db.organisations.insert_one(org)
     await db.outlets.insert_many(outlets)
@@ -756,6 +642,8 @@ async def seed_demo():
     await db.enquiries.insert_many(enquiry_docs)
     await db.expenses.insert_many(expense_docs)
     await db.staff.insert_many(staff_docs)
+    await db.counters.update_one({"_id": f"member:{org_id}"}, {"$set": {"seq": len(members)}}, upsert=True)
+    await db.counters.update_one({"_id": f"receipt:{org_id}"}, {"$set": {"seq": receipt}}, upsert=True)
     logger.info("Seeded demo organisation with %d members", len(members))
 
 
@@ -781,13 +669,52 @@ async def startup():
     await db.enquiries.create_index("organisation_id")
     await db.expenses.create_index("organisation_id")
     await db.plans.create_index("organisation_id")
+    await db.announcements.create_index("organisation_id")
+    await db.subscription_payments.create_index("organisation_id")
     await db.audit_logs.create_index("created_at")
+    await db.plans.update_many({"type": {"$exists": False}}, [{"$set": {"type": {"$ifNull": ["$category", "membership"]}}}])
+    await db.staff.update_many({}, [{"$set": {"role": {"$toLower": "$role"}}}])
+    async for org in db.organisations.find({}, {"id": 1, "name": 1}):
+        org_id = org["id"]
+        prefix = "".join(w[0] for w in (org.get("name") or "GB").split())[:3].upper() or "GB"
+        max_code = 0
+        async for m in db.members.find({"organisation_id": org_id}, {"member_code": 1}):
+            tail = str(m.get("member_code", "")).split("-")[-1]
+            if tail.isdigit():
+                max_code = max(max_code, int(tail))
+        if max_code:
+            await db.counters.update_one({"_id": f"member:{org_id}"}, {"$max": {"seq": max_code - 1000}}, upsert=True)
+        max_rcpt = 0
+        async for p in db.payments.find({"organisation_id": org_id}, {"receipt_no": 1}):
+            tail = str(p.get("receipt_no", "")).split("-")[-1]
+            if tail.isdigit():
+                max_rcpt = max(max_rcpt, int(tail))
+        if max_rcpt:
+            await db.counters.update_one({"_id": f"receipt:{org_id}"}, {"$max": {"seq": max_rcpt}}, upsert=True)
+    try:
+        await db.members.create_index([("organisation_id", 1), ("member_code", 1)], unique=True)
+    except Exception as e:
+        logger.error("member_code unique index creation failed: %s", e)
+    demo_org = await db.organisations.find_one({"is_demo": True})
+    if demo_org and not await db.plans.find_one({"organisation_id": demo_org["id"], "type": "pt"}):
+        ts = now_utc()
+        await db.plans.insert_many([
+            {"id": new_id(), "organisation_id": demo_org["id"], "name": "PT — 12 Sessions", "type": "pt", "category": "Personal Training", "duration_type": "months", "duration": 1, "sessions": 12, "price": 6000, "status": "active", "created_at": ts},
+            {"id": new_id(), "organisation_id": demo_org["id"], "name": "Steam & Sauna", "type": "service", "category": "Recovery", "price": 800, "status": "active", "created_at": ts},
+            {"id": new_id(), "organisation_id": demo_org["id"], "name": "Whey Protein 1kg", "type": "product", "category": "Supplements", "price": 2400, "inventory": 15, "status": "active", "created_at": ts},
+        ])
     await seed_settings()
     await seed_super_admin()
     await seed_demo()
 
 
 app.include_router(api)
+app.include_router(members_router, prefix="/api")
+app.include_router(ops_router, prefix="/api")
+app.include_router(comms_router, prefix="/api")
+app.include_router(finance_router, prefix="/api")
+app.include_router(billing_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 frontend_origin = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
@@ -801,4 +728,5 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    from deps import client
     client.close()

@@ -21,19 +21,19 @@ body {
         --card-foreground: 222 47% 11%;
         --popover: 0 0% 100%;
         --popover-foreground: 222 47% 11%;
-        --primary: 18 100% 56%;
+        --primary: 258 84% 58%;
         --primary-foreground: 0 0% 100%;
         --secondary: 210 40% 94%;
         --secondary-foreground: 222 47% 11%;
         --muted: 210 40% 94%;
         --muted-foreground: 215 16% 47%;
-        --accent: 20 100% 96%;
-        --accent-foreground: 18 100% 40%;
+        --accent: 258 90% 96%;
+        --accent-foreground: 258 84% 40%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
         --border: 214 32% 91%;
         --input: 214 32% 91%;
-        --ring: 18 100% 56%;
+        --ring: 258 84% 58%;
         --radius: 0.625rem;
         --sidebar: 0 0% 100%;
         --surface-elevated: 214 32% 91%;
@@ -45,19 +45,19 @@ body {
         --card-foreground: 210 40% 98%;
         --popover: 222 47% 11%;
         --popover-foreground: 210 40% 98%;
-        --primary: 18 100% 56%;
+        --primary: 258 84% 58%;
         --primary-foreground: 0 0% 100%;
         --secondary: 217 33% 17%;
         --secondary-foreground: 210 40% 98%;
         --muted: 217 33% 17%;
         --muted-foreground: 215 20% 65%;
-        --accent: 18 80% 14%;
-        --accent-foreground: 20 100% 68%;
+        --accent: 258 55% 16%;
+        --accent-foreground: 258 95% 74%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
         --border: 217 33% 17%;
         --input: 217 33% 20%;
-        --ring: 18 100% 56%;
+        --ring: 258 84% 58%;
         --sidebar: 221 48% 9%;
         --surface-elevated: 215 28% 24%;
     }
@@ -71,7 +71,7 @@ body {
         @apply bg-background text-foreground;
     }
     ::selection {
-        background: hsl(18 100% 56% / 0.25);
+        background: hsl(258 84% 58% / 0.25);
     }
 }
 

@@ -1,0 +1,76 @@
+{
+  "summary": "Iteration 4 RETEST of GYMBOSS_VVO. Backend: 114/114 pytest passed (105 existing + 9 new targeted fix-verification tests in test_retest_iter4.py). All 10 claimed fixes were verified; 9 fully pass, 2 are partial/incomplete. I additionally PROVED the seed migration works on a genuinely legacy DB (scripted an unset of plans.type + upper-cased staff.role, restarted backend, and the startup migration repaired both, after which all 9 fix tests passed). Frontend spot-checks on the public URL: demo login, Add Member plan dropdown (4 plans), DateField shadcn Calendar popovers (member-form-dob + freeze-from, dd MMM yyyy), filtered-empty states on Members/Payments/Enquiries, Payments Record Payment -> receipt modal, staff role capitalization, attendance history + reports tabs, finance, announcements, super admin console. Console is clean of DialogTitle errors, but ONE duplicate-React-key error remains and it exposed a real backend data-integrity bug: next_member_code() generates member codes that collide with the demo gym's seeded codes.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/members (deps.next_member_code) + startup seed_demo()",
+        "issue": "DUPLICATE member_code. seed_demo() writes members with hardcoded codes IPF-1001..IPF-1026 but never initialises db.counters['member:<org_id>']. next_member_code() therefore restarts from IPF-1001 and every member created through the UI/API in the demo gym gets a code that already belongs to a seeded member. Reproduced live: new member 'TEST_QA Iter4' was assigned IPF-1017, already held by 'Harsh Vardhan' (verified by mongo aggregate). Consequences: (a) GET /api/reports/membership-expiry returned the same member_code twice -> the React duplicate-key console error still fires on Reports; (b) members.py:432 does find_one({'$or':[...{'member_code': rx}]}) for the receipt/announcement member lookup, so a code lookup can silently resolve to the WRONG member; (c) search by member ID returns 2 rows. Fix: seed_demo must upsert db.counters to len(seeded_members); add a startup migration that bumps each org's member+receipt counter above the max existing code; add a unique index on (organisation_id, member_code) so collisions fail loudly.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/plans (demo org)",
+        "issue": "The migration correctly backfills type='membership' from the legacy category, but the already-seeded demo org still has ONLY the 4 legacy membership plans - the Milestone-2 pt/service/product seed rows (PT - 12 Sessions, Steam & Sauna, Whey Protein 1kg) were never added because seed_demo() early-returns. Plans & Catalogue PT/Service/Product tabs are therefore empty for the demo account. Consider making the migration also insert the missing catalogue rows."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Reports - Expiry / Dues DataTable",
+        "issue": "Duplicate-key fix is INCOMPLETE. rowKey=\"member_code\" is not a unique key: console still logs 'Encountered two children with the same key, IPF-1017' on the Reports page. Use the member id (or fall back to an index) as the React key. Attendance history rowKey=\"date\" is fine - no warning observed.",
+        "selector": "[data-testid=\"report-expiry-table\"], [data-testid=\"report-dues-table\"]",
+        "priority": "MEDIUM"
+      },
+      {
+        "component": "MemberDrawer - Record Payment / Renew",
+        "issue": "Receipt-modal parity is the wrong way round. /app/payments now DOES open the receipt after a successful payment (fix verified, receipt-amount=Rs.100). But MemberDrawer.doPay (MemberDrawer.jsx:112-122) only toasts and never calls setReceipt, so the drawer flow still shows no receipt (verified twice: payment posted, due dropped 1000->800->750, [data-testid=\"receipt-modal\"] never rendered). doRenew has the same gap.",
+        "selector": "[data-testid=\"payment-submit\"], [data-testid=\"renew-submit\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Freeze Membership modal",
+        "issues": ["'Freeze Until' DateField now starts empty, so the first submit always fails with the 'Select freeze-until date' toast. Not a defect (validation works) but prefilling +30 days or marking the field required would be friendlier."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_retest_iter4.py",
+    "/app/backend/tests/test_milestones.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/backend/tests/cleanup_iter4.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "HIGH: fix duplicate member_code generation - initialise db.counters in seed_demo(), add a startup migration bumping counters past the max existing member_code/receipt_no, and add a unique index on (organisation_id, member_code).",
+    "MEDIUM: change the Reports expiry/dues DataTable rowKey from member_code to the member id - the duplicate React key error is still in the console.",
+    "LOW: call the receipt endpoint + setReceipt in MemberDrawer.doPay and doRenew for real parity with /app/payments.",
+    "LOW: extend the startup migration (or seed) to add the missing pt/service/product catalogue rows for already-seeded demo orgs so those Plans tabs are not empty.",
+    "LOW: prefill Freeze Until (e.g. freeze-from + 30d) so the freeze modal does not fail on first submit."
+  ],
+  "critical_code_review_comments": [
+    "deps.next_member_code(): a counter document that is not seeded alongside hardcoded seed data guarantees collisions. Codes are user-facing identifiers used for lookup (members.py:432) - they must be enforced unique at the DB level, not just generated optimistically.",
+    "ui.jsx DataTable: rowKey defaults to 'id' which is safe; passing a business field (member_code) as rowKey re-introduces key collisions whenever that field is not unique. Prefer id and only override when the row genuinely has no id (e.g. rowKey='date' for the aggregated attendance rows).",
+    "server.py startup migration (lines ~673-674) is the right pattern and verified working: plans.update_many with $ifNull category->type and staff role $toLower both repaired a scripted legacy DB after restart. Keep this idempotent block and add the member-counter migration to it.",
+    "members.py list_plans() defensive $or fallback ({'type': t} OR {'type' missing, 'category': t}) verified present - good belt-and-braces alongside the migration.",
+    "MemberDrawer.jsx is large and duplicates payment/renew/freeze modal logic that also exists in Payments.jsx; extracting a shared usePayment hook would remove the parity drift that caused the receipt-modal inconsistency."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_milestones.py (TestOutlets.test_primary_outlet_cannot_be_disabled now asserts 409, matching the intentional fix)",
+    "/app/backend/tests/test_retest_iter4.py (new - 9 fix-verification tests)",
+    "/app/backend/tests/cleanup_iter4.py (new - QA data cleanup)",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "success_rate": {"backend": "100% (114/114 pytest); 1 new data-integrity bug found outside the suite", "frontend": "90% - 9 of 10 claimed fixes verified, 2 incomplete (reports rowKey, drawer receipt parity)"},
+  "seed_data_creation": "Created and fully removed: member 'TEST_QA Iter4' (+3 payments) via the UI; staff 'TEST_RoleCase' via API. Reverted the QA Rs.100 payment recorded on seeded member Shreya Saxena (due restored to Rs.500). cleanup_test_data.py run before and after the suite; cleanup_iter4.py verified 0 duplicate member_codes and 26 demo members remaining. NOTE: I temporarily scripted the demo DB back to a legacy state (plans.type unset, staff.role upper-cased) to prove the startup migration works - the migration restored it and the current DB state is correct (plans all type='membership', staff roles lowercase).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 and GymBoss / GymBoss@2026 - both verified via the public URL.",
+  "context_for_next_testing_agent": "Run: cd /app/backend && python tests/cleanup_test_data.py && python -m pytest tests/ -q -p no:randomly -n 0 && python tests/cleanup_test_data.py (114 tests). Login testids are login-identifier / login-password / login-submit-button (NOT *-input). Members: add-member-button, members-search, members-filtered-empty, members-clear-filters, member-form-plan (options have role=option), member-form-dob is a BUTTON opening a shadcn Calendar (assert [role=grid]). Drawer actions: action-record-payment / action-freeze / action-delete-member / action-sheet-close; drawer modals: payment-modal(payment-amount/payment-submit), freeze-modal(freeze-from/freeze-until/freeze-submit - freeze-until MUST be filled or submit fails validation), renew-modal. Payments page: record-payment-button, payment-member-search(+ -option-<id>), payment-amount-input, payment-submit-button, receipt-modal/receipt-amount/receipt-close. Radix DialogOverlay blocks clicks while any modal is open - always close the modal (Escape or -close testid) before clicking drawer actions. After the member_code fix, re-check GET /api/reports/membership-expiry for duplicate member_code and re-check the Reports console for duplicate-key errors.",
+  "rca_of_the_issue": "Duplicate member_code RCA: seed_demo() (server.py:526,569) inserts 26 demo members with literal codes f'IPF-{1001+i}' but never touches db.counters. deps.next_member_code() derives codes from find_one_and_update({'_id': 'member:<org>'}, {'$inc': {'seq': 1}}, upsert=True) which therefore starts at seq=1 -> IPF-1001, walking straight through the seeded range. db.counters currently shows seq=17 for the demo org, so the next ~9 members created will each duplicate a seeded code. Verified by mongo aggregate ({o, c} group, n>1) which returned IPF-1017 shared by 'Harsh Vardhan' and my UI-created member, and by GET /api/reports/membership-expiry returning member_code IPF-1017 twice - which is exactly the source of the surviving React duplicate-key console error (rowKey='member_code'). Mitigation applied for testing: deleted the TEST_ member so no duplicates remain right now; the code path is unfixed. Permanent fix: seed the counter, add a startup migration to raise counters above max existing codes, and add a unique compound index."
+}

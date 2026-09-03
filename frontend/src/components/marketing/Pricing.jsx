@@ -31,7 +31,7 @@ export function Pricing() {
         </div>
         <div className="mx-auto mt-14 max-w-md" data-testid="pricing-card">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lift">
-            <div className="bg-gradient-to-br from-brand to-[#E04810] px-8 py-8 text-center text-white">
+            <div className="bg-gradient-to-br from-brand to-[#5B21B6] px-8 py-8 text-center text-white">
               <span className="inline-block rounded-full bg-white/20 px-3.5 py-1 text-xs font-bold uppercase tracking-wide">
                 10-Day Free Trial
               </span>

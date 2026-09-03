@@ -1,0 +1,126 @@
+{
+  "summary": "Iteration 3 — full test of GYMBOSS_VVO Milestones 2-5 (new modules) plus M1 regression. BACKEND: wrote /app/backend/tests/test_milestones.py (72 new pytest cases) covering Plans/Catalogue CRUD (membership + pt/service/product type-specific fields + validation), Members (26 seeded, search, status filter, pagination, create with plan->expiry+due, get/update, freeze+expiry-extension, unfreeze, record payment->due decrease, receipt, renew->expiry extension, transaction history, soft delete -> 404), Attendance (check-in, 409 duplicate, check-out persistence, today list, monthly history), Payments (list + method filter), Enquiries (create/list/search, follow-ups, convert-to-member -> status Converted), Expenses CRUD + filters + validation, Outlets CRUD + toggle + primary-protected (422), Staff CRUD + login-account creation (login works) + disable blocks new login AND invalidates existing session, Announcements (audience-count, honest integration_required status, recipients with phones, scheduled, cancel, history), Finance summary for 4 ranges + custom + outlet filter + net=revenue-expenses identity, all 5 Reports endpoints, all 7 Export CSV datasets (members CSV = header + 26 rows, correct text/csv + Content-Disposition), Subscription (razorpay_configured=false, create-order honest 503, fake-signature verify rejected), Support/profile, Super Admin (overview KPIs, gyms list/detail, disable demo gym -> owner blocked -> reactivate -> works, platform settings persistence, 100 audit logs, RBAC both directions), and Tenant isolation (fresh /register org sees 0 members/payments/enquiries/expenses/staff/announcements, cross-tenant GET/PUT/DELETE of a demo member all 404, export CSV does not leak). Whole suite: 105/105 PASSED (33 existing M1 tests + 72 new). FRONTEND: Playwright-verified landing (violet #7C3AED, no orange brand colours), demo login, Members module end-to-end (add member with plan/amount/UPI -> correct 3-month expiry and Rs.2,000 due in row; drawer summary + due; action sheet Freeze->Frozen + expiry +5d, Unfreeze, Record Payment 500 -> due 2,000->1,500 with receipt modal + print button, Transaction/Attendance/More-Info views with back nav, Payment Reminder WhatsApp modal with filled template, Renew -> expiry extended, Edit batch, Delete with confirm dialog -> row removed), Plans (create 3-mo Rs.4500 -> edit to 5200 -> delete with confirm; PT/Service/Product tabs expose sessions/category/inventory fields), Attendance (check-in Shreya 12->13 and appears in today list, duplicate blocked with friendly toast 'Shreya Saxena is already checked in', Check Out writes check-out time, History tab daily counts), Payments (method filter UPI 20->15 rows, Record Payment via member picker showing outstanding due, receipt modal from list row renders full receipt), Enquiries (create, follow-up toast, Convert -> /app/members with prefilled Add Member form -> submit -> enquiry becomes Converted), Expenses (total Rs.8,500, create, delete with confirm), Outlets (primary outlet disable correctly refused with honest toast), Staff (create with email+password -> staff can log in to /app/dashboard -> disable -> login blocked, stays on /login), Announcements (preview recipient count 23, Send Now -> HONEST toast 'WhatsApp integration is required...', history row status 'Integration Required', detail drawer with 23 wa.me recipient links, Cancel works), Finance (KPIs Rs. formatted, range Today recomputes), Reports (revenue + growth charts render SVG, dues total Rs.16,200/7 members, conversion cards 7/1/14.3%/6), Export Center (7 cards, members CSV actually downloads gymboss_members_2026-09-03.csv), Settings (gym profile save, dark/light theme switch sets html.dark, integrations show Not Connected honestly), Subscription (trial 9 days left, razorpay-not-configured note, Subscribe -> honest 503 toast), Support (request submitted + wa.me link uses saved platform number 919876543210), Profile save, Super Admin console (8 overview KPIs, 3 gyms, gym detail drawer, platform settings save, 100 audit rows).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "startup seed_demo() / GET /api/plans?type=...",
+        "issue": "BLOCKER FOUND AND ROOT-CAUSED: the demo gym's plan documents in the preview DB had NO 'type' field (they were written by the Milestone-1 seed as {category:'membership'}). seed_demo() early-returns when the demo user already exists (server.py:460), so the new 7-plan seed with 'type' never migrated the existing 4 docs. Result: GET /api/plans?type=membership returned [] for the demo gym, so the Add Member plan dropdown, Members plan filter, Plans page Membership tab, Renew plan select and announcement plan-audience were ALL EMPTY -- the entire member-creation flow was unusable for the demo account. I patched the 4 demo plan docs in MongoDB (set type='membership') to unblock testing; the code path is still unfixed. Make seed_demo migration-aware (e.g. $set type on plans missing it / version the seed) or the same breakage returns on any environment seeded before Milestone 2.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/staff",
+        "issue": "role is stored title-cased (role.capitalize() -> 'Trainer') while the users collection stores the lowercase role. Round-tripping StaffBody (send 'trainer', read back 'Trainer') breaks strict client-side comparisons; keep one canonical casing and format for display only."
+      },
+      {
+        "endpoint": "POST /api/outlets/{id}/toggle",
+        "issue": "Refusing to disable the primary outlet returns 422 (validation semantics) for what is a business-rule conflict; 400/409 would be more accurate. Message is honest and surfaced correctly in the UI."
+      },
+      {
+        "endpoint": "POST /api/attendance/check-in",
+        "issue": "Duplicate same-day check-in returns 409 (correct and friendly), but note the review brief said 400 — no change needed, flagged only so future tests assert 409."
+      },
+      {
+        "endpoint": "GET /api/announcements/audience-count",
+        "issue": "all_active audience returned 23 for the demo gym, while the brief expected 22. Count is derived correctly (active + expiring_soon) — the brief's number is stale; verify which definition is intended."
+      },
+      {
+        "endpoint": "GET /api/finance/summary, /api/reports/*",
+        "issue": "Several endpoints still load full collections with .to_list(10000/20000) and aggregate in Python (also flagged in iteration_2 for /dashboard/summary). Fine at demo scale; move to aggregation pipelines before multi-thousand-member tenants."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Attendance History tab / Reports dues tab",
+        "issue": "React console error: 'Each child in a list should have a unique key prop' when rendering the attendance-history daily list and the reports dues table. No functional break but it indicates missing/duplicate keys.",
+        "selector": "[data-testid=\"tab-history\"], [data-testid=\"report-tab-dues\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "MemberDrawer / modals (Radix Dialog)",
+        "issue": "Repeated console error: 'DialogContent requires a DialogTitle for the component to be accessible for screen reader users.' Triggered by the member detail drawer / at least one dialog that has no DialogTitle. Accessibility defect.",
+        "selector": "[data-testid=\"member-detail-drawer\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "Payments — Record Payment",
+        "issue": "Recording a payment from /app/payments only shows a 'Payment recorded' toast and does NOT open the receipt modal, while the same action from the member drawer does open it. Inconsistent; the per-row Receipt button does work.",
+        "selector": "[data-testid=\"payment-submit-button\"]",
+        "priority": "LOW"
+      },
+      {
+        "component": "Login — disabled staff account",
+        "issue": "Logging in with a disabled staff account correctly stays on /login, but no persistent error message was visible in the DOM 4s later (no .error element, toast already gone). Consider an inline, non-transient 'This account has been disabled' message.",
+        "selector": "[data-testid=\"login-submit-button\"]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Add Member / Renew / Plans (demo gym)",
+        "issue": "Before the DB patch, the plan Select opened as an empty popover with no options and no empty-state text, so the user cannot tell why they cannot proceed (root cause = the seed_demo type bug above). Add an explicit 'No plans yet — create one in Plans & Catalogue' empty item to the plan Select so this class of failure is self-explanatory.",
+        "affected_selectors": ["[data-testid=\"member-form-plan\"]", "[data-testid=\"renew-plan\"]", "[data-testid=\"members-plan-filter\"]"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Add Member / Add Expense / Freeze / Follow-up modals",
+        "issues": [
+          "Date fields use the raw browser date input (renders as mm/dd/yyyy with the native picker) instead of the shadcn Calendar/Popover component — inconsistent with the rest of the design system and shows US date order in an India-only product."
+        ]
+      },
+      {
+        "screen": "Members list (and other list pages) — filtered empty result",
+        "issues": [
+          "When a search or filter returns nothing, the table shows the first-run empty state 'No members yet / Add your first member to begin managing memberships' with an Add Member CTA. Misleading for a 26-member gym; show a 'No members match your filters / Clear filters' state instead."
+        ]
+      },
+      {
+        "screen": "Theme",
+        "issues": [
+          "Violet theme verified premium in both light and dark (html.dark) mode; no orange brand colours remain. Only amber/#F59E0B usages left are semantic (expiring-soon badge, Expenses bar in the revenue chart) which is correct."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_milestones.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "CRITICAL: make seed_demo() (and any org seeding) migration-aware so existing plan documents get the 'type' field; the demo gym was completely unable to add/renew members because GET /api/plans?type=membership returned []. I patched the 4 demo plan docs in Mongo as a stop-gap only.",
+    "Add a visible empty-state option inside the plan Select (member form, renew, filters) so an empty catalogue is self-explanatory instead of an empty popover.",
+    "Fix the missing React 'key' props in the attendance-history list and reports dues table.",
+    "Add a DialogTitle (or VisuallyHidden title) to the member detail drawer / offending DialogContent for screen-reader accessibility.",
+    "Replace the native date inputs in the member/expense/freeze/follow-up forms with the shadcn Calendar component (and dd/mm/yyyy display for India).",
+    "Show a 'No results match your filters' empty state instead of the first-run 'No members yet' state when a search/filter returns 0 rows.",
+    "Optionally open the receipt modal after Record Payment on /app/payments for parity with the member drawer flow.",
+    "Normalise staff role casing between db.staff.role ('Trainer') and db.users.role ('trainer')."
+  ],
+  "critical_code_review_comments": [
+    "server.py:458-461 seed_demo(): the `if await db.users.find_one({'email': email}): return` guard makes the seed non-upgradable. Milestone 2 added plan.type but existing demo data was never migrated — this produced the CRITICAL empty-plan-dropdown blocker. Any future seed field addition will silently break preview environments the same way.",
+    "members.py list_plans(): filtering strictly on `type` with no fallback to the legacy `category` field means one missing field silently empties every plan-driven UI. Consider `{'$or': [{'type': t}, {'type': {'$exists': False}, 'category': t}]}` for resilience, or a startup migration.",
+    "finance.py / server.py: repeated `.to_list(10000)`+Python aggregation across finance/reports/dashboard. Extract a shared aggregation helper — it is now duplicated in 4+ handlers (DRY) and will not scale.",
+    "Tenant isolation is implemented consistently: every handler I exercised scopes by organisation_id and returns 404 (not 403) for cross-tenant ids; export also scopes correctly. No leaks found.",
+    "Billing honesty verified end-to-end: create-order 503 with a clear message, verify() rejects forged signatures, announcements set status='integration_required' and the UI toast tells the truth instead of faking success."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_milestones.py",
+    "/app/backend/tests/cleanup_test_data.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {"backend": "100% (105/105 pytest) after the demo-plan data patch; 0% of member-creation UI worked before it", "frontend": "~97% of tested flows passed; 4 low-severity UI/a11y defects and 2 design issues found"},
+  "seed_data_creation": "All QA data was created with a TEST_ prefix and removed afterwards via the new /app/backend/tests/cleanup_test_data.py (members+their payments/attendance, plans, outlets, enquiries, expenses, staff+their login users, announcements, support requests, throwaway registered orgs, login_attempts). Additionally reverted the QA Rs.300 payment on seeded member Divya Menon (due restored to Rs.1,000) and deleted the QA attendance row for Shreya Saxena. Demo gym was disabled and re-activated by the super-admin test and verified working again. Platform settings whatsapp_number is now 919876543210 (as requested). DATA PATCH LEFT IN PLACE: db.plans docs missing 'type' were set to type='membership' (4 docs) — required to unblock testing; see the CRITICAL issue.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 and GymBoss / GymBoss@2026 — both verified through the public URL. A temporary staff login (test_ui_staff_qa1@testgym.in) was created, verified, disabled and deleted.",
+  "context_for_next_testing_agent": "Run `cd /app/backend && python -m pytest tests/ -q -p no:randomly -n 0` (use -n 0: the suite is order/state dependent and the super-admin test temporarily disables the demo gym, which would fail parallel demo tests). ALWAYS run `python /app/backend/tests/cleanup_test_data.py` before AND after the suite — leftover TEST_ documents break the seeded-count assertions in backend_test.py (outlet count, attendance_today=12). Correct routes/testids learned this round: Export Center is /app/export-center (NOT /app/export); member table rows are members-table-row-{id}; member picker options are {testid}-option-{id} (checkin-search-option-*, payment-member-search-option-*); search input testid is members-search; pagination is members-pagination-prev/-next; announcement placeholders are {member_name}/{gym_name}/{outlet_name}/{plan_name}/{expiry_date} (NOT {name}); plan delete/edit are plan-delete-{id}/plan-edit-{id}; confirm dialogs are Radix role=alertdialog with {testid}-confirm/-cancel. Untested this round (low risk, covered in iteration_2): mobile 390px layout of the new pages, register 3-step flow UI, forgot/reset password UI.",
+  "rca_of_the_issue": "CRITICAL blocker RCA: GET /api/plans?type=membership returned [] for the demo gym. Reproduction: login demo@gymbossvvo.in -> /app/members -> Add Member -> click the Membership Plan select -> popover opens with zero options -> submit shows 'Select a membership plan' forever. Cause: members.py list_plans() filters on the `type` field, but the demo org's plan documents were inserted by the Milestone-1 seeder as {name:'Monthly', category:'membership'} with no `type` key, and server.py seed_demo() returns early when the demo user already exists (line 460), so the Milestone-2 seed data (which does set type) never replaced or migrated them. Mitigation applied for testing: db.plans.update_many({'type':{'$exists':False}},{'$set':{'type':'membership'}}) (4 docs). Permanent fix required in seed_demo()/a startup migration so already-seeded environments are upgraded, plus a defensive fallback in list_plans()."
+}
