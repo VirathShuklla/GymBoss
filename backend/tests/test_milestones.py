@@ -176,7 +176,7 @@ class TestMembers:
         start = TODAY.isoformat()
         body = {"full_name": uid("TEST_Member"), "phone": uphone(), "plan_id": quarterly["id"],
                 "membership_start": start, "amount_paid": 2000, "payment_method": "UPI",
-                "gender": "male", "batch": "Morning"}
+                "gender": "male", "batch": "Morning (6–8 AM)"}
         r = demo.post(f"{API}/members", json=body)
         assert r.status_code in (200, 201), r.text
         created = r.json()
@@ -188,7 +188,7 @@ class TestMembers:
         assert g.status_code == 200
         m = g.json()["member"]
         assert m["full_name"] == body["full_name"]
-        assert m["batch"] == "Morning"
+        assert m["batch"] == "Morning (6–8 AM)"
         # expiry
         exp = date.fromisoformat(m["membership_expiry"][:10])
         months = quarterly.get("duration") or 1
@@ -203,10 +203,10 @@ class TestMembers:
     def test_update_member(self, demo):
         mid = TestMembers.member_id
         assert mid
-        r = demo.put(f"{API}/members/{mid}", json={"batch": "Evening", "notes": "TEST note"})
+        r = demo.put(f"{API}/members/{mid}", json={"batch": "Evening (5–8 PM)", "notes": "TEST note"})
         assert r.status_code == 200, r.text
         m = demo.get(f"{API}/members/{mid}").json()["member"]
-        assert m["batch"] == "Evening"
+        assert m["batch"] == "Evening (5–8 PM)"
         assert m["notes"] == "TEST note"
 
     def test_freeze_unfreeze(self, demo):

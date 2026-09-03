@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
-from deps import db, now_utc, require_super_admin, derive_subscription, audit, PLAN_PRICE_INR
+from deps import db, now_utc, require_super_admin, derive_subscription, audit, get_plan_price, PLAN_PRICE_INR
 
 router = APIRouter(tags=["super-admin"])
 
@@ -36,7 +36,7 @@ async def admin_overview(user: dict = Depends(require_super_admin)):
         "expired": expired,
         "cancelled": cancelled,
         "new_signups_30d": new_signups,
-        "mrr": paying * PLAN_PRICE_INR,
+        "mrr": paying * await get_plan_price(),
         "subscription_revenue": revenue,
         "trial_to_paid": round(100 * paying / ended, 1) if ended else 0,
     }
@@ -112,6 +112,10 @@ class PlatformSettingsBody(BaseModel):
     support_email: Optional[str] = ""
     play_store_url: Optional[str] = ""
     app_store_url: Optional[str] = ""
+    plan_price_inr: Optional[int] = None
+    razorpay_key_id: Optional[str] = ""
+    razorpay_key_secret: Optional[str] = ""
+    razorpay_webhook_secret: Optional[str] = ""
 
 
 @router.get("/admin/settings")
@@ -122,7 +126,13 @@ async def admin_get_settings(user: dict = Depends(require_super_admin)):
 
 @router.put("/admin/settings")
 async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends(require_super_admin)):
-    data = {k: (v or "") for k, v in body.model_dump().items()}
+    data = {k: v for k, v in body.model_dump(exclude_unset=True).items()}
+    if "plan_price_inr" in data:
+        if data["plan_price_inr"] is None or int(data["plan_price_inr"]) < 1:
+            raise HTTPException(422, "Price must be at least ₹1")
+        data["plan_price_inr"] = int(data["plan_price_inr"])
+    if not data:
+        return await db.settings.find_one({"id": "platform"}, {"_id": 0})
     await db.settings.update_one({"id": "platform"}, {"$set": data}, upsert=True)
     await audit(user["id"], "platform.settings_updated", "platform", {"keys": [k for k, v in data.items() if v]})
     return await db.settings.find_one({"id": "platform"}, {"_id": 0})

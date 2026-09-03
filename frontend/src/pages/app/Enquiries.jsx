@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { formatDate, formatPhone } from "../../lib/format";
 import { waMe } from "../../lib/whatsapp";
+import { useAuth } from "../../contexts/AuthContext";
 import { PageHeader, DataTable, StatusBadge, EmptyState, SearchInput, DateField } from "../../components/app/ui";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Button } from "../../components/ui/button";
@@ -92,6 +93,8 @@ function EnquiryDialog({ open, onClose, enquiry, onSaved }) {
 
 export default function Enquiries() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const readOnly = user?.permission === "view" && user?.role !== "owner";
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -167,9 +170,11 @@ export default function Enquiries() {
   return (
     <div data-testid="enquiries-page">
       <PageHeader title="Enquiries" subtitle="Track leads and convert them into members." testid="enquiries-header">
-        <Button className="bg-brand hover:bg-brand-hover" onClick={() => { setEditEnquiry(null); setDialogOpen(true); }} data-testid="add-enquiry-button">
-          <Plus className="mr-1.5 h-4 w-4" />Add Enquiry
-        </Button>
+        {!readOnly && (
+          <Button className="bg-brand hover:bg-brand-hover" onClick={() => { setEditEnquiry(null); setDialogOpen(true); }} data-testid="add-enquiry-button">
+            <Plus className="mr-1.5 h-4 w-4" />Add Enquiry
+          </Button>
+        )}
       </PageHeader>
       <div className="mb-4 flex flex-wrap gap-2.5">
         <div className="w-full sm:w-64"><SearchInput value={search} onChange={setSearch} placeholder="Name or phone" testid="enquiries-search" /></div>

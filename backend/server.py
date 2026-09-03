@@ -22,8 +22,8 @@ from pydantic import BaseModel, Field, EmailStr
 from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
-    get_org_user, derive_subscription, public_user, org_public, audit,
-    TRIAL_DAYS, PLAN_PRICE_INR,
+    get_org_user, derive_subscription, public_user, org_public, audit, init_storage,
+    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR,
 )
 from members import router as members_router
 from ops import router as ops_router
@@ -149,6 +149,10 @@ async def register(body: RegisterBody, response: Response):
     await db.organisations.insert_one(org)
     await db.outlets.insert_one(outlet)
     await db.users.insert_one(user)
+    await db.batches.insert_many([
+        {"id": new_id(), "organisation_id": org_id, "name": "Morning (6–9 AM)", "created_at": ts},
+        {"id": new_id(), "organisation_id": org_id, "name": "Evening (4–9 PM)", "created_at": ts},
+    ])
     await audit(user["id"], "org.registered", org_id, {"gym": org["name"]}, org_id)
     set_auth_cookies(response, user)
     return {"user": public_user(user), "organisation": org_public(org)}
@@ -226,7 +230,7 @@ async def me(user: dict = Depends(get_current_user)):
         "user": public_user(user),
         "organisation": org_public(org) if org else None,
         "outlets": outlets,
-        "subscription": derive_subscription(org),
+        "subscription": derive_subscription(org, await get_plan_price()),
     }
 
 
@@ -283,7 +287,7 @@ async def public_config():
         "play_store_url": settings.get("play_store_url") or "",
         "app_store_url": settings.get("app_store_url") or "",
         "trial_days": TRIAL_DAYS,
-        "plan_price_inr": PLAN_PRICE_INR,
+        "plan_price_inr": await get_plan_price(),
     }
 
 
@@ -703,6 +707,19 @@ async def startup():
             {"id": new_id(), "organisation_id": demo_org["id"], "name": "Steam & Sauna", "type": "service", "category": "Recovery", "price": 800, "status": "active", "created_at": ts},
             {"id": new_id(), "organisation_id": demo_org["id"], "name": "Whey Protein 1kg", "type": "product", "category": "Supplements", "price": 2400, "inventory": 15, "status": "active", "created_at": ts},
         ])
+    if demo_org and not await db.batches.find_one({"organisation_id": demo_org["id"]}):
+        batch_names = ["Morning (6–8 AM)", "Afternoon (12–2 PM)", "Evening (5–8 PM)"]
+        await db.batches.insert_many([
+            {"id": new_id(), "organisation_id": demo_org["id"], "name": n, "created_at": now_utc()} for n in batch_names
+        ])
+        demo_members = await db.members.find({"organisation_id": demo_org["id"]}, {"id": 1}).to_list(10000)
+        for i, m in enumerate(demo_members):
+            await db.members.update_one({"id": m["id"]}, {"$set": {"batch": batch_names[i % 3]}})
+    try:
+        await init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.error("Object storage init failed: %s", e)
     await seed_settings()
     await seed_super_admin()
     await seed_demo()

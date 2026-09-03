@@ -107,17 +107,7 @@ export default function Outlets() {
           <DialogHeader><DialogTitle className="font-display text-lg">{editOutlet ? "Edit Outlet" : "Add Outlet"}</DialogTitle></DialogHeader>
           <form onSubmit={submit} className="space-y-4">
             <div className="space-y-1.5"><Label>Outlet Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., HSR Layout" data-testid="outlet-form-name" /></div>
-            <div className="space-y-1.5"><Label>Address</Label><Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Phone</Label><Input value={form.phone || ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-1.5"><Label>City</Label><Input value={form.city || ""} onChange={(e) => setForm({ ...form, city: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label>State</Label><Input value={form.state || ""} onChange={(e) => setForm({ ...form, state: e.target.value })} /></div>
-              <div className="space-y-1.5"><Label>PIN Code</Label><Input value={form.pin_code || ""} onChange={(e) => setForm({ ...form, pin_code: e.target.value })} /></div>
-            </div>
-            <div className="space-y-1.5"><Label>Manager</Label><Input value={form.manager || ""} onChange={(e) => setForm({ ...form, manager: e.target.value })} /></div>
+            <div className="space-y-1.5"><Label>Address</Label><Input value={form.address || ""} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Full address" data-testid="outlet-form-address" /></div>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit" className="bg-brand hover:bg-brand-hover" disabled={busy} data-testid="outlet-form-submit">

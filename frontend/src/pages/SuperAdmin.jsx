@@ -22,7 +22,7 @@ export default function SuperAdmin() {
   const [detail, setDetail] = useState(null);
   const [toggleGym, setToggleGym] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [settings, setSettings] = useState({ whatsapp_number: "", support_email: "", play_store_url: "", app_store_url: "" });
+  const [settings, setSettings] = useState({ whatsapp_number: "", support_email: "", play_store_url: "", app_store_url: "", plan_price_inr: 999, razorpay_key_id: "", razorpay_key_secret: "", razorpay_webhook_secret: "" });
   const [logs, setLogs] = useState([]);
 
   const loadOverview = async () => {
@@ -67,7 +67,7 @@ export default function SuperAdmin() {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.put("/admin/settings", settings);
+      await api.put("/admin/settings", { ...settings, plan_price_inr: Number(settings.plan_price_inr) || undefined });
       toast.success("Platform settings saved");
     } catch (err) {
       toast.error(apiError(err));
@@ -159,6 +159,17 @@ export default function SuperAdmin() {
               <div className="space-y-1.5"><Label>Support Email</Label><Input type="email" value={settings.support_email} onChange={(e) => setSettings({ ...settings, support_email: e.target.value })} placeholder="support@buildvvo.com" data-testid="settings-support-email" /></div>
               <div className="space-y-1.5"><Label>Google Play URL <span className="font-normal text-muted-foreground">(when live)</span></Label><Input value={settings.play_store_url} onChange={(e) => setSettings({ ...settings, play_store_url: e.target.value })} data-testid="settings-play-store" /></div>
               <div className="space-y-1.5"><Label>App Store URL <span className="font-normal text-muted-foreground">(when live)</span></Label><Input value={settings.app_store_url} onChange={(e) => setSettings({ ...settings, app_store_url: e.target.value })} data-testid="settings-app-store" /></div>
+              <div className="space-y-1.5"><Label>Monthly Subscription Price (₹)</Label><Input type="number" min="1" value={settings.plan_price_inr} onChange={(e) => setSettings({ ...settings, plan_price_inr: e.target.value })} data-testid="settings-plan-price" />
+                <p className="text-xs text-muted-foreground">Updates pricing across the website, trial screen, billing and MRR everywhere.</p>
+              </div>
+              <div className="border-t border-border pt-4">
+                <p className="mb-3 font-display text-sm font-bold text-foreground">Razorpay (GymBoss_VVO Billing)</p>
+                <div className="space-y-3">
+                  <div className="space-y-1.5"><Label>Key ID</Label><Input value={settings.razorpay_key_id} onChange={(e) => setSettings({ ...settings, razorpay_key_id: e.target.value })} placeholder="rzp_test_..." data-testid="settings-razorpay-key-id" /></div>
+                  <div className="space-y-1.5"><Label>Key Secret</Label><Input type="password" value={settings.razorpay_key_secret} onChange={(e) => setSettings({ ...settings, razorpay_key_secret: e.target.value })} placeholder="••••••••" data-testid="settings-razorpay-secret" /></div>
+                  <div className="space-y-1.5"><Label>Webhook Secret</Label><Input type="password" value={settings.razorpay_webhook_secret} onChange={(e) => setSettings({ ...settings, razorpay_webhook_secret: e.target.value })} placeholder="••••••••" data-testid="settings-razorpay-webhook" /></div>
+                </div>
+              </div>
               <Button className="bg-brand hover:bg-brand-hover" disabled={busy} data-testid="admin-settings-save">Save Settings</Button>
             </form>
           </TabsContent>

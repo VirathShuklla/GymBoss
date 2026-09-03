@@ -11,7 +11,12 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
-const ROLES = ["Admin", "Manager", "Receptionist", "Trainer", "Sales"];
+const ROLES = ["Staff", "Trainer", "Manager", "Admin", "Sales"];
+const PERMISSIONS = [
+  { value: "view", label: "View" },
+  { value: "manage", label: "View & Edit" },
+  { value: "full", label: "Full Access" },
+];
 
 export default function Staff() {
   const { outlets } = useAuth();
@@ -21,7 +26,7 @@ export default function Staff() {
   const [editStaff, setEditStaff] = useState(null);
   const [toggleStaff, setToggleStaff] = useState(null);
   const [busy, setBusy] = useState(false);
-  const blank = { name: "", role: "Trainer", email: "", phone: "", address: "", joining_date: new Date().toISOString().slice(0, 10), outlet_id: "", salary: "", password: "" };
+  const blank = { name: "", role: "Staff", email: "", phone: "", address: "", joining_date: new Date().toISOString().slice(0, 10), outlet_id: "", salary: "", password: "", permission: "view", enable_finance: false };
   const [form, setForm] = useState(blank);
 
   const load = async () => {
@@ -117,48 +122,52 @@ export default function Staff() {
         <DialogContent className="max-w-md" data-testid="staff-form-modal">
           <DialogHeader><DialogTitle className="font-display text-lg">{editStaff ? "Edit Staff Member" : "Add Staff Member"}</DialogTitle></DialogHeader>
           <form onSubmit={submit} className="space-y-4">
-            <div className="space-y-1.5"><Label>Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="staff-form-name" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Role</Label>
-                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
-                  <SelectTrigger data-testid="staff-form-role"><SelectValue /></SelectTrigger>
-                  <SelectContent>{ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Phone</Label>
-                <div className="flex">
-                  <span className="inline-flex items-center rounded-l-lg border border-r-0 border-input bg-secondary px-3 text-sm text-muted-foreground">+91</span>
-                  <Input required inputMode="numeric" className="rounded-l-none" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="staff-form-phone" />
-                </div>
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                <SelectTrigger data-testid="staff-form-role"><SelectValue /></SelectTrigger>
+                <SelectContent>{ROLES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Select Outlet</Label>
+              <Select value={form.outlet_id || outlets[0]?.id} onValueChange={(v) => setForm({ ...form, outlet_id: v })}>
+                <SelectTrigger data-testid="staff-form-outlet"><SelectValue /></SelectTrigger>
+                <SelectContent>{outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Select Permission</Label>
+              <Select value={form.permission} onValueChange={(v) => setForm({ ...form, permission: v })}>
+                <SelectTrigger data-testid="staff-form-permission"><SelectValue /></SelectTrigger>
+                <SelectContent>{PERMISSIONS.map((p) => <SelectItem key={p.value} value={p.value} data-testid={`permission-${p.value}`}>{p.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-lg border border-border px-3 py-2.5" data-testid="staff-form-finance-toggle">
+              <input type="checkbox" checked={form.enable_finance} onChange={(e) => setForm({ ...form, enable_finance: e.target.checked })}
+                     className="h-4 w-4 rounded border-input accent-[#7C3AED]" />
+              <span className="text-sm font-medium text-foreground">Enable Finance Page</span>
+            </label>
+            <div className="space-y-1.5"><Label>Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Enter name" data-testid="staff-form-name" /></div>
+            <div className="space-y-1.5">
+              <Label>Phone Number</Label>
+              <div className="flex">
+                <span className="inline-flex items-center rounded-l-lg border border-r-0 border-input bg-secondary px-3 text-sm font-medium text-muted-foreground">+91</span>
+                <Input required inputMode="numeric" className="rounded-l-none" placeholder="Phone number" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="staff-form-phone" />
               </div>
             </div>
-            <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} data-testid="staff-form-email" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label>Joining Date</Label><DateField value={form.joining_date || ""} onChange={(v) => setForm({ ...form, joining_date: v })} testid="staff-form-joining" /></div>
-              <div className="space-y-1.5"><Label>Salary (₹) <span className="font-normal text-muted-foreground">(optional)</span></Label><Input type="number" min="0" value={form.salary || ""} onChange={(e) => setForm({ ...form, salary: e.target.value })} /></div>
-            </div>
-            {outlets.length > 1 && (
-              <div className="space-y-1.5">
-                <Label>Outlet</Label>
-                <Select value={form.outlet_id || outlets[0]?.id} onValueChange={(v) => setForm({ ...form, outlet_id: v })}>
-                  <SelectTrigger data-testid="staff-form-outlet"><SelectValue /></SelectTrigger>
-                  <SelectContent>{outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Enter your email" data-testid="staff-form-email" /></div>
             {!editStaff && (
               <div className="space-y-1.5">
-                <Label>Login Password <span className="font-normal text-muted-foreground">(optional — creates a staff login)</span></Label>
+                <Label>Password <span className="font-normal text-muted-foreground">(optional — creates a staff login)</span></Label>
                 <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" data-testid="staff-form-password" />
                 <p className="text-xs text-muted-foreground">Requires an email. The password is never stored in plaintext and cannot be viewed later.</p>
               </div>
             )}
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-brand hover:bg-brand-hover" disabled={busy} data-testid="staff-form-submit">
-                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editStaff ? "Save" : "Create Staff"}
+            <div className="flex justify-end gap-3 pt-1">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setDialogOpen(false)} data-testid="staff-form-cancel">Cancel</Button>
+              <Button type="submit" className="flex-1 bg-brand hover:bg-brand-hover" disabled={busy} data-testid="staff-form-submit">
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save
               </Button>
             </div>
           </form>

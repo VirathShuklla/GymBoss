@@ -5,7 +5,7 @@ export const formatDate = (d) => {
   if (!d) return "—";
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return String(d);
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }).replace("Sept", "Sep");
 };
 
 export const formatPhone = (p) => {

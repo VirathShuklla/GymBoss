@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 7 retest of all iteration_6 findings — ALL FIXES VERIFIED. Backend: added /app/backend/tests/test_iter7_fixes.py (9 tests, all pass) covering (a) PUT /api/admin/settings plan_price_inr=0 and -5 -> 422 (was 500), (b) partial save {plan_price_inr:777} preserves razorpay_key_id 'rzp_test_PRESERVE' + support_email and propagates to /api/public/config, restore to 999 + empty keys verified, (c) require_write: staff Type=Manager + Permission=View -> POST /api/members 403 'Your role has view-only access' while GET /api/members still 200; Manager + Permission=manage can create members, (d) DELETE /api/staff/{id} removes the staff row, second delete -> 404, and the linked login user is gone (login now 401), (e) discount >= plan+admission with amount_paid=0 -> payable 0, due 0, payment_status 'Paid' (verified on create AND on GET), (f) demo org batches = exactly Morning (6-8 AM)/Afternoon (12-2 PM)/Evening (5-8 PM). Full regression: cleanup -> pytest tests/ -q -p no:randomly -n 0 -> 163 passed / 0 failed (154 previous + 9 new) -> cleanup. Auth playbook re-verified: bcrypt hashes start with $2b$ (owner + super admin), login sets HttpOnly/Secure/SameSite=None cookies, app-level CORS uses explicit FRONTEND_URL origin with allow_credentials, forgot-password returns an identical generic 200 for registered and unregistered emails, reset tokens stored only as sha256 token_hash (no raw token), lockout + reset flows covered by backend_test.py (passing). Frontend (Playwright, public URL): view-only staff (TEST_QA ViewOnly, permission=view) -> /app/finance, /app/reports, /app/export-center all render finance-access-denied 'No finance access' with NO CRA red overlay and ZERO console errors; no add-member-button, no dashboard quick actions, no record-payment-button, no add-enquiry-button; member drawer action sheet shows exactly Show More Info / Attendance History / Send Payment Reminder / Transaction History (freeze/edit/delete/renew/record-payment all absent). Demo owner: Add Member 3-step stepper OK, batch dropdown shows exactly the 3 canonical batches + '+ New batch', step-3 membership preview now formatted 'Membership: 03 Sept 2026 -> 03 Oct 2026 (1 months)', payment summary maths correct; editing the member created without email/dob produced ZERO console errors (no 'value prop on input should not be null'); Plans Category column shows 'Membership' labels and PT/Service/Product tabs are legible; super admin console (KPIs, gyms table, Platform Settings form, audit tab) loads clean. All test data purged: demo gym back to 26 members / 3 staff / 3 batches, platform settings restored (price 999, empty razorpay keys, whatsapp_number and support_email cleared).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/finance/* (deps.require_finance_access)", "issue": "Staff with role admin/manager bypass the 'Enable Finance Page' flag (role in (owner, admin, manager) short-circuits before finance_enabled). Inconsistent with the new permission semantics where only owner bypasses require_write — confirm this is intended."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Add Member step 3", "issues": ["Month abbreviation inconsistent inside the same modal: Joining/Payment date fields render '03 Sep 2026' while the membership window preview and all tables render '03 Sept 2026'"]},
+      {"screen": "Super admin > Platform Settings", "issues": ["Settings card is constrained to the left ~30% of a 1920px viewport, leaving a large empty right column"]},
+      {"screen": "Plans & Catalogue", "issues": ["Inactive tabs (PT/Service/Product) are readable now but still noticeably lighter than the active tab — low but acceptable contrast"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter7_fixes.py",
+    "/app/backend/tests/mk_view_staff.py",
+    "/app/test_reports/pytest/iter7_full.xml"
+  ],
+  "action_items": [
+    "No blocking issues. Optional: align the date-field format with the 'dd MMM(Sept) yyyy' used elsewhere (Sep vs Sept)",
+    "Optional: confirm whether admin/manager staff should bypass the 'Enable Finance Page' flag in require_finance_access",
+    "Housekeeping: a stray tenant 'h3' (owner Virath, 0 members) sits in the super admin gyms list from an earlier manual/registration run — delete if unwanted"
+  ],
+  "critical_code_review_comments": [
+    "admin.py admin_update_settings now uses model_dump(exclude_unset=True) with an explicit None/<1 guard — verified correct for partial saves and 0/-5 prices.",
+    "deps.require_write correctly bypasses only role=='owner'; ops.delete_staff removes the staff doc and its linked users row (login returns 401 afterwards) — verified.",
+    "Test-data hygiene: POST/PUT /api/members auto-creates any batch name passed in ($setOnInsert), so tests using ad-hoc batch names silently pollute the demo org's batch dropdown. Fixed in test code (test_milestones now uses canonical batch names) and cleanup_test_data.py now purges non-canonical demo batches — keep this in mind for future tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter7_fixes.py (new — 9 iteration-7 verification tests)",
+    "/app/backend/tests/mk_view_staff.py (new — creates/deletes the view-only staff login used for UI tests)",
+    "/app/backend/tests/test_iter6_changeset.py (test_batch_auto_created now asserts the deduplicated 3-batch set instead of the old duplicate Morning/Evening)",
+    "/app/backend/tests/test_milestones.py (member create/update now use canonical batch names 'Morning (6-8 AM)'/'Evening (5-8 PM)' so runs no longer pollute demo batches)",
+    "/app/backend/tests/cleanup_test_data.py (purges TEST_* batches and non-canonical demo-org batches)"
+  ],
+  "success_rate": {"backend": "100% (163/163 pytest, incl. 9 new iteration-7 tests)", "frontend": "100% of verified flows (all 6 previously-failing UI items now pass, zero console errors)"},
+  "seed_data_creation": "Temporary and fully removed: TEST_QA Mgr view / TEST_QA Mgr manage staff (API), TEST_QA ViewOnly staff (test_qa_viewonly@testgym.in / QaStaff@2026, deleted), TEST_QA DeleteMe staff, TEST_QA NoEmail member (IPF-1114), TEST_QA ZeroPayable member. Verified after cleanup: demo gym 26 members, 3 seeded staff, 3 batches; platform settings {plan_price_inr:999, razorpay keys '', whatsapp_number '', support_email ''}.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Demo gym owner demo@gymbossvvo.in / Demo@2026; Super admin GymBoss / GymBoss@2026 (from /app/memory/test_credentials.md). View-only staff for UI runs: recreate with `cd /app/backend/tests && python mk_view_staff.py create` (test_qa_viewonly@testgym.in / QaStaff@2026), delete with `python mk_view_staff.py delete`.",
+  "context_for_next_testing_agent": "Run backend as: cd /app/backend && python tests/cleanup_test_data.py && python -m pytest tests/ -q -p no:randomly -n 0 && python tests/cleanup_test_data.py -> expect 163 passed. For view-only UI testing use tests/mk_view_staff.py (create/delete). Useful testids verified this round: finance-access-denied, members-table-row-{id}, member-action-sheet + action-{more-info|attendance-history|payment-reminder|transaction-history|freeze|edit-member|delete-member|renew|record-payment}, member-step-1/2/3, member-stepper-step-N, member-form-{name,phone,batch,plan,next,prev,submit}, add-member-button, record-payment-button, add-enquiry-button. Still NOT retested in any iteration: the trial-expired paywall screen (no expired tenant exists — demo gym has 9 trial days left) and Razorpay live checkout (no keys configured). Staff/Outlet/Plan modal inputs still have no data-testids (select by placeholder / combobox order).",
+  "rca_of_the_issue": "N/A — all iteration_6 defects reproduced-as-fixed. The only failure seen at the start of this run (test_iter6_changeset::test_batch_auto_created, and later two test_milestones member assertions) was stale test code asserting the now-intentionally-deduplicated batch names; fixed in test code (within test scope), no application change."
+}

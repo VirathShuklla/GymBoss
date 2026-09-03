@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-dom";
 import {
-  LayoutDashboard, Users, ClipboardCheck, Layers, IndianRupee, UserPlus, Megaphone,
+  LayoutDashboard, Users, ClipboardCheck, Layers, IndianRupee, UserPlus,
   Receipt, Building2, UserCog, BarChart3, FileBarChart, Download, Settings,
   LifeBuoy, Menu, PanelLeftClose, PanelLeftOpen, Bell, ChevronDown, LogOut, Crown, MessageCircle, Zap,
 } from "lucide-react";
@@ -23,18 +23,17 @@ const NAV = [
   { to: "/app/plans", label: "Plans & Catalogue", icon: Layers },
   { to: "/app/payments", label: "Payments", icon: IndianRupee },
   { to: "/app/enquiries", label: "Enquiries", icon: UserPlus },
-  { to: "/app/announcements", label: "Announcements", icon: Megaphone },
   { to: "/app/expenses", label: "Expenses", icon: Receipt },
   { to: "/app/outlets", label: "Outlets", icon: Building2 },
   { to: "/app/staff", label: "Staff", icon: UserCog },
-  { to: "/app/finance", label: "Finance", icon: BarChart3 },
-  { to: "/app/reports", label: "Reports", icon: FileBarChart },
-  { to: "/app/export-center", label: "Export Center", icon: Download },
+  { to: "/app/finance", label: "Finance", icon: BarChart3, finance: true },
+  { to: "/app/reports", label: "Reports", icon: FileBarChart, finance: true },
+  { to: "/app/export-center", label: "Export Center", icon: Download, finance: true },
   { to: "/app/settings", label: "Settings", icon: Settings },
   { to: "/app/support", label: "Help & Support", icon: LifeBuoy },
 ];
 
-function TrialExpired({ onSubscribe, onLogout }) {
+function TrialExpired({ onSubscribe, onLogout, price = 999 }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center" data-testid="trial-expired-screen">
       <Logo />
@@ -45,10 +44,10 @@ function TrialExpired({ onSubscribe, onLogout }) {
         <h1 className="mt-5 font-display text-2xl font-bold text-foreground">Your free trial has ended</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           Your gym data is safe and exactly where you left it. Continue using GymBoss_VVO for just{" "}
-          <span className="font-num font-bold text-foreground">{inr(999)}</span>/month.
+          <span className="font-num font-bold text-foreground">{inr(price)}</span>/month.
         </p>
         <Button className="mt-6 w-full rounded-lg bg-brand font-semibold hover:bg-brand-hover" data-testid="subscribe-now-button" onClick={onSubscribe}>
-          Subscribe Now — {inr(999)}/month
+          Subscribe Now — {inr(price)}/month
         </Button>
         <button onClick={onLogout} className="mt-5 text-sm font-medium text-muted-foreground hover:text-foreground" data-testid="trial-expired-logout">
           Logout
@@ -70,7 +69,7 @@ export default function AppLayout() {
   const expired = ["expired", "payment_due"].includes(subscription?.status);
   const allowedWhenExpired = ["/app/subscription", "/app/support", "/app/profile", "/app/settings"];
   if (expired && !allowedWhenExpired.some((p) => location.pathname.startsWith(p))) {
-    return <TrialExpired onSubscribe={() => navigate("/app/subscription")} onLogout={async () => { await logout(); navigate("/login"); }} />;
+    return <TrialExpired price={subscription?.plan_price_inr} onSubscribe={() => navigate("/app/subscription")} onLogout={async () => { await logout(); navigate("/login"); }} />;
   }
 
   const daysLeft = subscription?.trial_days_left ?? 0;
@@ -114,7 +113,10 @@ export default function AppLayout() {
         </div>
       )}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3" data-testid={`sidebar-nav-${scope}`}>
-        {NAV.map((item) => (
+        {NAV.filter((item) => {
+          if (!item.finance) return true;
+          return ["owner", "admin", "manager"].includes(user?.role) || user?.finance_enabled;
+        }).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

@@ -9,6 +9,7 @@ from datetime import datetime, timezone, timedelta, date
 
 import bcrypt
 import jwt
+import httpx
 from fastapi import HTTPException, Request, Response, Depends
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -121,15 +122,29 @@ async def require_manager(user: dict = Depends(get_org_user)) -> dict:
     return user
 
 
+async def require_write(user: dict = Depends(get_org_user)) -> dict:
+    if user.get("role") == "owner":
+        return user
+    if user.get("permission") == "view":
+        raise HTTPException(status_code=403, detail="Your role has view-only access")
+    return user
+
+
+async def require_finance_access(user: dict = Depends(get_org_user)) -> dict:
+    if user.get("role") == "owner" or user.get("finance_enabled"):
+        return user
+    raise HTTPException(status_code=403, detail="You do not have access to finance")
+
+
 async def require_super_admin(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "super_admin":
         raise HTTPException(status_code=403, detail="Super admin access required")
     return user
 
 
-def derive_subscription(org: dict | None) -> dict:
+def derive_subscription(org: dict | None, plan_price: int | None = None) -> dict:
     if not org:
-        return {"status": "none", "trial_days_left": 0, "plan_price_inr": PLAN_PRICE_INR}
+        return {"status": "none", "trial_days_left": 0, "plan_price_inr": plan_price or PLAN_PRICE_INR}
     sub = org.get("subscription", {})
     status = sub.get("status", "trial")
     trial_ends = sub.get("trial_ends_at")
@@ -153,7 +168,7 @@ def derive_subscription(org: dict | None) -> dict:
         "trial_days_left": days_left,
         "trial_ends_at": trial_ends.isoformat() if trial_ends else None,
         "subscription_ends_at": sub_ends.isoformat() if sub_ends else None,
-        "plan_price_inr": PLAN_PRICE_INR,
+        "plan_price_inr": plan_price or PLAN_PRICE_INR,
     }
 
 
@@ -164,6 +179,8 @@ def public_user(user: dict) -> dict:
         "email": user.get("email"),
         "phone": user.get("phone"),
         "role": user.get("role"),
+        "permission": user.get("permission"),
+        "finance_enabled": bool(user.get("finance_enabled")),
         "organisation_id": user.get("organisation_id"),
     }
 
@@ -238,6 +255,61 @@ def member_public(m: dict) -> dict:
 async def next_receipt_no(org_id: str) -> str:
     doc = await db.counters.find_one_and_update({"_id": f"receipt:{org_id}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
     return f"RCPT-{doc['seq']}"
+
+
+async def get_plan_price() -> int:
+    settings = await db.settings.find_one({"id": "platform"}) or {}
+    try:
+        return int(settings.get("plan_price_inr") or PLAN_PRICE_INR)
+    except (TypeError, ValueError):
+        return PLAN_PRICE_INR
+
+
+async def get_razorpay_keys() -> tuple:
+    settings = await db.settings.find_one({"id": "platform"}) or {}
+    return (
+        settings.get("razorpay_key_id") or os.environ.get("RAZORPAY_KEY_ID", ""),
+        settings.get("razorpay_key_secret") or os.environ.get("RAZORPAY_KEY_SECRET", ""),
+    )
+
+
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+_storage_key = None
+
+
+async def init_storage(force: bool = False) -> str:
+    global _storage_key
+    if _storage_key and not force:
+        return _storage_key
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    async with httpx.AsyncClient(timeout=30) as http:
+        resp = await http.post(f"{STORAGE_URL}/init", json={"emergent_key": key})
+    resp.raise_for_status()
+    _storage_key = resp.json()["storage_key"]
+    return _storage_key
+
+
+async def put_object(path: str, data: bytes, content_type: str) -> dict:
+    key = await init_storage()
+    async with httpx.AsyncClient(timeout=120) as http:
+        resp = await http.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, content=data)
+        if resp.status_code == 404:
+            key = await init_storage(force=True)
+            resp = await http.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, content=data)
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def get_object(path: str) -> tuple:
+    key = await init_storage()
+    async with httpx.AsyncClient(timeout=60) as http:
+        resp = await http.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
+        if resp.status_code == 404 and _storage_key:
+            key = await init_storage(force=True)
+            resp = await http.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
 async def next_member_code(org_id: str, org_name: str) -> str:

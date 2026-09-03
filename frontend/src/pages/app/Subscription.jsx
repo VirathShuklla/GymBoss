@@ -67,6 +67,7 @@ export default function Subscription() {
   };
 
   const sub = data?.subscription;
+  const price = sub?.plan_price_inr || 999;
   const statusLabel = { trial: `Free Trial — ${sub?.trial_days_left} days left`, active: "Active", expired: "Trial Ended", payment_due: "Payment Due", cancelled: "Cancelled" }[sub?.status] || sub?.status;
 
   const columns = [
@@ -99,7 +100,7 @@ export default function Subscription() {
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-card" data-testid="subscription-plan-card">
           <div className="bg-gradient-to-br from-brand to-[#5B21B6] px-6 py-5 text-white">
             <p className="text-xs font-bold uppercase tracking-wider opacity-80">GymBoss_VVO Pro</p>
-            <p className="mt-1 font-display text-3xl font-extrabold">{inr(999)}<span className="text-base font-semibold opacity-80">/month</span></p>
+            <p className="mt-1 font-display text-3xl font-extrabold">{inr(price)}<span className="text-base font-semibold opacity-80">/month</span></p>
           </div>
           <div className="p-6">
             <ul className="space-y-2">
@@ -109,7 +110,7 @@ export default function Subscription() {
             </ul>
             {sub?.status !== "active" && (
               <Button className="mt-5 w-full bg-brand font-semibold hover:bg-brand-hover" onClick={subscribe} disabled={busy} data-testid="subscribe-button">
-                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Subscribe Now — {inr(999)}/month
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Subscribe Now — {inr(price)}/month
               </Button>
             )}
             {!data?.razorpay_configured && sub?.status !== "active" && (

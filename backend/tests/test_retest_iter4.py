@@ -57,7 +57,8 @@ def test_staff_roles_lowercase(demo):
     for s in items:
         role = s.get("role")
         assert role == role.lower(), f"staff role not lowercase: {role}"
-        assert role in ("trainer", "receptionist", "manager", "owner"), role
+        # iter6: Add Staff "Type" dropdown now allows staff/admin/sales too
+        assert role in ("trainer", "receptionist", "manager", "owner", "staff", "admin", "sales"), role
         assert "_id" not in s
 
 

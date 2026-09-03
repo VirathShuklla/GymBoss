@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 6 full verification of the new change set + regression. Backend: created /app/backend/tests/test_iter6_changeset.py (36 tests) covering 3-step member payload maths, batch auto-create, next-code preview, filters, simplified outlet, staff permission/finance enforcement, plan categories, dynamic plan price + Razorpay settings, and object-storage uploads. Full suite: 152 passed / 2 failed (both failures are real bugs in PUT /api/admin/settings). Frontend (Playwright, public URL): 3-step Add Member verified end-to-end (member-id preview IPF-1050, photo upload -> /api/files avatar renders in members table, Prev/Next preserves data, stepper colours done=green/active=violet/future=grey, live Payment Summary 1500+500-100=1900 payable, 200 collected -> due 1700 + 'Partially Paid', Save -> toast 'Member added successfully' + row in list with due/expiry), Edit mode = 2 steps with 'Save Changes', filters (Gender/Batch/search-field scoping) all correct, Add Outlet = name+address only and creates outlet, Add Staff modal matches reference exactly (Type/Select Outlet/Select Permission/Enable Finance Page/Name/Phone +91/Email/Password + Cancel/Save), view-only staff login: members readable, member save blocked with 403 + 'Your role has view-only access' toast, sidebar hides Finance/Reports/Export Center, Announcements fully removed (no nav item, no dashboard quick action, /app/announcements = coming-soon), Support page has only WhatsApp + Email cards, Plan form is category-driven (Membership/PT/Service/Product; PT adds Sessions+Trainer, Product adds Inventory; no description/status), Super admin Platform Settings price 999->500 propagates to /api/public/config, landing hero trust row, pricing, final CTA and /app/subscription (Rs.500/month) and was restored to 999. All TEST_QA data purged; demo gym back to 26 members / 3 staff; platform settings restored (price 999, empty Razorpay keys, whatsapp_number cleared).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/admin/settings", "issue": "plan_price_inr=0 returns HTTP 500 instead of 422. admin.py:129 does {k: (v or \"\")} which converts 0 -> \"\", so the '<1' guard never fires and int(\"\") raises ValueError.", "priority": "HIGH"},
+      {"endpoint": "PUT /api/admin/settings", "issue": "Partial payloads clobber unrelated settings. Saving only {plan_price_inr: 777} blanks razorpay_key_id/key_secret/webhook_secret, support_email, whatsapp_number, store URLs (all Optional defaults of \"\" are written). Use model_dump(exclude_unset=True) / only $set provided keys.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/members", "issue": "payment_status edge case: when payable computes to 0 (e.g. discount >= plan+admission) and amount_paid=0, status is 'Due' with due_amount 0 instead of 'Paid' (members.py:122 requires payable>0 for Paid)."},
+      {"endpoint": "/api/staff", "issue": "No DELETE endpoint (only POST /staff/{id}/toggle), so staff rows cannot be removed via API — test/user cleanup requires direct DB access."},
+      {"endpoint": "tests/test_milestones.py (admin settings test)", "issue": "Test writes whatsapp_number=919876543210 into platform settings and does not restore it, so the public landing floating WhatsApp button changes after every regression run. I reset it to \"\"."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Finance route guard (AppLayout / Finance.jsx)", "issue": "Staff without finance access can still navigate directly to /app/finance: the page renders, the 403 API rejections are unhandled and CRA shows a full-screen red 'Uncaught runtime errors: Request failed with status code 403' overlay plus 'Couldn't load finance summary'. Route should redirect or render an access-denied state and catch the 403.", "selector": "/app/finance", "priority": "HIGH"},
+      {"component": "Members / Dashboard quick actions (permission=view)", "issue": "View-only staff still sees Add Member (and Record Payment / Add Enquiry quick actions) and can fill the whole 3-step form; failure only surfaces at Save with a 403 toast. Hide/disable write CTAs when permission=view.", "selector": "[data-testid=\"add-member-button\"]", "priority": "MEDIUM"},
+      {"component": "MemberForm (edit mode, DOB DateField)", "issue": "React console error: '`value` prop on input should not be null' when editing a member with dob=null — pass \"\" instead of null.", "selector": "[data-testid=\"member-step-2\"]", "priority": "LOW"},
+      {"component": "Staff / Outlet / Plan modals", "issue": "Form fields have no data-testid (had to locate by placeholder/label), unlike MemberForm. Testability gap.", "selector": "[role=\"dialog\"] input", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Batch dropdown (demo gym)", "issue": "Register-time default batches (Morning/Evening) are seeded on top of the migrated demo batches, so the batch dropdown shows near-duplicates: 'Morning', 'Morning (6–8 AM)', 'Evening', 'Evening (5–8 PM)', 'Afternoon (12–2 PM)'. Confusing for filtering/assignment.", "affected_selectors": ["[data-testid=\"member-form-batch\"]", "[data-testid=\"members-batch-filter\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Add Member step 3", "issues": ["Membership window preview prints raw ISO dates ('Membership: 2026-09-03 → 2026-10-03') while the rest of the app uses '03 Sep 2026' formatting"]},
+      {"screen": "Plans & Catalogue", "issues": ["Category column renders the raw lowercase enum ('membership') instead of a formatted label", "Inactive tab labels (PT / Service / Product) are very low contrast against the white background"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6_changeset.py",
+    "/app/backend/tests/test_retest_iter4.py",
+    "/app/test_reports/pytest/iter6_full.xml"
+  ],
+  "action_items": [
+    "Fix PUT /api/admin/settings: return 422 for plan_price_inr < 1 (currently 500) — stop coercing 0 to \"\"",
+    "Fix PUT /api/admin/settings to only persist keys present in the request so a price-only save does not wipe Razorpay keys / support email / WhatsApp number",
+    "Guard /app/finance (and /app/reports, /app/export-center) for staff without finance_enabled — redirect or access-denied instead of rendering + unhandled 403 runtime-error overlay",
+    "Hide/disable write CTAs (Add Member, Record Payment, Add Enquiry) for permission='view' staff",
+    "Handle dob=null in MemberForm edit mode to remove the React null-value console error",
+    "Format the membership window preview dates (dd MMM yyyy) and the Plans Category column label",
+    "De-duplicate seeded batches for existing gyms (Morning vs 'Morning (6–8 AM)')",
+    "Consider POST /api/members payable==0 case -> status 'Paid'; add DELETE /api/staff/{id}; add data-testid to Staff/Outlet/Plan modal fields"
+  ],
+  "critical_code_review_comments": [
+    "admin.py:129 — `{k: (v or \"\") for k, v in body.model_dump().items()}` is doubly harmful: it turns numeric 0 into \"\" (500 on int(\"\")) and it force-writes every optional field, silently erasing stored secrets on partial saves. Use body.model_dump(exclude_unset=True).",
+    "deps.py require_write: role in (owner, admin, manager) short-circuits before the permission check, so a staff created with Type=Manager/Admin and Permission=View still has full write access — inconsistent with the new Permission dropdown semantics.",
+    "members.py:122 payment_status derivation duplicates the frontend computation in MemberForm.jsx; consider returning the computed summary from a shared helper to avoid drift.",
+    "Frontend has no central 403 interceptor: finance/report pages surface raw Axios 403s as unhandled rejections (dev overlay). Add a response interceptor mapping 403 to a friendly access-denied state."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6_changeset.py (new)",
+    "/app/backend/tests/test_retest_iter4.py (test_staff_roles_lowercase now accepts the new staff/admin/sales types)"
+  ],
+  "success_rate": {"backend": "98.7% (152/154 pytest; 2 failures = the two PUT /api/admin/settings bugs)", "frontend": "~93% of verified flows (all new flows work; finance route guard + view-only CTA visibility are the defects)"},
+  "seed_data_creation": "Temporary: TEST_QA members (UI + API), TEST_QA UI Staff / TEST_QA ViewStaff (email test_qa_uistaff@testgym.in, pwd QaStaff@2026), TEST_QA UI Outlet, TEST_QA plans, TEST_QA Batch, one uploaded test photo. All removed (cleanup_test_data.py + direct DB delete of TEST batches); demo gym verified back to 26 active members, 3 seeded staff, plan_price_inr=999, empty Razorpay keys.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Demo gym owner demo@gymbossvvo.in / Demo@2026; Super admin GymBoss / GymBoss@2026 (from /app/memory/test_credentials.md)",
+  "context_for_next_testing_agent": "Run backend as: cd /app/backend && python tests/cleanup_test_data.py && python -m pytest tests/ -q -p no:randomly -n 0 && python tests/cleanup_test_data.py. Expect 154 tests; the only expected failures are the 2 TestPlatformSettings tests until admin.py:129 is fixed. Notes: (1) staff has no DELETE endpoint — cleanup_test_data.py purges staff/staff_users at DB level; (2) tests/test_milestones.py leaves whatsapp_number=919876543210 in platform settings — reset it to \"\" after runs; (3) new member-form testids: member-step-1/2/3, member-form-next/prev/submit, member-form-name/phone/gender/batch/outlet/email/height/weight/notes/plan/admission/discount/amount-paid/method, member-form-code, member-stepper-step-N, payment-summary + summary-payable/collected/due, payment-status-badge; members list has data-testid members-search, members-search-field, members-gender-filter, members-batch-filter; (4) Staff/Outlet/Plan modals have NO data-testids — select by placeholder ('Enter name', 'Phone number') and role=combobox order (Type, Outlet, Permission); (5) landing/superadmin price checks: set price via API with a super-admin session, then read an anonymous landing page (a logged-in tab in the same context rendered stale/incomplete pricing text). Trial-expired paywall screen was NOT retested this iteration (no expired tenant available — demo gym has 9 trial days left).",
+  "rca_of_the_issue": "PUT /api/admin/settings builds its $set document with `{k: (v or \"\") for k, v in body.model_dump().items() if not (k == 'plan_price_inr' and v is None)}`. Two consequences: (a) plan_price_inr=0 is falsy so it becomes the empty string, bypassing the `< 1` validation and crashing at int(\"\") -> 500; (b) every unset Optional field defaults to \"\" and is written, so a price-only save erases previously stored Razorpay key_id/secret/webhook, support email and WhatsApp number (reproduced: saved rzp_test_PRESERVE, then PUT {plan_price_inr:777} -> razorpay_key_id == \"\"). Fix: use body.model_dump(exclude_unset=True), validate plan_price_inr with `is None` checks, and only $set the provided keys."
+}

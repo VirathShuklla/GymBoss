@@ -20,24 +20,24 @@ const TABS = [
 ];
 
 function PlanDialog({ open, onClose, type, plan, onSaved }) {
-  const blank = { name: "", category: "", duration_type: "months", duration: 1, price: "", sessions: "", inventory: "", trainer: "", description: "", status: "active" };
+  const blank = { name: "", type, duration_type: "months", duration: 1, price: "", sessions: "", inventory: "", trainer: "" };
   const [form, setForm] = useState(blank);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (open) setForm(plan ? { ...blank, ...plan } : blank);
-  }, [open, plan]);
+    if (open) setForm(plan ? { ...blank, ...plan, sessions: plan.sessions ?? "", inventory: plan.inventory ?? "", trainer: plan.trainer ?? "" } : blank);
+  }, [open, plan, type]);
 
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     const payload = {
-      name: form.name, type, category: form.category || null,
+      name: form.name, type: form.type,
       duration_type: form.duration_type, duration: Number(form.duration || 1),
       price: Number(form.price || 0),
       sessions: form.sessions ? Number(form.sessions) : null,
       inventory: form.inventory !== "" ? Number(form.inventory) : null,
-      trainer: form.trainer || null, description: form.description || null, status: form.status,
+      trainer: form.trainer || null, status: plan?.status || "active",
     };
     try {
       if (plan) {
@@ -55,19 +55,22 @@ function PlanDialog({ open, onClose, type, plan, onSaved }) {
     }
   };
 
-  const nameLabel = { membership: "Plan Name", pt: "Plan Name", service: "Service Name", product: "Product Name" }[type];
+  const ftype = form.type;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-md" data-testid="plan-form-modal">
-        <DialogHeader><DialogTitle className="font-display text-lg">{plan ? "Edit" : "Add"} {TABS.find((t) => t.value === type).label}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="font-display text-lg">{plan ? "Edit Item" : "Add to Catalogue"}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5"><Label>{nameLabel}</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="plan-form-name" /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5"><Label>Category</Label><Input value={form.category || ""} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="e.g., General" data-testid="plan-form-category" /></div>
-            <div className="space-y-1.5"><Label>Price (₹)</Label><Input required type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="plan-form-price" /></div>
+          <div className="space-y-1.5">
+            <Label>Category</Label>
+            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+              <SelectTrigger data-testid="plan-form-category"><SelectValue /></SelectTrigger>
+              <SelectContent>{TABS.map((t) => <SelectItem key={t.value} value={t.value} data-testid={`category-${t.value}`}>{t.label}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
-          {(type === "membership" || type === "pt") && (
+          <div className="space-y-1.5"><Label>Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={ftype === "product" ? "e.g., Whey Protein 1kg" : ftype === "service" ? "e.g., Steam & Sauna" : "e.g., Quarterly"} data-testid="plan-form-name" /></div>
+          {(ftype === "membership" || ftype === "pt") && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Duration Type</Label>
@@ -83,26 +86,16 @@ function PlanDialog({ open, onClose, type, plan, onSaved }) {
               <div className="space-y-1.5"><Label>Duration</Label><Input type="number" min="1" value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} data-testid="plan-form-duration" /></div>
             </div>
           )}
-          {type === "pt" && (
+          {ftype === "pt" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5"><Label>Sessions</Label><Input type="number" min="1" value={form.sessions} onChange={(e) => setForm({ ...form, sessions: e.target.value })} data-testid="plan-form-sessions" /></div>
               <div className="space-y-1.5"><Label>Trainer</Label><Input value={form.trainer || ""} onChange={(e) => setForm({ ...form, trainer: e.target.value })} data-testid="plan-form-trainer" /></div>
             </div>
           )}
-          {type === "product" && (
+          {ftype === "product" && (
             <div className="space-y-1.5"><Label>Inventory Quantity</Label><Input type="number" min="0" value={form.inventory} onChange={(e) => setForm({ ...form, inventory: e.target.value })} data-testid="plan-form-inventory" /></div>
           )}
-          <div className="space-y-1.5"><Label>Description</Label><Textarea rows={2} value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="plan-form-description" /></div>
-          <div className="space-y-1.5">
-            <Label>Status</Label>
-            <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-              <SelectTrigger data-testid="plan-form-status"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="disabled">Disabled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <div className="space-y-1.5"><Label>Price (₹)</Label><Input required type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="plan-form-price" /></div>
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
             <Button type="submit" className="bg-brand hover:bg-brand-hover" disabled={busy} data-testid="plan-form-submit">
@@ -150,7 +143,7 @@ function PlanTable({ type }) {
 
   const columns = [
     { key: "name", label: "Name", render: (p) => <span className="font-medium text-foreground">{p.name}</span> },
-    { key: "category", label: "Category", render: (p) => p.category || "—" },
+    { key: "category", label: "Category", render: (p) => (p.category && !TABS.some((t) => t.value === p.category) ? p.category : TABS.find((t) => t.value === (p.type || p.category))?.label || "—") },
     ...(type === "membership" || type === "pt" ? [{ key: "duration", label: "Duration", render: (p) => `${p.duration} ${p.duration_type}` }] : []),
     ...(type === "pt" ? [{ key: "sessions", label: "Sessions", render: (p) => p.sessions || "—" }] : []),
     ...(type === "product" ? [{ key: "inventory", label: "Inventory", align: "right", render: (p) => <span className="font-num">{p.inventory ?? "—"}</span> }] : []),
@@ -191,7 +184,7 @@ export default function Plans() {
       <PageHeader title="Plans & Catalogue" subtitle="Membership plans, personal training, services and products." testid="plans-header" />
       <Tabs defaultValue="membership">
         <TabsList className="mb-5" data-testid="plans-tabs">
-          {TABS.map((t) => <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>{t.label}</TabsTrigger>)}
+          {TABS.map((t) => <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`} className="data-[state=inactive]:text-slate-500 dark:data-[state=inactive]:text-slate-400 data-[state=active]:shadow-sm">{t.label}</TabsTrigger>)}
         </TabsList>
         {TABS.map((t) => (
           <TabsContent key={t.value} value={t.value}><PlanTable type={t.value} /></TabsContent>

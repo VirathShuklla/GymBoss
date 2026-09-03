@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Check, Smartphone } from "lucide-react";
 import { usePublicConfig } from "../../hooks/usePublicConfig";
+import { inr } from "../../lib/format";
 
 const INCLUDED = [
   "Unlimited members",
@@ -43,7 +44,7 @@ export function Pricing() {
             </div>
             <div className="px-8 py-7">
               <p className="text-center text-sm text-slate-500">
-                Then just <span className="font-num text-lg font-bold text-slate-900">₹999</span>/month after the trial
+                Then just <span className="font-num text-lg font-bold text-slate-900">{inr(config?.plan_price_inr || 999)}</span>/month after the trial
               </p>
               <ul className="mt-6 space-y-3">
                 {INCLUDED.map((f) => (

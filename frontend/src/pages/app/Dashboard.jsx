@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext, useNavigate, Link } from "react-router-dom";
 import {
   IndianRupee, UserPlus, RefreshCw, Wallet, HelpCircle, Zap, Briefcase, Package,
-  Users, CalendarClock, Cake, ClipboardCheck, Plus, Megaphone, X, Check,
+  Users, CalendarClock, Cake, ClipboardCheck, Plus, X, Check,
 } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -69,7 +69,8 @@ function OnboardingChecklist({ onboarding, onDismiss }) {
 
 export default function Dashboard() {
   const { outletId } = useOutletContext() || {};
-  const { organisation, outlets, reload } = useAuth();
+  const { organisation, outlets, reload, user } = useAuth();
+  const readOnly = user?.permission === "view" && user?.role !== "owner";
   const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState(null);
@@ -94,11 +95,10 @@ export default function Dashboard() {
   };
 
   const quickActions = [
-    { label: "Add Member", icon: Plus, to: "/app/members" },
+    { label: "Add Member", icon: Plus, to: "/app/members?add=1" },
     { label: "Record Payment", icon: IndianRupee, to: "/app/payments" },
     { label: "Check In Member", icon: ClipboardCheck, to: "/app/attendance" },
     { label: "Add Enquiry", icon: UserPlus, to: "/app/enquiries" },
-    { label: "Send Announcement", icon: Megaphone, to: "/app/announcements" },
   ];
 
   return (
@@ -155,8 +155,9 @@ export default function Dashboard() {
         </>
       )}
 
-      <div>
-        <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Quick Actions</h2>
+      {!readOnly && (
+        <div>
+          <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Quick Actions</h2>
         <div className="flex flex-wrap gap-2.5" data-testid="quick-actions">
           {quickActions.map((a) => (
             <button key={a.label} onClick={() => navigate(a.to)} data-testid={`quick-${a.label.toLowerCase().replace(/\s/g, "-")}`}
@@ -165,7 +166,8 @@ export default function Dashboard() {
             </button>
           ))}
         </div>
-      </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-border bg-card shadow-card" data-testid="recent-transactions">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">

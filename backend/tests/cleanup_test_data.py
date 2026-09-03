@@ -22,6 +22,14 @@ async def main():
         report["members"] = (await db.members.delete_many({"id": {"$in": mids}})).deleted_count
 
     report["outlets"] = (await db.outlets.delete_many({"name": RX})).deleted_count
+    # batches auto-created by member payloads (TEST_* and stray non-canonical names in demo org)
+    demo = await db.organisations.find_one({"is_demo": True}, {"id": 1})
+    report["batches"] = (await db.batches.delete_many({"name": RX})).deleted_count
+    if demo:
+        canonical = ["Morning (6–8 AM)", "Afternoon (12–2 PM)", "Evening (5–8 PM)"]
+        report["stray_batches"] = (await db.batches.delete_many(
+            {"organisation_id": demo["id"], "name": {"$nin": canonical}}
+        )).deleted_count
     report["plans"] = (await db.plans.delete_many({"name": RX})).deleted_count
     report["enquiries"] = (await db.enquiries.delete_many({"name": RX})).deleted_count
     report["expenses"] = (await db.expenses.delete_many({"name": RX})).deleted_count

@@ -15,7 +15,6 @@ import Plans from "./pages/app/Plans";
 import Attendance from "./pages/app/Attendance";
 import Payments from "./pages/app/Payments";
 import Enquiries from "./pages/app/Enquiries";
-import Announcements from "./pages/app/Announcements";
 import Expenses from "./pages/app/Expenses";
 import Outlets from "./pages/app/Outlets";
 import Staff from "./pages/app/Staff";
@@ -52,6 +51,20 @@ function SuperAdminRoute({ children }) {
   return children;
 }
 
+function FinanceRoute({ children }) {
+  const { user } = useAuth();
+  const allowed = ["owner", "admin", "manager"].includes(user?.role) || user?.finance_enabled;
+  if (!allowed) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-24 text-center" data-testid="finance-access-denied">
+        <p className="font-display text-lg font-bold text-foreground">No finance access</p>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">Your account doesn't have access to finance pages. Ask your gym owner to enable it in Staff settings.</p>
+      </div>
+    );
+  }
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -72,13 +85,12 @@ function App() {
               <Route path="plans" element={<Plans />} />
               <Route path="payments" element={<Payments />} />
               <Route path="enquiries" element={<Enquiries />} />
-              <Route path="announcements" element={<Announcements />} />
               <Route path="expenses" element={<Expenses />} />
               <Route path="outlets" element={<Outlets />} />
               <Route path="staff" element={<Staff />} />
-              <Route path="finance" element={<Finance />} />
-              <Route path="reports" element={<Reports />} />
-              <Route path="export-center" element={<ExportCenter />} />
+              <Route path="finance" element={<FinanceRoute><Finance /></FinanceRoute>} />
+              <Route path="reports" element={<FinanceRoute><Reports /></FinanceRoute>} />
+              <Route path="export-center" element={<FinanceRoute><ExportCenter /></FinanceRoute>} />
               <Route path="settings" element={<Settings />} />
               <Route path="subscription" element={<Subscription />} />
               <Route path="support" element={<Support />} />

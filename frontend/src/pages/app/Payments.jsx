@@ -3,6 +3,7 @@ import { Plus, IndianRupee, Loader2, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
+import { useAuth } from "../../contexts/AuthContext";
 import { PageHeader, DataTable, StatusBadge, EmptyState, SearchInput, Pagination, MemberPicker } from "../../components/app/ui";
 import { ReceiptModal } from "../../components/app/ReceiptModal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
@@ -14,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 const METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"];
 
 export default function Payments() {
+  const { user } = useAuth();
+  const readOnly = user?.permission === "view" && user?.role !== "owner";
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -87,9 +90,11 @@ export default function Payments() {
   return (
     <div data-testid="payments-page">
       <PageHeader title="Payments" subtitle="Member payments and receipts." testid="payments-header">
-        <Button className="bg-brand hover:bg-brand-hover" onClick={() => setPayOpen(true)} data-testid="record-payment-button">
-          <Plus className="mr-1.5 h-4 w-4" />Record Payment
-        </Button>
+        {!readOnly && (
+          <Button className="bg-brand hover:bg-brand-hover" onClick={() => setPayOpen(true)} data-testid="record-payment-button">
+            <Plus className="mr-1.5 h-4 w-4" />Record Payment
+          </Button>
+        )}
       </PageHeader>
 
       <div className="mb-4 flex flex-wrap gap-2.5">

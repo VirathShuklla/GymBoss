@@ -36,7 +36,8 @@ function ActionRow({ icon: Icon, label, onClick, danger, highlight, testid }) {
 }
 
 export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
-  const { organisation } = useAuth();
+  const { organisation, user } = useAuth();
+  const readOnly = user?.permission === "view" && user?.role !== "owner";
   const [data, setData] = useState(null);
   const [view, setView] = useState("actions");
   const [freezeOpen, setFreezeOpen] = useState(false);
@@ -196,18 +197,24 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                 <div className="p-4" data-testid="member-action-sheet">
                   <p className="px-2 pb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Member</p>
                   <div className="space-y-1">
-                    {m.status === "frozen"
+                    {!readOnly && (m.status === "frozen"
                       ? <ActionRow icon={Snowflake} label="Unfreeze Membership" onClick={doUnfreeze} testid="action-unfreeze" />
-                      : <ActionRow icon={Snowflake} label="Freeze" onClick={() => setFreezeOpen(true)} testid="action-freeze" />}
+                      : <ActionRow icon={Snowflake} label="Freeze" onClick={() => setFreezeOpen(true)} testid="action-freeze" />)}
                     <ActionRow icon={Info} label="Show More Info" onClick={() => setView("info")} testid="action-more-info" />
-                    <ActionRow icon={Pencil} label="Edit Member" onClick={() => onEdit(m)} testid="action-edit-member" />
-                    <ActionRow icon={Trash2} label="Delete Member" danger onClick={() => setDeleteOpen(true)} testid="action-delete-member" />
+                    {!readOnly && <ActionRow icon={Pencil} label="Edit Member" onClick={() => onEdit(m)} testid="action-edit-member" />}
+                    {!readOnly && <ActionRow icon={Trash2} label="Delete Member" danger onClick={() => setDeleteOpen(true)} testid="action-delete-member" />}
                     <ActionRow icon={ClipboardCheck} label="Attendance History" highlight onClick={() => setView("attendance")} testid="action-attendance-history" />
                   </div>
-                  <p className="px-2 pb-2 pt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payments</p>
-                  <div className="space-y-1">
-                    <ActionRow icon={RefreshCw} label="Renew Membership" onClick={() => { setRenewForm({ ...renewForm, plan_id: m.plan_id }); setRenewOpen(true); }} testid="action-renew" />
-                    <ActionRow icon={IndianRupee} label="Record Payment" onClick={() => setPayOpen(true)} testid="action-record-payment" />
+                  {!readOnly && (
+                    <>
+                      <p className="px-2 pb-2 pt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Payments</p>
+                      <div className="space-y-1">
+                        <ActionRow icon={RefreshCw} label="Renew Membership" onClick={() => { setRenewForm({ ...renewForm, plan_id: m.plan_id }); setRenewOpen(true); }} testid="action-renew" />
+                        <ActionRow icon={IndianRupee} label="Record Payment" onClick={() => setPayOpen(true)} testid="action-record-payment" />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-1 pt-1">
                     <ActionRow icon={BellRing} label="Send Payment Reminder" onClick={() => { setWaTemplate("payment_reminder"); setWaOpen(true); }} testid="action-payment-reminder" />
                     <ActionRow icon={Receipt} label="Transaction History" onClick={() => setView("payments")} testid="action-transaction-history" />
                   </div>

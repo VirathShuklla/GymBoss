@@ -1,6 +1,9 @@
 import { Link } from "react-router-dom";
+import { usePublicConfig } from "../../hooks/usePublicConfig";
+import { inr } from "../../lib/format";
 
 export function FinalCta() {
+  const config = usePublicConfig();
   return (
     <section className="bg-gradient-to-br from-brand via-[#6D28D9] to-[#4C1D95] py-20 sm:py-24" data-testid="final-cta-section">
       <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
@@ -20,7 +23,7 @@ export function FinalCta() {
             Login
           </Link>
         </div>
-        <p className="mt-6 text-sm text-white/75">10 days free · No credit card · ₹999/month after trial</p>
+        <p className="mt-6 text-sm text-white/75">10 days free · No credit card · {inr(config?.plan_price_inr || 999)}/month after trial</p>
       </div>
     </section>
   );

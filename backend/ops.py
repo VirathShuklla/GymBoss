@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, audit, hash_password, normalize_phone
+from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, require_write, audit, hash_password, normalize_phone
 
 router = APIRouter(tags=["operations"])
 
@@ -40,7 +40,7 @@ async def list_enquiries(search: Optional[str] = None, status: Optional[str] = N
 
 
 @router.post("/enquiries")
-async def create_enquiry(body: EnquiryBody, user: dict = Depends(get_org_user)):
+async def create_enquiry(body: EnquiryBody, user: dict = Depends(require_write)):
     phone = normalize_phone(body.phone)
     if len(phone) != 10:
         raise HTTPException(422, "Enter a valid 10-digit mobile number")
@@ -55,7 +55,7 @@ async def create_enquiry(body: EnquiryBody, user: dict = Depends(get_org_user)):
 
 
 @router.put("/enquiries/{enquiry_id}")
-async def update_enquiry(enquiry_id: str, body: EnquiryBody, user: dict = Depends(get_org_user)):
+async def update_enquiry(enquiry_id: str, body: EnquiryBody, user: dict = Depends(require_write)):
     res = await db.enquiries.update_one(
         {"id": enquiry_id, "organisation_id": user["organisation_id"]},
         {"$set": {**body.model_dump(), "updated_at": now_utc()}},
@@ -71,7 +71,7 @@ class FollowUpBody(BaseModel):
 
 
 @router.post("/enquiries/{enquiry_id}/follow-ups")
-async def add_follow_up(enquiry_id: str, body: FollowUpBody, user: dict = Depends(get_org_user)):
+async def add_follow_up(enquiry_id: str, body: FollowUpBody, user: dict = Depends(require_write)):
     entry = {"date": body.date, "note": body.note, "created_at": now_utc().isoformat(), "created_by": user["id"]}
     res = await db.enquiries.update_one(
         {"id": enquiry_id, "organisation_id": user["organisation_id"]},
@@ -110,7 +110,7 @@ async def list_expenses(month: Optional[int] = None, year: Optional[int] = None,
 
 
 @router.post("/expenses")
-async def create_expense(body: ExpenseBody, user: dict = Depends(get_org_user)):
+async def create_expense(body: ExpenseBody, user: dict = Depends(require_write)):
     outlet_id = body.outlet_id
     if not outlet_id:
         outlet_doc = await db.outlets.find_one({"organisation_id": user["organisation_id"], "is_primary": True}) or await db.outlets.find_one({"organisation_id": user["organisation_id"]})
@@ -122,7 +122,7 @@ async def create_expense(body: ExpenseBody, user: dict = Depends(get_org_user)):
 
 
 @router.put("/expenses/{expense_id}")
-async def update_expense(expense_id: str, body: ExpenseBody, user: dict = Depends(get_org_user)):
+async def update_expense(expense_id: str, body: ExpenseBody, user: dict = Depends(require_write)):
     res = await db.expenses.update_one(
         {"id": expense_id, "organisation_id": user["organisation_id"]},
         {"$set": {**body.model_dump(), "updated_at": now_utc()}},
@@ -133,7 +133,7 @@ async def update_expense(expense_id: str, body: ExpenseBody, user: dict = Depend
 
 
 @router.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, user: dict = Depends(get_org_user)):
+async def delete_expense(expense_id: str, user: dict = Depends(require_write)):
     res = await db.expenses.delete_one({"id": expense_id, "organisation_id": user["organisation_id"]})
     if not res.deleted_count:
         raise HTTPException(404, "Expense not found")
@@ -199,9 +199,12 @@ class StaffBody(BaseModel):
     salary: Optional[float] = None
     gender: Optional[str] = None
     password: Optional[str] = None
+    permission: str = "view"
+    enable_finance: bool = False
 
 
-STAFF_ROLES = {"admin", "manager", "receptionist", "trainer", "sales"}
+STAFF_ROLES = {"admin", "manager", "receptionist", "trainer", "sales", "staff"}
+PERMISSIONS = {"view", "manage", "full"}
 
 
 @router.get("/staff")
@@ -214,6 +217,8 @@ async def create_staff(body: StaffBody, user: dict = Depends(require_manager)):
     role = body.role.lower()
     if role not in STAFF_ROLES:
         raise HTTPException(422, "Invalid role")
+    if body.permission not in PERMISSIONS:
+        raise HTTPException(422, "Invalid permission")
     phone = normalize_phone(body.phone)
     if len(phone) != 10:
         raise HTTPException(422, "Enter a valid 10-digit mobile number")
@@ -236,12 +241,14 @@ async def create_staff(body: StaffBody, user: dict = Depends(require_manager)):
         "role": role, "email": email, "phone": f"+91{phone}", "address": body.address,
         "joining_date": body.joining_date or today_ist().isoformat(), "outlet_id": outlet_id,
         "salary": body.salary, "gender": body.gender, "status": "active", "user_id": user_id,
+        "permission": body.permission, "enable_finance": body.enable_finance,
         "has_login": bool(user_id), "created_at": now_utc(),
     }
     if user_id:
         await db.users.insert_one({
             "id": user_id, "full_name": body.name.strip(), "email": email, "phone": f"+91{phone}",
             "role": role, "organisation_id": user["organisation_id"], "staff_id": doc["id"],
+            "permission": body.permission, "finance_enabled": body.enable_finance,
             "password_hash": hash_password(body.password), "token_version": 0, "status": "active", "created_at": now_utc(),
         })
     await db.staff.insert_one(doc)
@@ -255,6 +262,8 @@ async def create_staff(body: StaffBody, user: dict = Depends(require_manager)):
 async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(require_manager)):
     data = body.model_dump(exclude={"password"})
     data["role"] = body.role.lower()
+    if data.get("permission") not in PERMISSIONS:
+        data["permission"] = "view"
     if body.phone:
         data["phone"] = f"+91{normalize_phone(body.phone)}"
     res = await db.staff.update_one(
@@ -263,7 +272,10 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     )
     if not res.matched_count:
         raise HTTPException(404, "Staff member not found")
-    return await db.staff.find_one({"id": staff_id}, {"_id": 0})
+    staff = await db.staff.find_one({"id": staff_id}, {"_id": 0})
+    if staff and staff.get("user_id"):
+        await db.users.update_one({"id": staff["user_id"]}, {"$set": {"permission": data["permission"], "finance_enabled": bool(data.get("enable_finance"))}})
+    return staff
 
 
 @router.post("/staff/{staff_id}/toggle")
@@ -277,6 +289,18 @@ async def toggle_staff(staff_id: str, user: dict = Depends(require_manager)):
         await db.users.update_one({"id": staff["user_id"]}, {"$set": {"status": new_status}})
     await audit(user["id"], f"staff.{new_status}", staff_id, org_id=user["organisation_id"])
     return await db.staff.find_one({"id": staff_id}, {"_id": 0})
+
+
+@router.delete("/staff/{staff_id}")
+async def delete_staff(staff_id: str, user: dict = Depends(require_manager)):
+    staff = await db.staff.find_one({"id": staff_id, "organisation_id": user["organisation_id"]})
+    if not staff:
+        raise HTTPException(404, "Staff member not found")
+    await db.staff.delete_one({"id": staff_id})
+    if staff.get("user_id"):
+        await db.users.delete_one({"id": staff["user_id"]})
+    await audit(user["id"], "staff.deleted", staff_id, {"name": staff.get("name")}, user["organisation_id"])
+    return {"message": "Staff member deleted"}
 
 
 # ---------------- Gym profile / settings ----------------

@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 
-from deps import db, IST, today_ist, get_org_user, member_status
+from deps import db, IST, today_ist, require_finance_access, member_status
 
 router = APIRouter(tags=["finance"])
 
@@ -31,7 +31,7 @@ def range_bounds(range_name: str, date_from: Optional[str], date_to: Optional[st
 
 
 @router.get("/finance/summary")
-async def finance_summary(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(get_org_user)):
+async def finance_summary(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
     org_id = user["organisation_id"]
     start, end = range_bounds(range, date_from, date_to)
     pay_q = {"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}}
@@ -71,7 +71,7 @@ async def finance_summary(range: str = "month", date_from: Optional[str] = None,
 
 
 @router.get("/finance/transactions")
-async def finance_transactions(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(get_org_user)):
+async def finance_transactions(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
     start, end = range_bounds(range, date_from, date_to)
     q = {"organisation_id": user["organisation_id"], "created_at": {"$gte": start, "$lt": end}}
     if outlet_id:
@@ -82,7 +82,7 @@ async def finance_transactions(range: str = "month", date_from: Optional[str] = 
 # ---------------- Reports ----------------
 
 @router.get("/reports/revenue-trend")
-async def report_revenue_trend(months: int = 6, user: dict = Depends(get_org_user)):
+async def report_revenue_trend(months: int = 6, user: dict = Depends(require_finance_access)):
     org_id = user["organisation_id"]
     today = today_ist()
     points = []
@@ -101,7 +101,7 @@ async def report_revenue_trend(months: int = 6, user: dict = Depends(get_org_use
 
 
 @router.get("/reports/outstanding-dues")
-async def report_outstanding_dues(user: dict = Depends(get_org_user)):
+async def report_outstanding_dues(user: dict = Depends(require_finance_access)):
     members = await db.members.find(
         {"organisation_id": user["organisation_id"], "deleted_at": None, "due_amount": {"$gt": 0}},
         {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "due_amount": 1, "membership_expiry": 1},
@@ -110,7 +110,7 @@ async def report_outstanding_dues(user: dict = Depends(get_org_user)):
 
 
 @router.get("/reports/membership-expiry")
-async def report_membership_expiry(days: int = 30, user: dict = Depends(get_org_user)):
+async def report_membership_expiry(days: int = 30, user: dict = Depends(require_finance_access)):
     today = today_ist()
     limit = (today + timedelta(days=days)).isoformat()
     members = await db.members.find(
@@ -123,7 +123,7 @@ async def report_membership_expiry(days: int = 30, user: dict = Depends(get_org_
 
 
 @router.get("/reports/enquiry-conversion")
-async def report_enquiry_conversion(user: dict = Depends(get_org_user)):
+async def report_enquiry_conversion(user: dict = Depends(require_finance_access)):
     items = await db.enquiries.find({"organisation_id": user["organisation_id"]}, {"_id": 0, "status": 1, "source": 1, "name": 1, "phone": 1, "created_at": 1}).to_list(5000)
     by_status, by_source = {}, {}
     for e in items:
@@ -134,7 +134,7 @@ async def report_enquiry_conversion(user: dict = Depends(get_org_user)):
 
 
 @router.get("/reports/member-growth")
-async def report_member_growth(months: int = 6, user: dict = Depends(get_org_user)):
+async def report_member_growth(months: int = 6, user: dict = Depends(require_finance_access)):
     org_id = user["organisation_id"]
     today = today_ist()
     points = []
@@ -166,7 +166,7 @@ EXPORTS = {
 
 
 @router.get("/export/{dataset}")
-async def export_dataset(dataset: str, outlet_id: Optional[str] = None, user: dict = Depends(get_org_user)):
+async def export_dataset(dataset: str, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
     if dataset not in EXPORTS:
         raise HTTPException(404, "Unknown dataset")
     collection, projection = EXPORTS[dataset]

@@ -1,8 +1,12 @@
 import { Link } from "react-router-dom";
 import { CheckCircle2 } from "lucide-react";
 import { DashboardMockup } from "./DashboardMockup";
+import { usePublicConfig } from "../../hooks/usePublicConfig";
+import { inr } from "../../lib/format";
 
 export function Hero() {
+  const config = usePublicConfig();
+  const price = inr(config?.plan_price_inr || 999);
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-brand-soft/60 via-white to-white" data-testid="hero-section">
       <div className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
@@ -29,7 +33,7 @@ export function Hero() {
             </a>
           </div>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-500">
-            {["10-Day Free Trial", "No Credit Card Required", "₹999/month after trial"].map((t) => (
+            {["10-Day Free Trial", "No Credit Card Required", `${price}/month after trial`].map((t) => (
               <span key={t} className="inline-flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-emerald-500" /> {t}
               </span>

@@ -21,15 +21,19 @@ const STATUSES = [
 ];
 
 export default function Members() {
-  const { outlets } = useAuth();
+  const { outlets, user } = useAuth();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState([]);
   const [search, setSearch] = useState("");
+  const [searchField, setSearchField] = useState("name");
   const [status, setStatus] = useState("all");
   const [planId, setPlanId] = useState("all");
+  const [gender, setGender] = useState("all");
+  const [batch, setBatch] = useState("all");
+  const [batches, setBatches] = useState([]);
   const [outletId, setOutletId] = useState("all");
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
@@ -41,7 +45,7 @@ export default function Members() {
     setLoading(true);
     try {
       const { data } = await api.get("/members", {
-        params: { search: search || undefined, status, plan_id: planId === "all" ? undefined : planId, outlet_id: outletId === "all" ? undefined : outletId, page, limit: 20 },
+        params: { search: search || undefined, search_field: searchField, status, plan_id: planId === "all" ? undefined : planId, gender, batch, outlet_id: outletId === "all" ? undefined : outletId, page, limit: 20 },
       });
       setData(data);
     } catch {
@@ -51,13 +55,14 @@ export default function Members() {
     }
   };
 
-  useEffect(() => { load(); }, [status, planId, outletId, page]);
+  useEffect(() => { load(); }, [status, planId, outletId, gender, batch, searchField, page]);
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); load(); }, 350);
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => {
     api.get("/plans", { params: { type: "membership" } }).then(({ data }) => setPlans(data));
+    api.get("/batches").then(({ data }) => setBatches(data));
   }, []);
 
   useEffect(() => {
@@ -72,13 +77,18 @@ export default function Members() {
     }
   }, []);
 
-  const hasFilters = search || status !== "all" || planId !== "all" || outletId !== "all";
+  const hasFilters = search || status !== "all" || planId !== "all" || outletId !== "all" || gender !== "all" || batch !== "all";
+  const readOnly = user?.permission === "view" && user?.role !== "owner";
   const columns = [
     { key: "member", label: "Member", render: (m) => (
       <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/12 font-display text-xs font-bold text-brand">
-          {m.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
-        </div>
+        {m.photo_url ? (
+          <img src={`${process.env.REACT_APP_BACKEND_URL}${m.photo_url}`} alt={m.full_name} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+        ) : (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/12 font-display text-xs font-bold text-brand">
+            {m.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+          </div>
+        )}
         <div>
           <p className="font-medium text-foreground">{m.full_name}</p>
           <p className="font-num text-xs text-muted-foreground">{m.member_code}</p>
@@ -110,16 +120,26 @@ export default function Members() {
         <Button variant="outline" onClick={() => window.open(`${process.env.REACT_APP_BACKEND_URL}/api/export/members`, "_blank")} data-testid="members-export">
           <Download className="mr-1.5 h-4 w-4" />Export
         </Button>
-        <Button className="bg-brand hover:bg-brand-hover" onClick={() => { setEditMember(null); setPrefill(null); setFormOpen(true); }} data-testid="add-member-button">
-          <Plus className="mr-1.5 h-4 w-4" />Add Member
-        </Button>
+        {!readOnly && (
+          <Button className="bg-brand hover:bg-brand-hover" onClick={() => { setEditMember(null); setPrefill(null); setFormOpen(true); }} data-testid="add-member-button">
+            <Plus className="mr-1.5 h-4 w-4" />Add Member
+          </Button>
+        )}
       </PageHeader>
 
       <div className="mb-4 flex flex-wrap items-center gap-2.5" data-testid="members-filters">
-        <div className="w-full sm:w-64"><SearchInput value={search} onChange={setSearch} placeholder="Name, phone or member ID" testid="members-search" /></div>
+        <Select value={searchField} onValueChange={setSearchField}>
+          <SelectTrigger className="h-9 w-32 rounded-r-none border-r-0" data-testid="members-search-field"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name">Name</SelectItem>
+            <SelectItem value="phone">Phone</SelectItem>
+            <SelectItem value="code">Member ID</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="-ml-2.5 w-full sm:w-56"><SearchInput value={search} onChange={setSearch} placeholder="Search members..." testid="members-search" /></div>
         {outlets.length > 1 && (
           <Select value={outletId} onValueChange={(v) => { setOutletId(v); setPage(1); }}>
-            <SelectTrigger className="h-9 w-40" data-testid="members-outlet-filter"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-36" data-testid="members-outlet-filter"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Outlets</SelectItem>
               {outlets.map((o) => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}
@@ -127,11 +147,27 @@ export default function Members() {
           </Select>
         )}
         <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-          <SelectTrigger className="h-9 w-40" data-testid="members-status-filter"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="h-9 w-36" data-testid="members-status-filter"><SelectValue /></SelectTrigger>
           <SelectContent>{STATUSES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
         </Select>
+        <Select value={gender} onValueChange={(v) => { setGender(v); setPage(1); }}>
+          <SelectTrigger className="h-9 w-32" data-testid="members-gender-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Genders</SelectItem>
+            <SelectItem value="Male">Male</SelectItem>
+            <SelectItem value="Female">Female</SelectItem>
+            <SelectItem value="Other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={batch} onValueChange={(v) => { setBatch(v); setPage(1); }}>
+          <SelectTrigger className="h-9 w-36" data-testid="members-batch-filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Batches</SelectItem>
+            {batches.map((b) => <SelectItem key={b.id} value={b.name}>{b.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Select value={planId} onValueChange={(v) => { setPlanId(v); setPage(1); }}>
-          <SelectTrigger className="h-9 w-40" data-testid="members-plan-filter"><SelectValue placeholder="All Plans" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-36" data-testid="members-plan-filter"><SelectValue placeholder="All Plans" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Plans</SelectItem>
             {plans.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
@@ -147,7 +183,7 @@ export default function Members() {
         onRowClick={(m) => setDrawerId(m.id)}
         empty={hasFilters
           ? <EmptyState icon={Users} title="No members match your filters" description="Try a different search or clear the filters."
-                        action={<Button variant="outline" onClick={() => { setSearch(""); setStatus("all"); setPlanId("all"); setOutletId("all"); }} data-testid="members-clear-filters">Clear Filters</Button>} testid="members-filtered-empty" />
+                        action={<Button variant="outline" onClick={() => { setSearch(""); setStatus("all"); setPlanId("all"); setOutletId("all"); setGender("all"); setBatch("all"); }} data-testid="members-clear-filters">Clear Filters</Button>} testid="members-filtered-empty" />
           : <EmptyState icon={Users} title="No members yet" description="Add your first member to begin managing memberships."
                         action={<Button className="bg-brand hover:bg-brand-hover" onClick={() => setFormOpen(true)} data-testid="empty-add-member"><Plus className="mr-1.5 h-4 w-4" />Add Member</Button>} testid="members-empty" />}
       />
