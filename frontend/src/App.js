@@ -26,6 +26,7 @@ import Subscription from "./pages/app/Subscription";
 import Support from "./pages/app/Support";
 import Profile from "./pages/app/Profile";
 import ComingSoon from "./pages/app/ComingSoon";
+import MobileApp from "./mobile/MobileApp";
 
 function FullPageLoader() {
   return (
@@ -97,6 +98,7 @@ function App() {
               <Route path="profile" element={<Profile />} />
               <Route path=":module" element={<ComingSoon />} />
             </Route>
+            <Route path="/m/*" element={<MobileApp />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <Toaster richColors position="top-right" />

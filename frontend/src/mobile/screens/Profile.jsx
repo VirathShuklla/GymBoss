@@ -1,0 +1,84 @@
+import { useNavigate } from "react-router-dom";
+import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "../../contexts/AuthContext";
+import { inr, formatDate } from "../../lib/format";
+import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
+
+export default function Profile() {
+  const navigate = useNavigate();
+  const { user, organisation, subscription, logout } = useAuth();
+  const config = usePublicConfig();
+  const price = subscription?.plan_price_inr || 999;
+
+  const statusText = {
+    trial: `Free trial · ${subscription?.trial_days_left ?? 0} days left`,
+    active: subscription?.subscription_ends_at ? `Active until ${formatDate(subscription.subscription_ends_at)}` : "Active",
+    expired: "Trial ended",
+    payment_due: "Payment due",
+  }[subscription?.status] || subscription?.status;
+
+  const doLogout = async () => {
+    await logout();
+    navigate("/m/welcome", { replace: true });
+  };
+
+  return (
+    <div className="m-anim" data-testid="m-profile">
+      <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">Profile</h1>
+
+      <div className="mt-5 flex items-center gap-4 rounded-3xl border border-border bg-card p-5">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/12 font-display text-xl font-bold text-brand">
+          {user?.full_name?.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate font-display text-lg font-bold text-foreground">{user?.full_name}</p>
+          <p className="truncate text-sm capitalize text-muted-foreground">{user?.role}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-sub-card">
+        <div className="flex items-center gap-2">
+          <Crown className="h-4 w-4 opacity-90" />
+          <p className="text-xs font-bold uppercase tracking-wider opacity-90">GymBoss_VVO Pro</p>
+        </div>
+        <p className="mt-2 font-num text-3xl font-extrabold">{inr(price)}<span className="text-sm font-semibold opacity-80">/month</span></p>
+        <p className="mt-1 text-sm opacity-90">{statusText}</p>
+      </div>
+
+      <div className="mt-4 space-y-2.5">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Your Gym</p>
+        <Row icon={Building2} label={organisation?.name} sub={organisation?.city} />
+        <Row icon={Phone} label={user?.phone || "—"} />
+        <Row icon={Mail} label={user?.email || "—"} />
+      </div>
+
+      <div className="mt-5 space-y-2.5">
+        {config?.whatsapp_number && (
+          <a href={waLink(config.whatsapp_number, "Hi, I need help with GymBoss_VVO.")} target="_blank" rel="noopener noreferrer"
+             className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground" data-testid="m-support-link">
+            <ShieldCheck className="h-5 w-5 text-[#25D366]" /> Help & Support
+            <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+          </a>
+        )}
+        <button onClick={doLogout} data-testid="m-logout"
+          className="flex w-full items-center gap-3 rounded-2xl border border-danger/25 bg-danger/5 px-4 py-3.5 text-sm font-semibold text-danger active:scale-[0.99]">
+          <LogOut className="h-5 w-5" /> Logout
+        </button>
+      </div>
+      <p className="mt-6 text-center text-xs text-muted-foreground/60">GymBoss_VVO · v1.0.0</p>
+    </div>
+  );
+}
+
+function Row({ icon: Icon, label, sub }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5">
+      <Icon className="h-5 w-5 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-foreground">{label}</p>
+        {sub && <p className="truncate text-xs text-muted-foreground">{sub}</p>}
+      </div>
+    </div>
+  );
+}

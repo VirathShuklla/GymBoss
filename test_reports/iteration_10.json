@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only E2E testing of the new mobile PWA at /m on a 390x844 viewport (Playwright, public preview URL). Covered: onboarding (4 slides, Next/Skip/Get Started + gb-m-onboarded flag), Welcome, Login with demo owner, full 3-step Registration of a brand-new gym (same backend), Home dashboard data, bottom nav, all 7 Manage segmented modules, and create flows for Plans, Members, Enquiries, Expenses, Outlets, Staff, plus Templates editor (localStorage persistence) and Profile/Logout. Also did a light desktop regression on /login -> /app/dashboard. Every listed feature passed; no blocking bugs found.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Manage > Enquiry / Expense bottom sheets",
+        "issues": ["Follow-up date and Expense date use the raw native browser date input (input type=date) instead of a styled shadcn calendar/date component; acceptable on mobile but visually inconsistent with the rest of the violet mobile design system"]
+      },
+      {
+        "screen": "Manage > all bottom sheets (Pills component)",
+        "issues": ["Pill option buttons (type, gender, plan, permission, payment method, category) have no data-testid and are not resolvable via get_by_role('button', name=...) inside the vaul drawer portal - tests had to fall back to CSS :has-text selectors. Recommend data-testid={`m-pill-${value}`} in ui.jsx Pills for reliable automation"]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: add data-testid to Pills options in /app/frontend/src/mobile/ui.jsx (m-pill-<value>) so form option selection is testable without text matching",
+    "Optional: replace native date inputs in mobile Enquiries/Expenses sheets with the shadcn calendar/date picker for design consistency"
+  ],
+  "critical_code_review_comments": [
+    "MobileApp.jsx Entry/Protected guards behave correctly (fresh visit -> /m/onboarding, authed -> /m/home, unauthed protected -> /m/welcome).",
+    "Templates are persisted only in localStorage (gb-m-templates-<orgId>) - not synced to backend, so templates will not follow the user across devices/browsers. Confirm this is intentional for this milestone.",
+    "Templates insertToken always appends the token at the end of the draft rather than at the caret position - minor UX nit.",
+    "Register.jsx sends city = outlet_name; acceptable but consider a dedicated city field."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "not tested (frontend-only request)", "frontend": "100% (all 16 requested flows passed)" },
+  "seed_data_creation": "Created on demo gym (Iron Paradise Fitness): plan TEST_Plan_516045 (membership, 1 month, Rs.2500), member TEST_M_516045 (phone 9516045123, Rs.500 paid), enquiry TEST_Enq_516107, expense TEST_Exp_516107 (Rs.750, total moved 79,200 -> 79,950), outlet TEST_Out_516107, staff TEST_Staff_516107 (no login). Also registered a NEW tenant via /m/register: qa.mreg.8516166@example.com / QaTest@2026 (phone 9851616600, gym 'TEST_QA Gym 8516166') which landed on /m/home with a '10d trial left' badge and zeroed metrics/empty states.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (from /app/memory/test_credentials.md); new mobile-registered tenant qa.mreg.8516166@example.com / QaTest@2026",
+  "context_for_next_testing_agent": "Mobile app tested at 390x844 via public URL. Detailed evidence: /m fresh -> /m/onboarding; Next cycles 4 slides, 4th button label 'Get Started'; both Skip and Get Started set localStorage gb-m-onboarded=1 and go to /m/welcome. Login redirects to /m/home showing Today's Collection Rs.45,100, 6 metric tiles (Due 26, Expiry 0, Active 20, Total 51, Enquiries 6, Attendance 18) and populated Recent Transactions. Bottom nav (m-nav-home/manage/profile) and all 7 m-seg-* tabs render their modules. All create flows returned sonner success toasts ('Plan added', 'Member added', 'Enquiry added', 'Expense added', 'Outlet added', 'Staff added', 'Template saved') and the new rows appeared in the lists after reload. Profile shows Demo Owner, GYMBOSS_VVO PRO Rs.999/month, 'Free trial - 8 days left'; m-logout returns to /m/welcome. Desktop regression: /login with same creds -> /app/dashboard renders fully (Total Members 52 after my test data). NOTE: vaul drawer content is not reachable via get_by_role in Playwright - use CSS/data-testid selectors scoped to the sheet testid (m-plan-sheet, m-member-sheet, etc.). Console shows expected 401s from the /api/auth/me probe on unauthenticated screens only.",
+  "rca_of_the_issue": "No defects requiring RCA. The only test-time friction was Playwright get_by_role failing to resolve buttons rendered inside the vaul drawer portal; worked around with scoped CSS text selectors (no product bug)."
+}

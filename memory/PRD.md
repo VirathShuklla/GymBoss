@@ -56,6 +56,15 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Premium mobile bottom tab bar (`src/components/MobileTabBar.jsx`): Home / Members / Check-in / Payments + "More" (opens full nav drawer). Glass blur, safe-area padding, active-tab indicator + glow. Shown only <lg (`data-testid="mobile-tabbar"`, tabs `tab-*`). Main content given bottom padding so nothing sits behind the bar
 - Verified on 390px viewport: tab bar renders, active indicator works, "More" opens the full module drawer; manifest/SW/icons all serve 200
 
+## Implemented — Separate Mobile App (PWA) at /m (2026-06)
+- Built a COMPLETELY SEPARATE mobile app experience at the `/m` route, sharing the same FastAPI backend & accounts (same users can log in AND register). Web app at `/` and `/app` untouched. Violet brand (#7C3AED) with a clean native-style layout modeled on the user's reference screens.
+- PWA `manifest.json` `start_url` now points to `/m` so the installed home-screen app opens straight into the mobile app (installable now; can be wrapped for Play Store/App Store later).
+- Structure (`/app/frontend/src/mobile/`): `MobileApp.jsx` (nested routes + Entry/Protected guards), `MobileLayout.jsx` (floating dark bottom nav: Home/Manage/Profile), `mobile.css`, `ui.jsx` (MButton, BottomSheet=vaul Drawer, Seg, Pills, TextInput/PhoneInput, StatusChip, skeleton/empty).
+- Screens: Onboarding (4-slide carousel, Skip/Next, gb-m-onboarded flag) → Welcome (gym-photo hero, Login / Register) → Login (identifier+password) → Register (3 steps: Gym Info → owner name/email → phone/password → POST /auth/register, starts 10-day trial) → Home (Today's Collection gradient card, quick actions, 6 metric tiles, recent transactions) → Manage (7 segmented modules) → Profile (subscription card + logout).
+- Manage modules (`/app/frontend/src/mobile/manage/`): Members, Plans, Enquiries, Expenses, Outlets, Staff — each a list + bottom-sheet create form wired to real APIs; Templates editor (Plan Expiring/Expired/Pending Due/Birthday Wish) with token insertion + live preview, persisted in localStorage (gb-m-templates-<orgId>) — NOT backend-synced yet.
+- Verified: iteration_10 → 100% (16/16 mobile flows incl. brand-new tenant registration through /m/register) on 390x844; desktop web app regression OK. All create flows return success toasts and rows appear.
+- Known/pending (P2): Templates are localStorage-only (no cross-device sync); mobile Enquiry/Expense use native date inputs; Register maps city = outlet_name.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
