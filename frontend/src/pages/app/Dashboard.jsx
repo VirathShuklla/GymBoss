@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext, useNavigate, Link } from "react-router-dom";
 import {
   IndianRupee, UserPlus, RefreshCw, Wallet, HelpCircle, Zap, Briefcase, Package,
-  Users, CalendarClock, Cake, ClipboardCheck, Plus, X, Check,
+  Users, CalendarClock, Cake, ClipboardCheck, Plus, X, Check, AlertTriangle,
 } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -67,6 +67,28 @@ function OnboardingChecklist({ onboarding, onDismiss }) {
   );
 }
 
+function BillingHaltedAlert() {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-danger/30 bg-danger/8 p-4 sm:flex-row sm:items-center sm:justify-between" data-testid="billing-halted-alert">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-danger/15 text-danger">
+          <AlertTriangle className="h-[18px] w-[18px]" strokeWidth={2.2} />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-foreground">Your monthly payment didn't go through</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Auto-debit was paused after a failed charge. Retry now to keep your GymBoss_VVO access uninterrupted.
+          </p>
+        </div>
+      </div>
+      <Link to="/app/subscription" data-testid="billing-halted-retry"
+            className="shrink-0 rounded-lg bg-danger px-4 py-2.5 text-center text-sm font-semibold text-white transition-opacity hover:opacity-90">
+        Retry Payment
+      </Link>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { outletId } = useOutletContext() || {};
   const { organisation, outlets, reload, user } = useAuth();
@@ -75,6 +97,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState("");
+  const [billingHalted, setBillingHalted] = useState(false);
 
   const outletName = outletId ? outlets.find((o) => o.id === outletId)?.name : null;
 
@@ -88,6 +111,13 @@ export default function Dashboard() {
       .then(([s, t]) => { setSummary(s.data); setTransactions(t.data); })
       .catch(() => setError("We couldn't load your dashboard."));
   }, [outletId]);
+
+  useEffect(() => {
+    if (user?.role !== "owner") return;
+    api.get("/subscription")
+      .then(({ data }) => setBillingHalted(data?.autodebit?.status === "halted"))
+      .catch(() => {});
+  }, [user?.role]);
 
   const dismissOnboarding = async () => {
     await api.put("/onboarding", { dismissed: true });
@@ -111,6 +141,8 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      {billingHalted && <BillingHaltedAlert />}
 
       {organisation && !organisation.onboarding?.dismissed && (
         <OnboardingChecklist onboarding={organisation.onboarding} onDismiss={dismissOnboarding} />

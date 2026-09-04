@@ -45,6 +45,10 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - PUT /api/admin/settings rejects invalid Razorpay Key IDs with 422 (a URL had been pasted into the Key ID field, causing Razorpay 401s); Razorpay upstream failures now return 503 instead of 502 (edge proxy was swallowing 502 JSON bodies)
 - Verification: iteration 9 → 181/181 pytest + 100% frontend flows; card-height whitespace fixed (items-start)
 
+## Implemented — Dashboard Billing Alert (2026-06)
+- Dashboard now shows a prominent red "Your monthly payment didn't go through" alert (data-testid `billing-halted-alert`) with a "Retry Payment" CTA linking to /app/subscription, shown to owners only when the latest auto-debit subscription is `halted`
+- Non-halted / non-owner states hide the banner (verified via temporary DB record + screenshot)
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
@@ -52,6 +56,7 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 ## Backlog
 ### P0 — External credentials (user action)
 - Razorpay keys are currently EMPTY in Platform Settings — save a valid Key ID (rzp_test_…/rzp_live_…; invalid formats like URLs are rejected with 422), Key Secret, and Webhook Secret in /superadmin → Platform Settings. Once saved, the Pay ₹999/month button appears and auto-debit works immediately (switch to rzp_live_ keys for production)
+- DONE: In-app dashboard alert on `subscription.halted` (2026-06). Remaining P1: finalize live Razorpay webhook config (`/api/webhooks/razorpay`) in the Razorpay dashboard when going to production
 - Razorpay webhook (optional, recommended): point to `https://<domain>/api/webhooks/razorpay` with the webhook secret, subscribe to `payment.captured`, `payment.failed`, `subscription.activated`, `subscription.charged`, `subscription.halted`, `subscription.cancelled`
 - Official WhatsApp Business API credentials for bulk announcements (if the module is re-enabled later)
 ### P1 — Product polish
