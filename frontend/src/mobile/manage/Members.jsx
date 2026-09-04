@@ -1,20 +1,33 @@
 import { useEffect, useState } from "react";
-import { Users } from "lucide-react";
+import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
-import { inr } from "../../lib/format";
+import { inr, formatDate } from "../../lib/format";
+import { useAuth } from "../../contexts/AuthContext";
+import { waMe } from "../../lib/whatsapp";
+import { buildReminderOptions } from "../reminders";
 import { MButton, Field, TextInput, PhoneInput, Pills, BottomSheet, ListSkeleton, EmptyRow, StatusChip } from "../ui";
 import { ModuleHeader } from "./ModuleHeader";
 
 const EMPTY = { full_name: "", phone: "", gender: "Male", plan_id: "", batch: "", admission_amount: "", amount_paid: "", discount: "", payment_method: "Cash" };
 
 export default function Members({ autoAdd }) {
+  const { organisation } = useAuth();
   const [items, setItems] = useState(null);
   const [plans, setPlans] = useState([]);
   const [open, setOpen] = useState(autoAdd === "member");
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  // member actions
+  const [active, setActive] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [view, setView] = useState(null); // menu | renew | payment | reminder
+  const [remSel, setRemSel] = useState(null);
+  const [rf, setRf] = useState({ plan_id: "", discount: "", amount_paid: "", payment_method: "Cash" });
+  const [pf, setPf] = useState({ amount: "", method: "Cash" });
+  const [abusy, setAbusy] = useState(false);
 
   const load = () => api.get("/members?limit=100").then(({ data }) => setItems(data.items)).catch(() => setItems([]));
   useEffect(() => {
@@ -48,6 +61,57 @@ export default function Members({ autoAdd }) {
     }
   };
 
+  const openMember = (m) => {
+    setActive(m);
+    setDetail(null);
+    setRemSel(null);
+    setRf({ plan_id: "", discount: "", amount_paid: "", payment_method: "Cash" });
+    setPf({ amount: String(m.due_amount || ""), method: "Cash" });
+    setView("menu");
+    api.get(`/members/${m.id}`).then(({ data }) => setDetail(data)).catch(() => {});
+  };
+  const closeActions = () => { setView(null); setActive(null); setDetail(null); setRemSel(null); };
+
+  const cur = detail?.member || active;
+
+  const doRenew = async () => {
+    if (!rf.plan_id) return toast.error("Please select a plan");
+    setAbusy(true);
+    try {
+      await api.post(`/members/${active.id}/renew`, {
+        plan_id: rf.plan_id,
+        discount: Number(rf.discount) || 0,
+        amount_paid: Number(rf.amount_paid) || 0,
+        payment_method: rf.payment_method,
+      });
+      toast.success("Membership renewed");
+      closeActions();
+      load();
+    } catch (e) {
+      toast.error(apiError(e, "Could not renew"));
+    } finally {
+      setAbusy(false);
+    }
+  };
+
+  const doPayment = async () => {
+    if (!(Number(pf.amount) > 0)) return toast.error("Enter a valid amount");
+    setAbusy(true);
+    try {
+      await api.post("/payments", { member_id: active.id, amount: Number(pf.amount), method: pf.method });
+      toast.success("Payment recorded");
+      closeActions();
+      load();
+    } catch (e) {
+      toast.error(apiError(e, "Could not record payment"));
+    } finally {
+      setAbusy(false);
+    }
+  };
+
+  const remOptions = buildReminderOptions(cur, organisation?.name, detail?.payments);
+  const sheetTitle = { menu: cur?.full_name, renew: "Renew Membership", payment: "Record Payment", reminder: "Send WhatsApp Reminder" }[view];
+
   return (
     <div data-testid="m-members">
       <ModuleHeader title={items ? `${items.length} members` : "Members"} onAdd={() => setOpen(true)} addLabel="Add Member" testid="m-members-add" />
@@ -58,7 +122,8 @@ export default function Members({ autoAdd }) {
       ) : (
         <div className="space-y-2.5">
           {items.map((m) => (
-            <div key={m.id} className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3" data-testid={`m-member-${m.id}`}>
+            <button key={m.id} onClick={() => openMember(m)} data-testid={`m-member-${m.id}`}
+              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left active:scale-[0.99]">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/12 font-display text-sm font-bold text-brand">
                 {m.full_name?.slice(0, 2).toUpperCase()}
               </div>
@@ -70,11 +135,13 @@ export default function Members({ autoAdd }) {
                 <StatusChip status={m.status} />
                 {m.due_amount > 0 && <span className="font-num text-[11px] font-bold text-danger">Due {inr(m.due_amount)}</span>}
               </div>
-            </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
           ))}
         </div>
       )}
 
+      {/* Add member */}
       <BottomSheet open={open} onOpenChange={setOpen} title="Add New Member" subtitle="Add member profile." testid="m-member-sheet">
         <Field label="Full name"><TextInput data-testid="m-member-name" value={f.full_name} onChange={set("full_name")} placeholder="Member name" /></Field>
         <Field label="Mobile number"><PhoneInput data-testid="m-member-phone" value={f.phone} onChange={set("phone")} /></Field>
@@ -95,6 +162,103 @@ export default function Members({ autoAdd }) {
         <Field label="Payment method"><Pills options={["Cash", "UPI", "Card"]} value={f.payment_method} onChange={(v) => setF({ ...f, payment_method: v })} /></Field>
         <MButton onClick={submit} loading={busy} disabled={f.full_name.trim().length < 2 || f.phone.replace(/\D/g, "").length !== 10} data-testid="m-member-save">Add Member</MButton>
       </BottomSheet>
+
+      {/* Member actions */}
+      <BottomSheet open={!!view} onOpenChange={(o) => !o && closeActions()} title={sheetTitle}
+        subtitle={view === "menu" && cur ? `${cur.member_code} · ${cur.plan_name}` : undefined} testid="m-member-actions">
+        {view === "menu" && cur && (
+          <>
+            <div className="flex items-center justify-between rounded-2xl bg-secondary/60 px-4 py-3">
+              <StatusChip status={cur.status} />
+              <div className="text-right">
+                <p className="text-[11px] text-muted-foreground">Expires {formatDate(cur.membership_expiry)}</p>
+                {cur.due_amount > 0 && <p className="font-num text-xs font-bold text-danger">Due {inr(cur.due_amount)}</p>}
+              </div>
+            </div>
+            <ActionRow icon={RefreshCw} tile="bg-brand/12 text-brand" title="Renew Membership" desc="Extend with a plan" onClick={() => setView("renew")} testid="m-action-renew" />
+            <ActionRow icon={IndianRupee} tile="bg-success/12 text-success" title="Record Payment" desc={cur.due_amount > 0 ? `Collect towards ${inr(cur.due_amount)} due` : "Collect a payment"} onClick={() => setView("payment")} testid="m-action-payment" />
+            <ActionRow icon={MessageCircle} tile="bg-[#25D366]/12 text-[#25D366]" title="Send WhatsApp Reminder" desc="Expiry, dues or invoice" onClick={() => setView("reminder")} testid="m-action-reminder" />
+          </>
+        )}
+
+        {view === "renew" && (
+          <>
+            <BackBtn onClick={() => setView("menu")} />
+            <Field label="New plan">
+              {plans.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No membership plans yet.</p>
+              ) : (
+                <Pills options={plans.map((p) => ({ value: p.id, label: `${p.name} · ${inr(p.price)}` }))} value={rf.plan_id} onChange={(v) => setRf({ ...rf, plan_id: v })} />
+              )}
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Discount"><TextInput inputMode="numeric" value={rf.discount} onChange={(e) => setRf({ ...rf, discount: e.target.value })} placeholder="0" /></Field>
+              <Field label="Amount collected"><TextInput inputMode="numeric" data-testid="m-renew-paid" value={rf.amount_paid} onChange={(e) => setRf({ ...rf, amount_paid: e.target.value })} placeholder="0" /></Field>
+            </div>
+            <Field label="Payment method"><Pills options={["Cash", "UPI", "Card"]} value={rf.payment_method} onChange={(v) => setRf({ ...rf, payment_method: v })} /></Field>
+            <MButton onClick={doRenew} loading={abusy} disabled={!rf.plan_id} data-testid="m-renew-save">Renew Membership</MButton>
+          </>
+        )}
+
+        {view === "payment" && (
+          <>
+            <BackBtn onClick={() => setView("menu")} />
+            {cur?.due_amount > 0 && <p className="rounded-xl bg-danger/8 px-3 py-2 text-xs font-semibold text-danger">Outstanding due: {inr(cur.due_amount)}</p>}
+            <Field label="Amount"><TextInput inputMode="numeric" data-testid="m-payment-amount" value={pf.amount} onChange={(e) => setPf({ ...pf, amount: e.target.value })} placeholder="0" /></Field>
+            <Field label="Method"><Pills options={["Cash", "UPI", "Card", "Bank Transfer"]} value={pf.method} onChange={(v) => setPf({ ...pf, method: v })} /></Field>
+            <MButton onClick={doPayment} loading={abusy} disabled={!(Number(pf.amount) > 0)} data-testid="m-payment-save">Record Payment</MButton>
+          </>
+        )}
+
+        {view === "reminder" && (
+          <>
+            <BackBtn onClick={() => (remSel ? setRemSel(null) : setView("menu"))} />
+            {!remSel ? (
+              remOptions.length === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">No reminders available for this member.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {remOptions.map((opt) => (
+                    <ActionRow key={opt.key} icon={opt.icon} tile={opt.tile} title={opt.title} desc={opt.desc} onClick={() => setRemSel(opt)} testid={`m-reminder-${opt.key}`} />
+                  ))}
+                </div>
+              )
+            ) : (
+              <>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{remSel.title} — preview</p>
+                <div className="whitespace-pre-line rounded-2xl border border-border bg-secondary/50 p-4 text-sm leading-relaxed text-foreground" data-testid="m-reminder-preview">{remSel.message}</div>
+                <a href={waMe(cur.phone, remSel.message)} target="_blank" rel="noopener noreferrer" onClick={closeActions}
+                  className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#25D366] text-[15px] font-semibold text-white active:scale-[0.98]"
+                  data-testid="m-reminder-send">
+                  <MessageCircle className="h-5 w-5" /> Send via WhatsApp
+                </a>
+              </>
+            )}
+          </>
+        )}
+      </BottomSheet>
     </div>
+  );
+}
+
+function ActionRow({ icon: Icon, tile, title, desc, onClick, testid }) {
+  return (
+    <button onClick={onClick} data-testid={testid}
+      className="flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card px-4 py-3.5 text-left active:scale-[0.99]">
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${tile}`}><Icon className="h-5 w-5" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold text-foreground">{title}</span>
+        <span className="block truncate text-xs text-muted-foreground">{desc}</span>
+      </span>
+      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+    </button>
+  );
+}
+
+function BackBtn({ onClick }) {
+  return (
+    <button onClick={onClick} className="mb-1 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground" data-testid="m-action-back">
+      <ChevronLeft className="h-3.5 w-3.5" /> Back
+    </button>
   );
 }

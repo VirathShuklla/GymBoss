@@ -1,13 +1,14 @@
 import { useNavigate } from "react-router-dom";
-import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck } from "lucide-react";
-import { toast } from "sonner";
+import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck, Sun, Moon, Monitor } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import { useTheme } from "../../contexts/ThemeContext";
 import { inr, formatDate } from "../../lib/format";
 import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
 
 export default function Profile() {
   const navigate = useNavigate();
   const { user, organisation, subscription, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const config = usePublicConfig();
   const price = subscription?.plan_price_inr || 999;
 
@@ -51,6 +52,18 @@ export default function Profile() {
         <Row icon={Building2} label={organisation?.name} sub={organisation?.city} />
         <Row icon={Phone} label={user?.phone || "—"} />
         <Row icon={Mail} label={user?.email || "—"} />
+      </div>
+
+      <div className="mt-5">
+        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Appearance</p>
+        <div className="mt-2 grid grid-cols-3 gap-2" data-testid="m-appearance">
+          {[{ v: "light", l: "Light", I: Sun }, { v: "dark", l: "Dark", I: Moon }, { v: "system", l: "System", I: Monitor }].map(({ v, l, I }) => (
+            <button key={v} onClick={() => setTheme(v)} data-testid={`m-theme-${v}`}
+              className={`flex flex-col items-center gap-1.5 rounded-2xl border py-3 text-xs font-semibold transition-colors ${theme === v ? "border-brand bg-brand/10 text-brand" : "border-border bg-card text-muted-foreground"}`}>
+              <I className="h-5 w-5" /> {l}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-5 space-y-2.5">

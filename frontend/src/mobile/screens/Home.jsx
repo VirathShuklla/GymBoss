@@ -4,7 +4,7 @@ import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, ClipboardCheck, U
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
-import { ListSkeleton } from "../ui";
+import { ListSkeleton, MThemeToggle } from "../ui";
 
 const METRICS = [
   { key: "due_members", label: "Due Members", icon: Wallet, color: "text-danger" },
@@ -35,11 +35,14 @@ export default function Home() {
           <p className="text-sm text-muted-foreground">Hi {user?.full_name?.split(" ")[0] || "there"} 👋</p>
           <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">{organisation?.name}</h1>
         </div>
-        {trial && (
-          <button onClick={() => navigate("/m/profile")} className="rounded-full bg-brand/10 px-3 py-1.5 text-xs font-bold text-brand" data-testid="m-trial-badge">
-            {subscription?.trial_days_left}d trial left
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {trial && (
+            <button onClick={() => navigate("/m/profile")} className="rounded-full bg-brand/10 px-3 py-1.5 text-xs font-bold text-brand" data-testid="m-trial-badge">
+              {subscription?.trial_days_left}d trial left
+            </button>
+          )}
+          <MThemeToggle />
+        </div>
       </div>
 
       <div className="mt-5 overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-today-card">

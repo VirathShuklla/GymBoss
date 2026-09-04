@@ -7,7 +7,6 @@ import Enquiries from "../manage/Enquiries";
 import Expenses from "../manage/Expenses";
 import Outlets from "../manage/Outlets";
 import Staff from "../manage/Staff";
-import Templates from "../manage/Templates";
 
 const TABS = [
   { value: "members", label: "Members", C: Members },
@@ -16,7 +15,6 @@ const TABS = [
   { value: "expenses", label: "Expense", C: Expenses },
   { value: "outlets", label: "Outlet", C: Outlets },
   { value: "staff", label: "Staff / Admin", C: Staff },
-  { value: "templates", label: "Templates", C: Templates },
 ];
 
 export default function Manage() {

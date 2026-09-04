@@ -1,6 +1,22 @@
-import { Loader2 } from "lucide-react";
+import { Loader2, Sun, Moon } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useTheme } from "../contexts/ThemeContext";
 import { Drawer, DrawerContent } from "../components/ui/drawer";
+
+export function MThemeToggle() {
+  const { setTheme } = useTheme();
+  const toggle = () => {
+    const dark = document.documentElement.classList.contains("dark");
+    setTheme(dark ? "light" : "dark");
+  };
+  return (
+    <button onClick={toggle} data-testid="m-theme-toggle" aria-label="Toggle theme"
+      className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground active:scale-95">
+      <Sun className="h-5 w-5 dark:hidden" />
+      <Moon className="hidden h-5 w-5 dark:block" />
+    </button>
+  );
+}
 
 export function MButton({ variant = "primary", loading, className, children, ...props }) {
   const styles = {

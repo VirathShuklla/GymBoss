@@ -63,7 +63,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Screens: Onboarding (4-slide carousel, Skip/Next, gb-m-onboarded flag) → Welcome (gym-photo hero, Login / Register) → Login (identifier+password) → Register (3 steps: Gym Info → owner name/email → phone/password → POST /auth/register, starts 10-day trial) → Home (Today's Collection gradient card, quick actions, 6 metric tiles, recent transactions) → Manage (7 segmented modules) → Profile (subscription card + logout).
 - Manage modules (`/app/frontend/src/mobile/manage/`): Members, Plans, Enquiries, Expenses, Outlets, Staff — each a list + bottom-sheet create form wired to real APIs; Templates editor (Plan Expiring/Expired/Pending Due/Birthday Wish) with token insertion + live preview, persisted in localStorage (gb-m-templates-<orgId>) — NOT backend-synced yet.
 - Verified: iteration_10 → 100% (16/16 mobile flows incl. brand-new tenant registration through /m/register) on 390x844; desktop web app regression OK. All create flows return success toasts and rows appear.
-- Known/pending (P2): Templates are localStorage-only (no cross-device sync); mobile Enquiry/Expense use native date inputs; Register maps city = outlet_name.
+- Known/pending (P2): mobile Enquiry/Expense use native date inputs; Register maps city = outlet_name.
+
+## Mobile app updates (2026-06)
+- Removed the mobile "Templates" Manage tab (kept simple, matching the web app; Templates.jsx deleted).
+- Member Actions: tapping a member row on mobile opens an actions sheet (`m-member-actions`) with member summary + Renew Membership (POST /members/{id}/renew), Record Payment (POST /payments), and Send WhatsApp Reminder (expiry/payment/invoice messages via `buildReminderOptions` → wa.me). Test-ids: m-action-renew/payment/reminder, m-renew-save, m-payment-save, m-reminder-send. Verified: payment + renew toasts fire and list refreshes.
+- Light/Dark/System theming in the mobile app: quick sun/moon toggle in the Home header (`m-theme-toggle`) + Light/Dark/System selector in Profile (`m-appearance`, m-theme-light/dark/system), reusing the shared ThemeContext. Verified dark mode renders correctly.
+- Pills options now carry `data-testid={m-pill-<value>}` for reliable automation.
 
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
