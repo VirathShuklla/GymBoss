@@ -39,13 +39,19 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 **M5 — Business + Billing**: Finance (range filters, revenue/expense/net/outstanding, by-method, by-category, transactions), Reports (revenue trend, member growth, outstanding dues, membership expiry, enquiry conversion), Export Center (7 CSV datasets), Subscription page with **Razorpay auto-debit subscriptions** (Plan entity cached per price, UPI Autopay/card recurring, subscription create → checkout authorization → HMAC verify → +30 days, monthly `subscription.charged` webhooks auto-extend access, `subscription.halted` shows paused state, `cancelled/completed` honored, Cancel Auto-Renew keeps access until paid-through date) plus manual one-month payment fallback, super-admin-managed keys (settings override env), dynamic plan price (plan_price_inr in platform settings propagates to landing hero/pricing/FAQ/CTA, paywall, subscription page, billing amount, MRR), BuildVVO Super Admin console (overview KPIs, gyms table, gym detail, disable/reactivate with audit, platform settings, audit logs).
 **Quality**: 163/163 pytest + Playwright regression through iteration 7 (100%); startup migrations (plan type backfill, staff role casing, counter init + unique member_code index, demo batches/catalogue); 3-step member modal with live payment summary; DateField pickers (dd MMM yyyy, "Sep" normalized); filtered-vs-first-run empty states; tenant isolation verified both directions; receipt parity across payment flows; trial expiry auto-blocks app (paywall), subscription payments extend access continuously.
 
+## Implemented — Subscription UX + Billing Hardening (2026-09-04)
+- Subscription page redesign verified: single "Pay ₹{price}/month" CTA (auto-debit internally, never labeled as such), no cancel UI on the page, violet plan card, trial progress bar, payment history; cancellation lives only in My Profile as a small button (visible only when an auto-debit subscription exists, behind ConfirmDialog)
+- razorpay_configured now requires a valid-format key (rzp_test_/rzp_live_); invalid/absent keys render a graceful "payments being enabled" card with WhatsApp link + support-email fallback
+- PUT /api/admin/settings rejects invalid Razorpay Key IDs with 422 (a URL had been pasted into the Key ID field, causing Razorpay 401s); Razorpay upstream failures now return 503 instead of 502 (edge proxy was swallowing 502 JSON bodies)
+- Verification: iteration 9 → 181/181 pytest + 100% frontend flows; card-height whitespace fixed (items-start)
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
 
 ## Backlog
 ### P0 — External credentials (user action)
-- Razorpay keys were wiped by a test-suite cleanup — re-save Key ID / Key Secret (and Webhook Secret) in /superadmin → Platform Settings. Once saved, both manual monthly payment AND auto-debit subscriptions work immediately (test mode verified flow; switch to rzp_live_ keys for production)
+- Razorpay keys are currently EMPTY in Platform Settings — save a valid Key ID (rzp_test_…/rzp_live_…; invalid formats like URLs are rejected with 422), Key Secret, and Webhook Secret in /superadmin → Platform Settings. Once saved, the Pay ₹999/month button appears and auto-debit works immediately (switch to rzp_live_ keys for production)
 - Razorpay webhook (optional, recommended): point to `https://<domain>/api/webhooks/razorpay` with the webhook secret, subscribe to `payment.captured`, `payment.failed`, `subscription.activated`, `subscription.charged`, `subscription.halted`, `subscription.cancelled`
 - Official WhatsApp Business API credentials for bulk announcements (if the module is re-enabled later)
 ### P1 — Product polish

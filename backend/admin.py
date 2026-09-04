@@ -131,6 +131,11 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
         if data["plan_price_inr"] is None or int(data["plan_price_inr"]) < 1:
             raise HTTPException(422, "Price must be at least ₹1")
         data["plan_price_inr"] = int(data["plan_price_inr"])
+    if data.get("razorpay_key_id"):
+        kid = data["razorpay_key_id"].strip()
+        if not kid.startswith(("rzp_test_", "rzp_live_")):
+            raise HTTPException(422, "Razorpay Key ID must start with rzp_test_ or rzp_live_ — paste the Key ID from your Razorpay dashboard, not a link.")
+        data["razorpay_key_id"] = kid
     if not data:
         return await db.settings.find_one({"id": "platform"}, {"_id": 0})
     await db.settings.update_one({"id": "platform"}, {"$set": data}, upsert=True)

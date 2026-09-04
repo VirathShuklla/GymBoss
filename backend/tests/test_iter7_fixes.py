@@ -58,6 +58,8 @@ class TestPlatformSettingsFixed:
         assert r.status_code == 422
 
     def test_partial_save_preserves_other_keys(self, superadmin):
+        # snapshot real settings so we can restore them exactly (avoid polluting the platform)
+        original = superadmin.get(f"{API}/admin/settings").json()
         # seed a razorpay key + support email
         seed = superadmin.put(f"{API}/admin/settings", json={
             "razorpay_key_id": "rzp_test_PRESERVE",
@@ -85,14 +87,24 @@ class TestPlatformSettingsFixed:
         assert pub.status_code == 200
         assert pub.json()["plan_price_inr"] == 777
 
-        # restore
-        rest = superadmin.put(f"{API}/admin/settings", json={
-            "plan_price_inr": 999, "razorpay_key_id": "", "razorpay_key_secret": "",
-            "razorpay_webhook_secret": "", "whatsapp_number": "",
-        })
-        assert rest.status_code == 200
-        assert rest.json()["plan_price_inr"] == 999
-        assert rest.json()["razorpay_key_id"] == ""
+        # restore the original values (razorpay_key_id restored only if it is valid-format,
+        # since PUT now rejects non rzp_ keys with 422)
+        restore = {
+            "plan_price_inr": original.get("plan_price_inr") or 999,
+            "razorpay_key_secret": original.get("razorpay_key_secret", ""),
+            "razorpay_webhook_secret": original.get("razorpay_webhook_secret", ""),
+            "whatsapp_number": original.get("whatsapp_number", ""),
+            "support_email": original.get("support_email", ""),
+            "play_store_url": original.get("play_store_url", ""),
+            "app_store_url": original.get("app_store_url", ""),
+        }
+        orig_key = (original.get("razorpay_key_id") or "").strip()
+        restore["razorpay_key_id"] = orig_key if orig_key.startswith(("rzp_test_", "rzp_live_")) else ""
+        rest = superadmin.put(f"{API}/admin/settings", json=restore)
+        assert rest.status_code == 200, rest.text[:300]
+        assert rest.json()["plan_price_inr"] == restore["plan_price_inr"]
+        assert rest.json()["support_email"] == restore["support_email"]
+        assert rest.json()["whatsapp_number"] == restore["whatsapp_number"]
 
 
 # --- deps.require_write + ops DELETE /staff -----------------------------------

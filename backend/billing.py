@@ -23,7 +23,7 @@ async def razorpay_request(method: str, path: str, payload: dict | None = None):
         resp = await http.request(method, f"https://api.razorpay.com/v1{path}", auth=(key_id, key_secret), json=payload)
     if resp.status_code >= 400:
         logger.error("Razorpay %s %s failed: %s %s", method, path, resp.status_code, resp.text[:300])
-        raise HTTPException(502, "Payment gateway error. Please try again or contact support.")
+        raise HTTPException(503, "Payment gateway error. Please try again or contact support.")
     return resp.json(), key_id
 
 
@@ -41,7 +41,7 @@ async def get_subscription(user: dict = Depends(get_org_user)):
     return {
         "subscription": derive_subscription(org, price),
         "payments": payments,
-        "razorpay_configured": bool(key_id),
+        "razorpay_configured": bool(key_id) and key_id.startswith(("rzp_test_", "rzp_live_")),
         "autodebit": autodebit,
     }
 
@@ -60,7 +60,7 @@ async def create_order(user: dict = Depends(get_org_user)):
             json={"amount": price * 100, "currency": "INR", "receipt": f"sub_{org_id[:24]}", "payment_capture": 1},
         )
     if resp.status_code >= 400:
-        raise HTTPException(502, "Could not create a payment order. Please try again.")
+        raise HTTPException(503, "Could not create a payment order. Please try again.")
     order = resp.json()
     await db.subscription_payments.insert_one({
         "id": new_id(), "organisation_id": org_id, "order_id": order["id"],
