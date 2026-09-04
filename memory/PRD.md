@@ -70,6 +70,7 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Member Actions: tapping a member row on mobile opens an actions sheet (`m-member-actions`) with member summary + Renew Membership (POST /members/{id}/renew), Record Payment (POST /payments), and Send WhatsApp Reminder (expiry/payment/invoice messages via `buildReminderOptions` → wa.me). Test-ids: m-action-renew/payment/reminder, m-renew-save, m-payment-save, m-reminder-send. Verified: payment + renew toasts fire and list refreshes.
 - Light/Dark/System theming in the mobile app: quick sun/moon toggle in the Home header (`m-theme-toggle`) + Light/Dark/System selector in Profile (`m-appearance`, m-theme-light/dark/system), reusing the shared ThemeContext. Verified dark mode renders correctly.
 - Pills options now carry `data-testid={m-pill-<value>}` for reliable automation.
+- Mobile Members search: debounced search bar (`m-members-search`, clear `m-members-search-clear`) hitting `GET /members?search=` (name/phone/member code). Verified: 52 → 1 result for "Aarav".
 
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026

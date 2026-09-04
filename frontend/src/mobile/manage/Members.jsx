@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft } from "lucide-react";
+import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -18,6 +18,7 @@ export default function Members({ autoAdd }) {
   const [open, setOpen] = useState(autoAdd === "member");
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState("");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   // member actions
@@ -29,11 +30,16 @@ export default function Members({ autoAdd }) {
   const [pf, setPf] = useState({ amount: "", method: "Cash" });
   const [abusy, setAbusy] = useState(false);
 
-  const load = () => api.get("/members?limit=100").then(({ data }) => setItems(data.items)).catch(() => setItems([]));
+  const load = (search = q) =>
+    api.get(`/members?limit=100${search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`).then(({ data }) => setItems(data.items)).catch(() => setItems([]));
   useEffect(() => {
-    load();
+    load("");
     api.get("/plans?type=membership").then(({ data }) => setPlans(data)).catch(() => {});
   }, []);
+  useEffect(() => {
+    const t = setTimeout(() => load(q), 350);
+    return () => clearTimeout(t);
+  }, [q]);
 
   const submit = async () => {
     if (!f.plan_id) return toast.error("Please select a membership plan");
@@ -115,10 +121,26 @@ export default function Members({ autoAdd }) {
   return (
     <div data-testid="m-members">
       <ModuleHeader title={items ? `${items.length} members` : "Members"} onAdd={() => setOpen(true)} addLabel="Add Member" testid="m-members-add" />
+      <div className="relative mb-3">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          data-testid="m-members-search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name, phone or ID"
+          className="h-12 w-full rounded-xl border border-input bg-background pl-10 pr-10 text-[15px] text-foreground outline-none placeholder:text-muted-foreground focus:border-brand"
+        />
+        {q && (
+          <button onClick={() => setQ("")} data-testid="m-members-search-clear" aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
       {!items ? (
         <ListSkeleton />
       ) : items.length === 0 ? (
-        <EmptyRow icon={Users} title="No members yet" subtitle="Add your first member to get started." testid="m-members-empty" />
+        <EmptyRow icon={Users} title={q ? "No members found" : "No members yet"} subtitle={q ? "Try a different name, phone or ID." : "Add your first member to get started."} testid="m-members-empty" />
       ) : (
         <div className="space-y-2.5">
           {items.map((m) => (
