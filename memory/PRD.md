@@ -49,6 +49,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Dashboard now shows a prominent red "Your monthly payment didn't go through" alert (data-testid `billing-halted-alert`) with a "Retry Payment" CTA linking to /app/subscription, shown to owners only when the latest auto-debit subscription is `halted`
 - Non-halted / non-owner states hide the banner (verified via temporary DB record + screenshot)
 
+## Implemented — Installable PWA / Mobile App (2026-06)
+- Turned the web app into an installable Progressive Web App (add-to-home-screen, standalone fullscreen, same FastAPI backend & login accounts — full owner/staff parity):
+  - `public/manifest.json` (name, standalone, portrait, theme #7C3AED, icons any + maskable), PWA icons (icon-192/512/maskable-512.png generated from violet dumbbell art), apple-touch-icon + iOS web-app meta tags, `viewport-fit=cover`
+  - `public/service-worker.js` — network-first for same-origin GETs with offline cache fallback; never caches `/api`; registered in `src/index.js`
+  - Premium mobile bottom tab bar (`src/components/MobileTabBar.jsx`): Home / Members / Check-in / Payments + "More" (opens full nav drawer). Glass blur, safe-area padding, active-tab indicator + glow. Shown only <lg (`data-testid="mobile-tabbar"`, tabs `tab-*`). Main content given bottom padding so nothing sits behind the bar
+- Verified on 390px viewport: tab bar renders, active indicator works, "More" opens the full module drawer; manifest/SW/icons all serve 200
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

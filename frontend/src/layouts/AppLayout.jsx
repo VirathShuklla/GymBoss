@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Logo } from "../components/Logo";
+import { MobileTabBar } from "../components/MobileTabBar";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { usePublicConfig, waLink } from "../hooks/usePublicConfig";
 import { inr } from "../lib/format";
@@ -217,12 +218,13 @@ export default function AppLayout() {
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="flex-1 px-4 py-6 pb-[calc(84px+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-8">
           <div className="mx-auto w-full max-w-[1440px]">
             <Outlet context={{ outletId: outletId === "all" ? undefined : outletId }} />
           </div>
         </main>
       </div>
+      <MobileTabBar onMore={() => setMobileOpen(true)} />
     </div>
   );
 }
