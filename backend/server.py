@@ -675,6 +675,8 @@ async def startup():
     await db.plans.create_index("organisation_id")
     await db.announcements.create_index("organisation_id")
     await db.subscription_payments.create_index("organisation_id")
+    await db.subscriptions.create_index("organisation_id")
+    await db.subscriptions.create_index("razorpay_subscription_id")
     await db.audit_logs.create_index("created_at")
     await db.plans.update_many({"type": {"$exists": False}}, [{"$set": {"type": {"$ifNull": ["$category", "membership"]}}}])
     await db.staff.update_many({}, [{"$set": {"role": {"$toLower": "$role"}}}])
