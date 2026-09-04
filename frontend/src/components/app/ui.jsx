@@ -71,7 +71,7 @@ export function DataTable({ columns, rows, loading, empty, onRowClick, testid, r
     <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-card" data-testid={testid}>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-border text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border bg-secondary/40 text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
             {columns.map((c) => (
               <th key={c.key} className={`px-4 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.label}</th>
             ))}
@@ -89,10 +89,10 @@ export function DataTable({ columns, rows, loading, empty, onRowClick, testid, r
           ) : (
             rows.map((row) => (
               <tr key={row[rowKey]} onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-border/60 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-secondary/40" : ""}`}
+                  className={`border-b border-border/60 transition-colors last:border-0 ${onRowClick ? "cursor-pointer hover:bg-brand/5" : ""}`}
                   data-testid={`${testid}-row-${row[rowKey]}`}>
                 {columns.map((c) => (
-                  <td key={c.key} className={`px-4 py-2.5 ${c.align === "right" ? "text-right" : ""}`}>
+                  <td key={c.key} className={`px-4 py-3 ${c.align === "right" ? "text-right" : ""}`}>
                     {c.render ? c.render(row) : row[c.key] ?? "—"}
                   </td>
                 ))}
@@ -105,12 +105,12 @@ export function DataTable({ columns, rows, loading, empty, onRowClick, testid, r
   );
 }
 
-export function SearchInput({ value, onChange, placeholder = "Search...", testid }) {
+export function SearchInput({ value, onChange, placeholder = "Search...", testid, joined = false }) {
   return (
     <div className="relative">
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-             className="h-9 rounded-lg pl-9" data-testid={testid} />
+             className={`h-9 pl-9 ${joined ? "rounded-l-lg rounded-r-lg sm:rounded-l-none sm:rounded-r-lg" : "rounded-lg"}`} data-testid={testid} />
     </div>
   );
 }

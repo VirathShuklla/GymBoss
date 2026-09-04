@@ -17,6 +17,7 @@ import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { StatusBadge, ConfirmDialog, DateField } from "./ui";
 import { ReceiptModal } from "./ReceiptModal";
+import { ReminderModal } from "./ReminderModal";
 
 const METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"];
 
@@ -45,6 +46,7 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
   const [payOpen, setPayOpen] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reminderOpen, setReminderOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [busy, setBusy] = useState(false);
   const defaultFreezeUntil = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -215,7 +217,7 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                     </>
                   )}
                   <div className="space-y-1 pt-1">
-                    <ActionRow icon={BellRing} label="Send Payment Reminder" onClick={() => { setWaTemplate("payment_reminder"); setWaOpen(true); }} testid="action-payment-reminder" />
+                    <ActionRow icon={BellRing} label="Send Payment Reminder" onClick={() => setReminderOpen(true)} testid="action-payment-reminder" />
                     <ActionRow icon={Receipt} label="Transaction History" onClick={() => setView("payments")} testid="action-transaction-history" />
                   </div>
                   <button onClick={onClose} data-testid="action-sheet-close"
@@ -394,6 +396,10 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                      description={`Are you sure you want to delete ${m?.full_name}? This action cannot be undone.`}
                      confirmLabel="Delete Member" />
       <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
+      {m && (
+        <ReminderModal member={m} gymName={organisation?.name} payments={data?.payments}
+                       open={reminderOpen} onClose={() => setReminderOpen(false)} />
+      )}
     </>
   );
 }

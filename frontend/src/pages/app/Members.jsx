@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
-import { Plus, Users, Download } from "lucide-react";
+import { Plus, Users, Download, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../lib/api";
 import { inr, formatDate, formatPhone } from "../../lib/format";
@@ -9,6 +9,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { PageHeader, DataTable, SearchInput, StatusBadge, EmptyState, Pagination } from "../../components/app/ui";
 import { MemberForm } from "../../components/app/MemberForm";
 import { MemberDrawer } from "../../components/app/MemberDrawer";
+import { ReminderModal } from "../../components/app/ReminderModal";
 import { Button } from "../../components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
@@ -21,7 +22,7 @@ const STATUSES = [
 ];
 
 export default function Members() {
-  const { outlets, user } = useAuth();
+  const { outlets, user, organisation } = useAuth();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState({ items: [], total: 0 });
@@ -40,6 +41,16 @@ export default function Members() {
   const [editMember, setEditMember] = useState(null);
   const [prefill, setPrefill] = useState(null);
   const [drawerId, setDrawerId] = useState(null);
+  const [reminder, setReminder] = useState(null);
+
+  const openReminder = async (m) => {
+    try {
+      const { data } = await api.get(`/members/${m.id}`);
+      setReminder({ member: data.member, payments: data.payments });
+    } catch {
+      toast.error("Couldn't load member details");
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -98,7 +109,9 @@ export default function Members() {
     { key: "phone", label: "Phone", render: (m) => <span className="font-num text-muted-foreground">{formatPhone(m.phone)}</span> },
     { key: "plan_name", label: "Plan" },
     { key: "joining_date", label: "Joining", render: (m) => formatDate(m.joining_date) },
-    { key: "membership_expiry", label: "Expiry", render: (m) => formatDate(m.membership_expiry) },
+    { key: "membership_expiry", label: "Expiry", render: (m) => (
+      <span className={m.days_left != null && m.days_left >= 0 && m.days_left <= 7 ? "font-semibold text-warning" : ""}>{formatDate(m.membership_expiry)}</span>
+    )},
     { key: "days_left", label: "Days Left", align: "right", render: (m) => (
       <span className={`font-num font-bold ${m.days_left == null ? "text-muted-foreground" : m.days_left < 0 ? "text-danger" : m.days_left <= 7 ? "text-warning" : "text-foreground"}`}>{m.days_left ?? "—"}</span>
     )},
@@ -106,11 +119,19 @@ export default function Members() {
       <span className={`font-num font-semibold ${m.due_amount > 0 ? "text-danger" : "text-muted-foreground"}`}>{m.due_amount > 0 ? inr(m.due_amount) : "—"}</span>
     )},
     { key: "status", label: "Status", render: (m) => <StatusBadge status={m.status} /> },
-    { key: "wa", label: "", render: (m) => (
-      <a href={waMe(m.phone)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-         className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#25D366] hover:bg-[#25D366]/10" data-testid={`member-wa-${m.id}`} aria-label="WhatsApp">
-        <MessageCircleIcon />
-      </a>
+    { key: "wa", label: "", align: "right", render: (m) => (
+      <div className="flex items-center justify-end gap-1">
+        {(m.due_amount > 0 || (m.days_left != null && m.days_left <= 7)) && (
+          <button onClick={(e) => { e.stopPropagation(); openReminder(m); }}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-warning hover:bg-warning/10" data-testid={`member-reminder-${m.id}`} aria-label="Send reminder" title="Send WhatsApp reminder">
+            <BellRing className="h-4 w-4" />
+          </button>
+        )}
+        <a href={waMe(m.phone)} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#25D366] hover:bg-[#25D366]/10" data-testid={`member-wa-${m.id}`} aria-label="WhatsApp">
+          <MessageCircleIcon />
+        </a>
+      </div>
     )},
   ];
 
@@ -136,7 +157,7 @@ export default function Members() {
             <SelectItem value="code">Member ID</SelectItem>
           </SelectContent>
         </Select>
-        <div className="-ml-2.5 w-full sm:w-56"><SearchInput value={search} onChange={setSearch} placeholder="Search members..." testid="members-search" /></div>
+        <div className="-ml-2.5 w-full sm:w-56"><SearchInput value={search} onChange={setSearch} placeholder="Search members..." testid="members-search" joined /></div>
         {outlets.length > 1 && (
           <Select value={outletId} onValueChange={(v) => { setOutletId(v); setPage(1); }}>
             <SelectTrigger className="h-9 w-36" data-testid="members-outlet-filter"><SelectValue /></SelectTrigger>
@@ -193,6 +214,8 @@ export default function Members() {
                   plans={plans} outlets={outlets} onSaved={load} />
       <MemberDrawer memberId={drawerId} onClose={() => setDrawerId(null)} onChanged={load} plans={plans}
                     onEdit={(m) => { setEditMember(m); setFormOpen(true); }} />
+      <ReminderModal member={reminder?.member} gymName={organisation?.name} payments={reminder?.payments}
+                     open={Boolean(reminder)} onClose={() => setReminder(null)} />
     </div>
   );
 }

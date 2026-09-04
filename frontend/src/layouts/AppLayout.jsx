@@ -218,7 +218,9 @@ export default function AppLayout() {
           </DropdownMenu>
         </header>
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
-          <Outlet context={{ outletId: outletId === "all" ? undefined : outletId }} />
+          <div className="mx-auto w-full max-w-[1440px]">
+            <Outlet context={{ outletId: outletId === "all" ? undefined : outletId }} />
+          </div>
         </main>
       </div>
     </div>
