@@ -72,6 +72,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Pills options now carry `data-testid={m-pill-<value>}` for reliable automation.
 - Mobile Members search: debounced search bar (`m-members-search`, clear `m-members-search-clear`) hitting `GET /members?search=` (name/phone/member code). Verified: 52 → 1 result for "Aarav".
 
+## Landing page — mascot branding + classy refresh (2026-06)
+- Integrated the GymBoss panda mascot (user-provided avatar sheet) across the landing page. Source art was a full reference sheet; generated 3 isolated poses via image tool (referencing the avatar), then background-removed to true transparent PNGs at `/app/frontend/public/mascots/` (hero.png, motivating.png, planning.png).
+- Hero redesigned to a two-column layout (copy left, floating mascot right) with a soft violet glow, a "Meet GymBoss" pill and a "Payment received ₹1,999 · UPI" chip, plus a subtle ground shadow and float animation. Dashboard mockup retained below.
+- Final CTA band now features the cheering mascot with a "LET'S GO!" chip on the violet gradient.
+- "How It Works" gets a subtle planning-mascot accent (xl+ only, clipped by section overflow-hidden).
+- Added `mascot-float` / `chip-float` keyframes in index.css. Verified desktop (1920) + mobile (390, no horizontal overflow).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
