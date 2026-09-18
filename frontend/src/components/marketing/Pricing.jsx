@@ -20,8 +20,8 @@ export function Pricing() {
   const config = usePublicConfig();
   const hasStoreLinks = config?.play_store_url || config?.app_store_url;
   return (
-    <section id="pricing" className="relative overflow-hidden bg-white py-20 sm:py-28" data-testid="pricing-section">
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section id="pricing" className="bg-white py-20 sm:py-28" data-testid="pricing-section">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Start Your <span className="text-brand">Free Trial</span>
@@ -30,10 +30,8 @@ export function Pricing() {
             Try GymBoss_VVO completely free for 10 days. No credit card required.
           </p>
         </div>
-        <div className="relative mx-auto mt-14 max-w-md" data-testid="pricing-card">
-          <img src="/mascots/peek.png" alt="" aria-hidden="true" data-testid="pricing-mascot"
-               className="mascot-float pointer-events-none absolute -top-12 right-3 z-20 w-24 drop-shadow-xl sm:right-6 sm:w-28" />
-          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lift">
+        <div className="mx-auto mt-14 max-w-md" data-testid="pricing-card">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lift">
             <div className="bg-gradient-to-br from-brand to-[#5B21B6] px-8 py-8 text-center text-white">
               <span className="inline-block rounded-full bg-white/20 px-3.5 py-1 text-xs font-bold uppercase tracking-wide">
                 10-Day Free Trial
