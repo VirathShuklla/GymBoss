@@ -97,6 +97,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState(null);
   const [error, setError] = useState("");
   const [billingHalted, setBillingHalted] = useState(false);
+  const [onb, setOnb] = useState(null);
 
   const outletName = outletId ? outlets.find((o) => o.id === outletId)?.name : null;
 
