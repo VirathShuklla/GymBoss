@@ -83,6 +83,16 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Added the missing Razorpay pay flow to the MOBILE app (`/m` → Profile): "Pay ₹999/month" button (`m-pay-button`) loads checkout.js → `/subscription/autodebit/start` → checkout → `/subscription/autodebit/verify`; halted-retry card, cancel auto-renewal (`m-cancel-autodebit`), and "payments being enabled" fallback all mirror the web app. Verified button renders for the expired demo tenant.
 - Still needed from user for PRODUCTION: (1) switch to `rzp_live_` keys after Razorpay KYC, (2) set Webhook Secret in Platform Settings + point Razorpay webhook to `/api/webhooks/razorpay` (events: payment.captured/failed, subscription.activated/charged/halted/cancelled) so auto-renewals reflect automatically.
 
+## Landing revamp + Attendance removal + Receipts + Panda logo (2026-06)
+- **Landing redesign (Cream + Navy + Soft Purple)**: hero now on cream (#FBF6EC) with navy headline, violet accents, and handwritten (Caveat) annotations + hand-drawn arrows on desktop only ("Stronger Gyms, Brighter People", "All Your Gym Operations In One Place", "Members/Payments/Growth ✓"). `hero-annotations` hidden < lg; no horizontal overflow at 1920 or 390. Matches user's reference mockup.
+- **Panda logo everywhere**: replaced the dumbbell mark with the user's panda image at `/frontend/public/logo.png`; regenerated PWA icons (icon-192/512/maskable-512, apple-touch-icon) + favicon from it. Used in web `Logo.jsx`, dashboard mockup, mobile `Welcome.jsx`.
+- **Attendance module REMOVED** (web + mobile + marketing): route + sidebar nav + mobile tab + MemberDrawer "Attendance History" + Dashboard metric/quick-action + landing feature card + mockup sidebar + copy. (Backend attendance endpoints untouched/harmless.)
+- **Members filter chips (All / Active / Expiring / Due)**: web `Members.jsx` (`members-chip-*`, wired to status + new backend `due` bool param on GET /members) and mobile `manage/Members.jsx` (`m-chip-*`, client-side filter on loaded list).
+- **WhatsApp payment receipt to the customer**: after a gym owner records a member payment (or renews with amount paid), they can send a formatted receipt to that member on WhatsApp. Web: `ReceiptModal` "Send on WhatsApp" (`receipt-whatsapp-button`). Mobile: post-payment "Payment Receipt" sheet with `m-receipt-whatsapp` + `m-receipt-done`. Shared `buildReceiptMessage()` in `lib/whatsapp.js`.
+- **Mobile Razorpay pay flow** added to `/m` Profile (`m-pay-button`) — see previous entry; both web & mobile now accept subscription payments with the saved rzp_test_ keys.
+- **Demo trial auto-refresh**: startup now resets the demo tenant's lapsed 10-day trial so the web app is never stuck behind the paywall in preview.
+- Verified: iteration_11 → backend 5/5 pytest, frontend 100% of flows (web + mobile), zero bugs. Razorpay hosted checkout not auto-completed (needs real card — user does final tap).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

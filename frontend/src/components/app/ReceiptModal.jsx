@@ -45,7 +45,7 @@ export function ReceiptModal({ receipt, onClose }) {
         <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={onClose} data-testid="receipt-close"><X className="mr-1.5 h-4 w-4" />Close</Button>
           {member?.phone && (
-            <Button className="bg-[#25D366] text-white hover:bg-[#1fb857]" onClick={() => window.open(waMe(member.phone, buildReceiptMessage(receipt)), "_blank")} data-testid="receipt-whatsapp-button">
+            <Button className="bg-[#25D366] text-white hover:bg-[#1fb857]" onClick={() => window.open(waMe(member.phone, buildReceiptMessage(receipt)), "_blank", "noopener,noreferrer")} data-testid="receipt-whatsapp-button">
               <MessageCircle className="mr-1.5 h-4 w-4" />Send on WhatsApp
             </Button>
           )}

@@ -725,6 +725,19 @@ async def startup():
     await seed_settings()
     await seed_super_admin()
     await seed_demo()
+    # Keep the demo tenant always usable in preview: refresh a lapsed trial
+    demo = await db.organisations.find_one({"is_demo": True})
+    if demo:
+        sub = demo.get("subscription", {}) or {}
+        ends = sub.get("trial_ends_at")
+        if ends is not None and getattr(ends, "tzinfo", None) is None:
+            ends = ends.replace(tzinfo=timezone.utc)
+        if sub.get("status") == "trial" and (not ends or ends <= now_utc()):
+            ts = now_utc()
+            await db.organisations.update_one({"id": demo["id"]}, {"$set": {
+                "subscription.trial_started_at": ts,
+                "subscription.trial_ends_at": ts + timedelta(days=TRIAL_DAYS),
+            }})
 
 
 app.include_router(api)
