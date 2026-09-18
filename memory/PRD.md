@@ -78,6 +78,11 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Removed floating chips / Final CTA + How It Works mascots to keep it ad-conversion clean.
 - Mascot assets in `/app/frontend/public/mascots/`. Verified desktop (1920) + mobile (390): no horizontal overflow.
 
+## Razorpay activated + mobile pay flow (2026-06)
+- Saved live TEST keys in Platform Settings (`razorpay_key_id=rzp_test_TXqmoAJOCNDkiy`, secret set) — verified real Razorpay subscription/plan creation succeeds; `razorpay_configured=true`.
+- Added the missing Razorpay pay flow to the MOBILE app (`/m` → Profile): "Pay ₹999/month" button (`m-pay-button`) loads checkout.js → `/subscription/autodebit/start` → checkout → `/subscription/autodebit/verify`; halted-retry card, cancel auto-renewal (`m-cancel-autodebit`), and "payments being enabled" fallback all mirror the web app. Verified button renders for the expired demo tenant.
+- Still needed from user for PRODUCTION: (1) switch to `rzp_live_` keys after Razorpay KYC, (2) set Webhook Secret in Platform Settings + point Razorpay webhook to `/api/webhooks/razorpay` (events: payment.captured/failed, subscription.activated/charged/halted/cancelled) so auto-renewals reflect automatically.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
