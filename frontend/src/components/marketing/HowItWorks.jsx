@@ -8,9 +8,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how-it-works" className="relative overflow-hidden bg-slate-50 py-20 sm:py-28" data-testid="how-it-works-section">
-      <img src="/mascots/planning.png" alt="" aria-hidden="true"
-           className="pointer-events-none absolute right-0 bottom-4 hidden w-36 opacity-95 drop-shadow-xl xl:block" />
+    <section id="how-it-works" className="bg-slate-50 py-20 sm:py-28" data-testid="how-it-works-section">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
