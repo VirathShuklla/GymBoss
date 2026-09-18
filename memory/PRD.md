@@ -108,6 +108,12 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - **Verified**: testing_agent iteration_12 → backend 9/9 (all 5 example cases, partial→full, validation 422/404, renewal, due filter, persistence), frontend 100% screens. Post-reseed direct check: 26 members, 0 inconsistent, Σdues == finance.outstanding (32,625), Σpayments == revenue (113,875), status mix 17 Paid/6 Partial/3 Due.
 - **Not a bug**: DELETE /members works (soft-delete + list filters deleted_at); the "leftover members" were un-cleaned QA test rows, now purged.
 
+## Payment reversal/edit + onboarding fix (2026-06)
+- **Payment reverse & edit** (web + mobile): new backend `PUT /payments/{id}` (edit amount/method/notes) and `DELETE /payments/{id}` (reverse). Both call `_apply_payment_delta` → due = clamp(due + (old−new), 0, payable) + payment_status. UI: web Payments page rows (Edit/Reverse modals), web MemberDrawer transaction history (Edit/Reverse), mobile member sheet → new **Payment History** view (`m-action-history`) with inline edit + reverse.
+- **Onboarding "tutorial" not updating — fixed**: root cause was AuthContext loading `organisation.onboarding` once at login (stale). Web Dashboard + mobile Home now fetch `GET /onboarding` fresh on mount. Also added **self-heal** in `GET /onboarding`: if plans/members/payments/staff already exist but a flag was never set, it backfills the flag.
+- **Verified**: testing_agent iteration_13 → backend 6/6 (6000 plan: pay 2000→due 4000, edit→5000→due 1000, reverse→due 6000/Due; clamp when amount>payable→0/Paid; 422/404 validation; sum(dues)==finance.outstanding), frontend 100% web + mobile selectors; onboarding auto-progresses on a fresh gym and dismiss persists. Direct curl confirmed edit/reverse math.
+- Known minor (not blocking): edit does not cap amount at payable (server clamps due, keeps finances consistent — treats excess as overpayment); reverse hard-deletes the payment (audit logs the amount).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

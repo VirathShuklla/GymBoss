@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 13 verified iter-brief payment edit/reverse + onboarding checklist fixes. Backend: 6/6 pytest PASSED — edit-then-reverse flow on ₹6000 plan (create -> due 6000; pay 2000 -> 4000; edit to 5000 -> 1000; reverse -> 6000 with status Due) with exact number match, edit clamp when amount > payable sets due=0/Paid, PUT/DELETE /payments validation (422 on amount<=0, invalid method, 404 on unknown id), sum(member.due_amount) == finance.summary.outstanding, and onboarding checklist auto-progresses on a fresh registered gym (plan/member/payment/staff flip from false -> true after each creation call), dismiss persists. Frontend web: Payments page shows 20 rows with data-testid payment-edit-* and payment-reverse-*; edit-payment-modal + edit-payment-save render, reverse-payment-modal + reverse-confirm render, record-payment-button present. MemberDrawer -> Transaction History renders per-payment Edit + Reverse (payment-edit-* / payment-reverse-*). Mobile /m: Home shows m-onboarding + m-onboarding-dismiss; Manage -> Members -> tap -> m-action-history opens m-history-list with m-history-edit-* and m-history-reverse-* actions.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iter13_editreverse.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [
+    "Consider hard-deleting TEST_ prefixed members created by earlier iterations; DELETE /api/members/{id} still leaves them visible in list_members (soft-delete without filter). Not blocking; financial invariants remain intact.",
+    "Onboarding self-heal: on demo tenant all 4 steps are marked done, but if a tenant hits GymBoss with legacy data (plans/members exist but flags never set), a one-time backfill on login/tenant load would prevent stale unchecked items. Currently only mutations set the flags."
+  ],
+  "critical_code_review_comments": [
+    "_apply_payment_delta adjusts due by (old-new) but does not recompute from sum(payments) — safe under current invariants but drifts if any prior row is inconsistent. Prefer recomputing from db.payments as source of truth on every mutation.",
+    "PUT /payments/{id} accepts any positive amount without capping at payable; server clamps due to [0,payable] so revenue and finance stay consistent, but the payment.amount itself can now exceed payable. Consider either rejecting (422) or persisting excess as credit.",
+    "Reverse (DELETE) is idempotent-ish but there is no soft-delete/audit-trail on the payment doc itself — hard delete makes forensic recovery impossible; existing audit('payment.reversed') captures the amount but not the full payment doc."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter13_editreverse.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% of requested selectors verified on web + mobile"},
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (fresh gym auto-registered in test as qa.iter13.<tag>@example.com / QaTest@2026)",
+  "seed_data_creation": "Created transient TEST_iter13_* members + ZZ_QA_Gym_* fresh org via /auth/register; members cleaned up in finally blocks. Fresh gym remains registered (harmless, isolated tenant).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iter13_editreverse.py -v -o addopts=''. Edit/reverse endpoints: PUT/DELETE /api/payments/{id}. Onboarding flags: plan/member/payment/staff/outlet under /api/onboarding. Frontend testids confirmed: payment-edit-<id>, payment-reverse-<id>, edit-payment-modal, edit-payment-save, reverse-payment-modal, reverse-confirm, record-payment-button, m-onboarding, m-onboarding-dismiss, m-action-history, m-history-list, m-history-edit-<id>, m-history-edit-input-<id>, m-history-save-<id>, m-history-reverse-<id>. Financial invariant sum(dues)==finance.outstanding still holds on demo tenant."
+}

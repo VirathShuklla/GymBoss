@@ -302,8 +302,24 @@ async def list_outlets(user: dict = Depends(get_org_user)):
 
 @api.get("/onboarding")
 async def get_onboarding(user: dict = Depends(get_org_user)):
-    org = await db.organisations.find_one({"id": user["organisation_id"]})
-    return (org or {}).get("onboarding", {})
+    org_id = user["organisation_id"]
+    org = await db.organisations.find_one({"id": org_id})
+    ob = dict((org or {}).get("onboarding", {}) or {})
+    # Self-heal: if a step's data already exists but its flag was never set
+    # (e.g. legacy tenants created before flags), set it so the checklist is accurate.
+    heal = {}
+    if not ob.get("plan") and await db.plans.count_documents({"organisation_id": org_id, "status": {"$ne": "archived"}}):
+        heal["plan"] = True
+    if not ob.get("member") and await db.members.count_documents({"organisation_id": org_id, "deleted_at": None}):
+        heal["member"] = True
+    if not ob.get("payment") and await db.payments.count_documents({"organisation_id": org_id}):
+        heal["payment"] = True
+    if not ob.get("staff") and await db.users.count_documents({"organisation_id": org_id, "role": {"$ne": "owner"}}):
+        heal["staff"] = True
+    if heal:
+        await db.organisations.update_one({"id": org_id}, {"$set": {f"onboarding.{k}": v for k, v in heal.items()}})
+        ob.update(heal)
+    return ob
 
 
 @api.put("/onboarding")
