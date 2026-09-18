@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft, Search, X } from "lucide-react";
+import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft, Search, X, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -31,6 +31,8 @@ export default function Members({ autoAdd }) {
   const [pf, setPf] = useState({ amount: "", method: "Cash" });
   const [abusy, setAbusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [editP, setEditP] = useState(null);
+  const [editAmt, setEditAmt] = useState("");
 
   const load = (search = q) =>
     api.get(`/members?limit=100${search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`).then(({ data }) => setItems(data.items)).catch(() => setItems([]));
@@ -78,7 +80,7 @@ export default function Members({ autoAdd }) {
     setView("menu");
     api.get(`/members/${m.id}`).then(({ data }) => setDetail(data)).catch(() => {});
   };
-  const closeActions = () => { setView(null); setActive(null); setDetail(null); setRemSel(null); setReceipt(null); };
+  const closeActions = () => { setView(null); setActive(null); setDetail(null); setRemSel(null); setReceipt(null); setEditP(null); };
 
   const showReceipt = async (paymentId) => {
     try {
@@ -131,7 +133,19 @@ export default function Members({ autoAdd }) {
   };
 
   const remOptions = buildReminderOptions(cur, organisation?.name, detail?.payments);
-  const sheetTitle = { menu: cur?.full_name, renew: "Renew Membership", payment: "Record Payment", reminder: "Send WhatsApp Reminder", receipt: "Payment Receipt" }[view];
+  const reloadDetail = async () => { const { data } = await api.get(`/members/${active.id}`); setDetail(data); };
+  const reversePayment = async (pid) => {
+    setAbusy(true);
+    try { await api.delete(`/payments/${pid}`); toast.success("Payment reversed — due updated"); await reloadDetail(); load(); }
+    catch (e) { toast.error(apiError(e, "Could not reverse payment")); } finally { setAbusy(false); }
+  };
+  const saveEditP = async () => {
+    if (!Number(editAmt)) return toast.error("Enter an amount");
+    setAbusy(true);
+    try { await api.put(`/payments/${editP}`, { amount: Number(editAmt) }); toast.success("Payment updated — due recalculated"); setEditP(null); await reloadDetail(); load(); }
+    catch (e) { toast.error(apiError(e, "Could not update payment")); } finally { setAbusy(false); }
+  };
+  const sheetTitle = { menu: cur?.full_name, renew: "Renew Membership", payment: "Record Payment", reminder: "Send WhatsApp Reminder", receipt: "Payment Receipt", history: "Payment History" }[view];
 
   const shown = (items || []).filter((m) =>
     chip === "all" ? true
@@ -231,6 +245,7 @@ export default function Members({ autoAdd }) {
             <ActionRow icon={RefreshCw} tile="bg-brand/12 text-brand" title="Renew Membership" desc="Extend with a plan" onClick={() => setView("renew")} testid="m-action-renew" />
             <ActionRow icon={IndianRupee} tile="bg-success/12 text-success" title="Record Payment" desc={cur.due_amount > 0 ? `Collect towards ${inr(cur.due_amount)} due` : "Collect a payment"} onClick={() => setView("payment")} testid="m-action-payment" />
             <ActionRow icon={MessageCircle} tile="bg-[#25D366]/12 text-[#25D366]" title="Send WhatsApp Reminder" desc="Expiry, dues or invoice" onClick={() => setView("reminder")} testid="m-action-reminder" />
+            <ActionRow icon={Receipt} tile="bg-secondary text-foreground" title="Payment History" desc="Edit or reverse payments" onClick={() => setView("history")} testid="m-action-history" />
           </>
         )}
 
@@ -260,6 +275,41 @@ export default function Members({ autoAdd }) {
             <Field label="Amount"><TextInput inputMode="numeric" data-testid="m-payment-amount" value={pf.amount} onChange={(e) => setPf({ ...pf, amount: e.target.value })} placeholder="0" /></Field>
             <Field label="Method"><Pills options={["Cash", "UPI", "Card", "Bank Transfer"]} value={pf.method} onChange={(v) => setPf({ ...pf, method: v })} /></Field>
             <MButton onClick={doPayment} loading={abusy} disabled={!(Number(pf.amount) > 0)} data-testid="m-payment-save">Record Payment</MButton>
+          </>
+        )}
+
+        {view === "history" && (
+          <>
+            <BackBtn onClick={() => { setEditP(null); setView("menu"); }} />
+            {!detail?.payments?.length ? (
+              <p className="py-6 text-center text-sm text-muted-foreground" data-testid="m-history-empty">No transactions yet</p>
+            ) : (
+              <div className="space-y-2" data-testid="m-history-list">
+                {detail.payments.map((p) => (
+                  <div key={p.id} className="rounded-2xl border border-border bg-card p-3" data-testid={`m-history-${p.id}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{p.plan_name || "Payment"}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(p.created_at)} · {p.method} · {p.receipt_no}</p>
+                      </div>
+                      <p className="font-num text-sm font-bold text-success">{inr(p.amount)}</p>
+                    </div>
+                    {editP === p.id ? (
+                      <div className="mt-2 flex items-center gap-2">
+                        <TextInput inputMode="numeric" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} data-testid={`m-history-edit-input-${p.id}`} />
+                        <button onClick={saveEditP} disabled={abusy} className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white" data-testid={`m-history-save-${p.id}`}>Save</button>
+                        <button onClick={() => setEditP(null)} className="shrink-0 rounded-lg border border-border px-3 py-2 text-xs">Cancel</button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 flex gap-4">
+                        <button onClick={() => { setEditP(p.id); setEditAmt(String(p.amount)); }} className="text-xs font-semibold text-brand" data-testid={`m-history-edit-${p.id}`}>Edit amount</button>
+                        <button onClick={() => reversePayment(p.id)} disabled={abusy} className="text-xs font-semibold text-danger" data-testid={`m-history-reverse-${p.id}`}>Reverse</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
 

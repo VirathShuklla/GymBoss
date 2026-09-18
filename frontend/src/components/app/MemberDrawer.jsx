@@ -48,6 +48,9 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reminderOpen, setReminderOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [editPay, setEditPay] = useState(null);
+  const [editPayForm, setEditPayForm] = useState({ amount: "", method: "Cash" });
+  const [reversePay, setReversePay] = useState(null);
   const [busy, setBusy] = useState(false);
   const defaultFreezeUntil = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
   const [freezeForm, setFreezeForm] = useState({ freeze_from: new Date().toISOString().slice(0, 10), freeze_until: defaultFreezeUntil, reason: "" });
@@ -67,6 +70,24 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
     setData(null);
     load();
   }, [memberId]);
+
+  const reverseThisPayment = async () => {
+    setBusy(true);
+    try {
+      await api.delete(`/payments/${reversePay.id}`);
+      toast.success("Payment reversed — due updated");
+      setReversePay(null); await load(); onChanged?.();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
+  const saveEditPayment = async () => {
+    if (!Number(editPayForm.amount)) return toast.error("Enter an amount");
+    setBusy(true);
+    try {
+      await api.put(`/payments/${editPay.id}`, { amount: Number(editPayForm.amount), method: editPayForm.method });
+      toast.success("Payment updated — due recalculated");
+      setEditPay(null); await load(); onChanged?.();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
 
   const m = data?.member;
   const openWa = (templateKey) => {
@@ -241,7 +262,11 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                           </div>
                           <div className="text-right">
                             <p className="font-num text-sm font-bold text-success">{inr(p.amount)}</p>
-                            <button onClick={() => viewReceipt(p.id)} className="text-xs font-medium text-brand hover:underline" data-testid={`receipt-view-${p.id}`}>Receipt</button>
+                            <div className="mt-0.5 flex items-center justify-end gap-2.5">
+                              <button onClick={() => viewReceipt(p.id)} className="text-xs font-medium text-brand hover:underline" data-testid={`receipt-view-${p.id}`}>Receipt</button>
+                              {!readOnly && <button onClick={() => { setEditPay(p); setEditPayForm({ amount: String(p.amount), method: p.method || "Cash" }); }} className="text-xs font-medium text-muted-foreground hover:text-foreground" data-testid={`payment-edit-${p.id}`}>Edit</button>}
+                              {!readOnly && <button onClick={() => setReversePay(p)} className="text-xs font-medium text-danger hover:underline" data-testid={`payment-reverse-${p.id}`}>Reverse</button>}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -384,6 +409,43 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                      testid="delete-member-confirm" title="Delete Member?"
                      description={`Are you sure you want to delete ${m?.full_name}? This action cannot be undone.`}
                      confirmLabel="Delete Member" />
+      <Dialog open={!!editPay} onOpenChange={(o) => !o && setEditPay(null)}>
+        <DialogContent className="max-w-sm" data-testid="drawer-edit-payment-modal">
+          <DialogHeader><DialogTitle className="font-display text-lg">Edit Payment</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">{editPay?.receipt_no} · changing the amount recalculates this member's due.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label>Amount (₹)</Label><Input type="number" min="1" value={editPayForm.amount} onChange={(e) => setEditPayForm({ ...editPayForm, amount: e.target.value })} data-testid="drawer-edit-payment-amount" /></div>
+              <div className="space-y-1.5">
+                <Label>Method</Label>
+                <Select value={editPayForm.method} onValueChange={(v) => setEditPayForm({ ...editPayForm, method: v })}>
+                  <SelectTrigger data-testid="drawer-edit-payment-method"><SelectValue /></SelectTrigger>
+                  <SelectContent>{METHODS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button className="w-full bg-brand hover:bg-brand-hover" onClick={saveEditPayment} disabled={busy} data-testid="drawer-edit-payment-save">
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reversePay} onOpenChange={(o) => !o && setReversePay(null)}>
+        <DialogContent className="max-w-sm" data-testid="drawer-reverse-payment-modal">
+          <DialogHeader><DialogTitle className="font-display text-lg">Reverse Payment?</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">This removes the {reversePay ? inr(reversePay.amount) : ""} payment ({reversePay?.receipt_no}) and adds it back to the member's due.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setReversePay(null)} data-testid="drawer-reverse-cancel">Cancel</Button>
+              <Button className="bg-danger text-white hover:bg-danger/90" onClick={reverseThisPayment} disabled={busy} data-testid="drawer-reverse-confirm">
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Reverse
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
       {m && (
         <ReminderModal member={m} gymName={organisation?.name} payments={data?.payments}

@@ -441,6 +441,64 @@ async def record_payment(body: PaymentBody, user: dict = Depends(require_write))
     return payment
 
 
+class PaymentEditBody(BaseModel):
+    amount: float = Field(gt=0)
+    method: Optional[str] = None
+    notes: Optional[str] = None
+
+
+async def _apply_payment_delta(member: dict | None, old_amount: float, new_amount: float):
+    """Adjust a member's outstanding due when a payment amount changes or is reversed.
+    Keeps the source-of-truth invariant for the cycle: paying more lowers the due,
+    paying less (or reversing to 0) raises it, always clamped to [0, payable]."""
+    if not member:
+        return None
+    payable = member.get("payable")
+    if payable is None:
+        payable = max(0, round((member.get("plan_price", 0) or 0) - (member.get("discount", 0) or 0) + (member.get("admission_amount", 0) or 0), 2))
+    due = member.get("due_amount", 0) or 0
+    new_due = max(0, min(payable, round(due + (old_amount - new_amount), 2)))
+    status = "Paid" if new_due <= 0 else ("Due" if new_due >= payable else "Partially Paid")
+    await db.members.update_one({"id": member["id"]}, {"$set": {"due_amount": new_due, "payment_status": status, "payable": payable}})
+    return new_due
+
+
+@router.put("/payments/{payment_id}")
+async def edit_payment(payment_id: str, body: PaymentEditBody, user: dict = Depends(require_write)):
+    org_id = user["organisation_id"]
+    if body.method is not None and body.method not in ("Cash", "UPI", "Card", "Bank Transfer", "Other"):
+        raise HTTPException(422, "Invalid payment method")
+    p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    old_amount = p.get("amount", 0)
+    set_fields = {"amount": body.amount, "updated_at": now_utc()}
+    if body.method is not None:
+        set_fields["method"] = body.method
+    if body.notes is not None:
+        set_fields["notes"] = body.notes
+    await db.payments.update_one({"id": payment_id, "organisation_id": org_id}, {"$set": set_fields})
+    member = await db.members.find_one({"id": p["member_id"], "organisation_id": org_id})
+    new_due = await _apply_payment_delta(member, old_amount, body.amount)
+    await audit(user["id"], "payment.edited", payment_id, {"from": old_amount, "to": body.amount}, org_id)
+    updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    updated["member_due_remaining"] = new_due
+    return updated
+
+
+@router.delete("/payments/{payment_id}")
+async def reverse_payment(payment_id: str, user: dict = Depends(require_write)):
+    org_id = user["organisation_id"]
+    p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
+    if not p:
+        raise HTTPException(404, "Payment not found")
+    member = await db.members.find_one({"id": p["member_id"], "organisation_id": org_id})
+    await db.payments.delete_one({"id": payment_id, "organisation_id": org_id})
+    new_due = await _apply_payment_delta(member, p.get("amount", 0), 0)
+    await audit(user["id"], "payment.reversed", payment_id, {"amount": p.get("amount", 0), "member": p.get("member_name")}, org_id)
+    return {"message": "Payment reversed", "member_due_remaining": new_due}
+
+
 @router.get("/payments")
 async def list_payments(
     search: Optional[str] = None,

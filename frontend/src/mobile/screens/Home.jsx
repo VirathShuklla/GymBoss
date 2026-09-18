@@ -19,10 +19,13 @@ export default function Home() {
   const { organisation, user, subscription, reload } = useAuth();
   const [summary, setSummary] = useState(null);
   const [txns, setTxns] = useState(null);
+  const [onb, setOnb] = useState(null);
 
   useEffect(() => {
     api.get("/dashboard/summary").then(({ data }) => setSummary(data)).catch(() => setSummary({}));
     api.get("/dashboard/recent-transactions").then(({ data }) => setTxns(data)).catch(() => setTxns([]));
+    // Fetch onboarding fresh (AuthContext copy is loaded once at login and goes stale).
+    api.get("/onboarding").then(({ data }) => setOnb(data)).catch(() => {});
   }, []);
 
   const trial = subscription?.status === "trial";
@@ -44,10 +47,10 @@ export default function Home() {
         </div>
       </div>
 
-      {organisation && !organisation.onboarding?.dismissed && (
-        <MOnboarding onboarding={organisation.onboarding}
-          onDismiss={async () => { await api.put("/onboarding", { dismissed: true }); reload(); }} />
-      )}
+      {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed ? (
+        <MOnboarding onboarding={ob}
+          onDismiss={async () => { setOnb((p) => ({ ...(p || {}), dismissed: true })); await api.put("/onboarding", { dismissed: true }); reload(); }} />
+      ) : null; })()}
 
       <div className="mt-5 overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-today-card">
         <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Today's Collection</p>

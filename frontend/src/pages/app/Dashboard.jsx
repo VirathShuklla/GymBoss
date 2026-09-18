@@ -118,8 +118,15 @@ export default function Dashboard() {
       .catch(() => {});
   }, [user?.role]);
 
+  // Onboarding flags are updated server-side as steps are completed on other pages,
+  // so always fetch the latest here instead of the AuthContext copy (loaded once at login).
+  useEffect(() => {
+    api.get("/onboarding").then(({ data }) => setOnb(data)).catch(() => {});
+  }, []);
+
   const dismissOnboarding = async () => {
     await api.put("/onboarding", { dismissed: true });
+    setOnb((prev) => ({ ...(prev || {}), dismissed: true }));
     reload();
   };
 
@@ -142,9 +149,9 @@ export default function Dashboard() {
 
       {billingHalted && <BillingHaltedAlert />}
 
-      {organisation && !organisation.onboarding?.dismissed && (
-        <OnboardingChecklist onboarding={organisation.onboarding} onDismiss={dismissOnboarding} />
-      )}
+      {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed ? (
+        <OnboardingChecklist onboarding={ob} onDismiss={dismissOnboarding} />
+      ) : null; })()}
 
       {error ? (
         <div className="rounded-xl border border-border bg-card p-10 text-center" data-testid="dashboard-error">

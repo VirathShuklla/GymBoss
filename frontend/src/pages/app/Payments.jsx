@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, IndianRupee, Loader2, Receipt } from "lucide-react";
+import { Plus, IndianRupee, Loader2, Receipt, Pencil, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -28,6 +28,10 @@ export default function Payments() {
   const [form, setForm] = useState({ amount: "", method: "Cash", notes: "" });
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [editForm, setEditForm] = useState({ amount: "", method: "Cash", notes: "" });
+  const [reverseTarget, setReverseTarget] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -71,6 +75,29 @@ export default function Payments() {
     setReceipt(data);
   };
 
+  const openEdit = (p) => {
+    setEditing(p);
+    setEditForm({ amount: String(p.amount), method: p.method || "Cash", notes: p.notes || "" });
+    setEditOpen(true);
+  };
+  const saveEdit = async () => {
+    if (!Number(editForm.amount)) return toast.error("Enter an amount");
+    setBusy(true);
+    try {
+      await api.put(`/payments/${editing.id}`, { amount: Number(editForm.amount), method: editForm.method, notes: editForm.notes || null });
+      toast.success("Payment updated — member due recalculated");
+      setEditOpen(false); setEditing(null); load();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
+  const doReverse = async () => {
+    setBusy(true);
+    try {
+      await api.delete(`/payments/${reverseTarget.id}`);
+      toast.success("Payment reversed — member due updated");
+      setReverseTarget(null); load();
+    } catch (e) { toast.error(apiError(e)); } finally { setBusy(false); }
+  };
+
   const columns = [
     { key: "created_at", label: "Date", render: (p) => formatDate(p.created_at) },
     { key: "member_name", label: "Member", render: (p) => <span className="font-medium text-foreground">{p.member_name}</span> },
@@ -80,9 +107,21 @@ export default function Payments() {
     { key: "amount", label: "Amount", align: "right", render: (p) => <span className="font-num font-bold text-success">{inr(p.amount)}</span> },
     { key: "method", label: "Method" },
     { key: "actions", label: "", align: "right", render: (p) => (
-      <button onClick={() => viewReceipt(p.id)} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline" data-testid={`payment-receipt-${p.id}`}>
-        <Receipt className="h-3.5 w-3.5" />Receipt
-      </button>
+      <div className="flex items-center justify-end gap-3">
+        <button onClick={() => viewReceipt(p.id)} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline" data-testid={`payment-receipt-${p.id}`}>
+          <Receipt className="h-3.5 w-3.5" />Receipt
+        </button>
+        {!readOnly && (
+          <button onClick={() => openEdit(p)} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground" data-testid={`payment-edit-${p.id}`}>
+            <Pencil className="h-3.5 w-3.5" />Edit
+          </button>
+        )}
+        {!readOnly && (
+          <button onClick={() => setReverseTarget(p)} className="inline-flex items-center gap-1 text-xs font-medium text-danger hover:underline" data-testid={`payment-reverse-${p.id}`}>
+            <RotateCcw className="h-3.5 w-3.5" />Reverse
+          </button>
+        )}
+      </div>
     )},
   ];
 
@@ -150,6 +189,46 @@ export default function Payments() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-md" data-testid="edit-payment-modal">
+          <DialogHeader><DialogTitle className="font-display text-lg">Edit Payment</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-xs text-muted-foreground">Editing {editing?.receipt_no} for {editing?.member_name}. Changing the amount recalculates the member's outstanding due.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5"><Label>Amount (₹)</Label><Input type="number" min="1" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} data-testid="edit-payment-amount" /></div>
+              <div className="space-y-1.5">
+                <Label>Method</Label>
+                <Select value={editForm.method} onValueChange={(v) => setEditForm({ ...editForm, method: v })}>
+                  <SelectTrigger data-testid="edit-payment-method"><SelectValue /></SelectTrigger>
+                  <SelectContent>{METHODS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5"><Label>Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} data-testid="edit-payment-notes" /></div>
+            <Button className="w-full bg-brand hover:bg-brand-hover" onClick={saveEdit} disabled={busy} data-testid="edit-payment-save">
+              {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save Changes
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reverseTarget} onOpenChange={(o) => !o && setReverseTarget(null)}>
+        <DialogContent className="max-w-sm" data-testid="reverse-payment-modal">
+          <DialogHeader><DialogTitle className="font-display text-lg">Reverse Payment?</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This permanently removes the {reverseTarget ? inr(reverseTarget.amount) : ""} payment ({reverseTarget?.receipt_no}) for {reverseTarget?.member_name} and adds the amount back to their outstanding due.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setReverseTarget(null)} data-testid="reverse-cancel">Cancel</Button>
+              <Button className="bg-danger text-white hover:bg-danger/90" onClick={doReverse} disabled={busy} data-testid="reverse-confirm">
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Reverse Payment
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
     </div>
   );
