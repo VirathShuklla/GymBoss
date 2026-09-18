@@ -1,11 +1,11 @@
 import {
-  Users, ClipboardCheck, IndianRupee, Building2, MessageCircle,
+  Users, Receipt as ReceiptIcon, IndianRupee, Building2, MessageCircle,
   BellRing, UserCog, UserPlus, BarChart3,
 } from "lucide-react";
 
 const FEATURES = [
   { icon: Users, title: "Membership Management", desc: "Track members, plans, renewals, freezes and dues across the full member lifecycle." },
-  { icon: ClipboardCheck, title: "Attendance Tracking", desc: "Fast check-ins, member-wise history and daily attendance insights for every outlet." },
+  { icon: ReceiptIcon, title: "Invoices & Receipts", desc: "Send professional payment receipts and invoices to members instantly on WhatsApp." },
   { icon: IndianRupee, title: "Payment Tracking", desc: "Record Cash, UPI, Card and Bank payments with dues, discounts and receipts." },
   { icon: Building2, title: "Multi-Outlet Management", desc: "Run multiple branches from one account with outlet-wise data and switching." },
   { icon: MessageCircle, title: "WhatsApp Communication", desc: "Send reminders, wishes and announcements to members directly on WhatsApp." },

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useOutletContext, useNavigate, Link } from "react-router-dom";
 import {
   IndianRupee, UserPlus, RefreshCw, Wallet, HelpCircle, Zap, Briefcase, Package,
-  Users, CalendarClock, Cake, ClipboardCheck, Plus, X, Check, AlertTriangle,
+  Users, CalendarClock, Cake, Plus, X, Check, AlertTriangle,
 } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
@@ -27,7 +27,6 @@ const SECONDARY = [
   { key: "birthdays_today", label: "Birthdays Today", color: "text-brand" },
   { key: "active_members", label: "Active Members", color: "text-success" },
   { key: "total_members", label: "Total Members", color: "text-foreground" },
-  { key: "attendance_today", label: "Today's Attendance", color: "text-info" },
 ];
 
 function OnboardingChecklist({ onboarding, onDismiss }) {
@@ -127,7 +126,6 @@ export default function Dashboard() {
   const quickActions = [
     { label: "Add Member", icon: Plus, to: "/app/members?add=1" },
     { label: "Record Payment", icon: IndianRupee, to: "/app/payments" },
-    { label: "Check In Member", icon: ClipboardCheck, to: "/app/attendance" },
     { label: "Add Enquiry", icon: UserPlus, to: "/app/enquiries" },
   ];
 

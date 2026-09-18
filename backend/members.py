@@ -219,6 +219,7 @@ async def list_members(
     gender: Optional[str] = None,
     batch: Optional[str] = None,
     outlet_id: Optional[str] = None,
+    due: Optional[bool] = None,
     page: int = 1,
     limit: int = 20,
     user: dict = Depends(get_org_user),
@@ -246,6 +247,8 @@ async def list_members(
     items = [member_public(m) for m in members]
     if status and status != "all":
         items = [m for m in items if m["status"] == status]
+    if due:
+        items = [m for m in items if (m.get("due_amount") or 0) > 0]
     total = len(items)
     start_i = (max(page, 1) - 1) * limit
     return {"items": items[start_i:start_i + limit], "total": total, "page": page, "limit": limit}

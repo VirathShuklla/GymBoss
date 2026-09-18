@@ -1,7 +1,7 @@
 {
   "name": "GymBoss_VVO — Gym Management",
   "short_name": "GymBoss_VVO",
-  "description": "Manage members, payments, attendance and staff for your gym, from your phone.",
+  "description": "Manage members, payments, plans and staff for your gym, from your phone.",
   "start_url": "/m",
   "id": "/m",
   "scope": "/",

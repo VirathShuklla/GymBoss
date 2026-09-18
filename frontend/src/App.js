@@ -12,7 +12,6 @@ import AppLayout from "./layouts/AppLayout";
 import Dashboard from "./pages/app/Dashboard";
 import Members from "./pages/app/Members";
 import Plans from "./pages/app/Plans";
-import Attendance from "./pages/app/Attendance";
 import Payments from "./pages/app/Payments";
 import Enquiries from "./pages/app/Enquiries";
 import Expenses from "./pages/app/Expenses";
@@ -82,7 +81,6 @@ function App() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="members" element={<Members />} />
-              <Route path="attendance" element={<Attendance />} />
               <Route path="plans" element={<Plans />} />
               <Route path="payments" element={<Payments />} />
               <Route path="enquiries" element={<Enquiries />} />

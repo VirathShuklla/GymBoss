@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
-import { waMe } from "../../lib/whatsapp";
+import { waMe, buildReceiptMessage } from "../../lib/whatsapp";
 import { buildReminderOptions } from "../reminders";
 import { MButton, Field, TextInput, PhoneInput, Pills, BottomSheet, ListSkeleton, EmptyRow, StatusChip } from "../ui";
 import { ModuleHeader } from "./ModuleHeader";
@@ -19,6 +19,7 @@ export default function Members({ autoAdd }) {
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
+  const [chip, setChip] = useState("all");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   // member actions
@@ -29,6 +30,7 @@ export default function Members({ autoAdd }) {
   const [rf, setRf] = useState({ plan_id: "", discount: "", amount_paid: "", payment_method: "Cash" });
   const [pf, setPf] = useState({ amount: "", method: "Cash" });
   const [abusy, setAbusy] = useState(false);
+  const [receipt, setReceipt] = useState(null);
 
   const load = (search = q) =>
     api.get(`/members?limit=100${search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`).then(({ data }) => setItems(data.items)).catch(() => setItems([]));
@@ -76,7 +78,15 @@ export default function Members({ autoAdd }) {
     setView("menu");
     api.get(`/members/${m.id}`).then(({ data }) => setDetail(data)).catch(() => {});
   };
-  const closeActions = () => { setView(null); setActive(null); setDetail(null); setRemSel(null); };
+  const closeActions = () => { setView(null); setActive(null); setDetail(null); setRemSel(null); setReceipt(null); };
+
+  const showReceipt = async (paymentId) => {
+    try {
+      const { data } = await api.get(`/payments/${paymentId}/receipt`);
+      setReceipt(data);
+      setView("receipt");
+    } catch { closeActions(); }
+  };
 
   const cur = detail?.member || active;
 
@@ -91,8 +101,13 @@ export default function Members({ autoAdd }) {
         payment_method: rf.payment_method,
       });
       toast.success("Membership renewed");
-      closeActions();
       load();
+      if (Number(rf.amount_paid) > 0) {
+        const { data: fresh } = await api.get(`/members/${active.id}`);
+        const pid = fresh.payments?.[0]?.id;
+        if (pid) { await showReceipt(pid); return; }
+      }
+      closeActions();
     } catch (e) {
       toast.error(apiError(e, "Could not renew"));
     } finally {
@@ -104,10 +119,10 @@ export default function Members({ autoAdd }) {
     if (!(Number(pf.amount) > 0)) return toast.error("Enter a valid amount");
     setAbusy(true);
     try {
-      await api.post("/payments", { member_id: active.id, amount: Number(pf.amount), method: pf.method });
+      const { data: payment } = await api.post("/payments", { member_id: active.id, amount: Number(pf.amount), method: pf.method });
       toast.success("Payment recorded");
-      closeActions();
       load();
+      await showReceipt(payment.id);
     } catch (e) {
       toast.error(apiError(e, "Could not record payment"));
     } finally {
@@ -116,7 +131,13 @@ export default function Members({ autoAdd }) {
   };
 
   const remOptions = buildReminderOptions(cur, organisation?.name, detail?.payments);
-  const sheetTitle = { menu: cur?.full_name, renew: "Renew Membership", payment: "Record Payment", reminder: "Send WhatsApp Reminder" }[view];
+  const sheetTitle = { menu: cur?.full_name, renew: "Renew Membership", payment: "Record Payment", reminder: "Send WhatsApp Reminder", receipt: "Payment Receipt" }[view];
+
+  const shown = (items || []).filter((m) =>
+    chip === "all" ? true
+      : chip === "active" ? m.status === "active"
+      : chip === "expiring" ? m.status === "expiring_soon"
+      : chip === "due" ? (m.due_amount || 0) > 0 : true);
 
   return (
     <div data-testid="m-members">
@@ -137,13 +158,23 @@ export default function Members({ autoAdd }) {
           </button>
         )}
       </div>
+
+      <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto" data-testid="m-members-chips">
+        {[{ k: "all", l: "All" }, { k: "active", l: "Active" }, { k: "expiring", l: "Expiring" }, { k: "due", l: "Due" }].map((c) => (
+          <button key={c.k} data-testid={`m-chip-${c.k}`} onClick={() => setChip(c.k)}
+            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${chip === c.k ? "bg-brand text-white" : "bg-secondary text-muted-foreground"}`}>
+            {c.l}
+          </button>
+        ))}
+      </div>
+
       {!items ? (
         <ListSkeleton />
-      ) : items.length === 0 ? (
-        <EmptyRow icon={Users} title={q ? "No members found" : "No members yet"} subtitle={q ? "Try a different name, phone or ID." : "Add your first member to get started."} testid="m-members-empty" />
+      ) : shown.length === 0 ? (
+        <EmptyRow icon={Users} title={q || chip !== "all" ? "No members found" : "No members yet"} subtitle={q || chip !== "all" ? "Try a different search or filter." : "Add your first member to get started."} testid="m-members-empty" />
       ) : (
         <div className="space-y-2.5">
-          {items.map((m) => (
+          {shown.map((m) => (
             <button key={m.id} onClick={() => openMember(m)} data-testid={`m-member-${m.id}`}
               className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left active:scale-[0.99]">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/12 font-display text-sm font-bold text-brand">
@@ -256,6 +287,23 @@ export default function Members({ autoAdd }) {
                 </a>
               </>
             )}
+          </>
+        )}
+
+        {view === "receipt" && receipt && (
+          <>
+            <div className="rounded-2xl border border-success/25 bg-success/10 p-5 text-center">
+              <p className="text-sm font-bold text-success">Payment recorded</p>
+              <p className="font-num mt-1 text-3xl font-extrabold text-foreground">{inr(receipt.payment.amount)}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Receipt {receipt.payment.receipt_no}</p>
+            </div>
+            <a href={waMe(receipt.member?.phone, buildReceiptMessage(receipt))} target="_blank" rel="noopener noreferrer" onClick={closeActions}
+              className="mt-4 flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#25D366] text-[15px] font-semibold text-white active:scale-[0.98]"
+              data-testid="m-receipt-whatsapp">
+              <MessageCircle className="h-5 w-5" /> Send receipt on WhatsApp
+            </a>
+            <button onClick={closeActions} data-testid="m-receipt-done"
+              className="mt-2 h-11 w-full rounded-2xl border border-border text-sm font-semibold text-muted-foreground">Done</button>
           </>
         )}
       </BottomSheet>

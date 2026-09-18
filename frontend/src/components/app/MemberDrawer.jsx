@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Phone, MessageCircle, Snowflake, Info, Pencil, Trash2, ClipboardCheck,
+  Phone, MessageCircle, Snowflake, Info, Pencil, Trash2,
   RefreshCw, IndianRupee, BellRing, Receipt, ChevronRight, X, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -205,7 +205,6 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                     <ActionRow icon={Info} label="Show More Info" onClick={() => setView("info")} testid="action-more-info" />
                     {!readOnly && <ActionRow icon={Pencil} label="Edit Member" onClick={() => onEdit(m)} testid="action-edit-member" />}
                     {!readOnly && <ActionRow icon={Trash2} label="Delete Member" danger onClick={() => setDeleteOpen(true)} testid="action-delete-member" />}
-                    <ActionRow icon={ClipboardCheck} label="Attendance History" highlight onClick={() => setView("attendance")} testid="action-attendance-history" />
                   </div>
                   {!readOnly && (
                     <>
@@ -225,16 +224,6 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                     Close
                   </button>
                 </div>
-              )}
-
-              {view === "attendance" && (
-                <DrawerList title="Attendance History" onBack={() => setView("actions")} testid="drawer-attendance-list"
-                            empty="No check-ins recorded yet"
-                            items={data.attendance.map((a) => ({
-                              id: a.id,
-                              title: formatDate(a.check_in),
-                              sub: `Check-in ${new Date(a.check_in).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}${a.check_out ? ` · Out ${new Date(a.check_out).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}` : ""}`,
-                            }))} />
               )}
 
               {view === "payments" && (
@@ -411,26 +400,6 @@ function DrawerTitle({ title, onBack }) {
         <X className="h-4 w-4" />
       </button>
       <p className="font-display text-sm font-bold text-foreground">{title}</p>
-    </div>
-  );
-}
-
-function DrawerList({ title, onBack, items, empty, testid }) {
-  return (
-    <div className="p-4">
-      <DrawerTitle title={title} onBack={onBack} />
-      {items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">{empty}</p>
-      ) : (
-        <div className="space-y-2" data-testid={testid}>
-          {items.map((item) => (
-            <div key={item.id} className="rounded-lg border border-border px-3 py-2.5">
-              <p className="text-sm font-semibold text-foreground">{item.title}</p>
-              <p className="text-xs text-muted-foreground">{item.sub}</p>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

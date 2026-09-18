@@ -36,6 +36,7 @@ export default function Members() {
   const [batch, setBatch] = useState("all");
   const [batches, setBatches] = useState([]);
   const [outletId, setOutletId] = useState("all");
+  const [due, setDue] = useState(false);
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editMember, setEditMember] = useState(null);
@@ -56,7 +57,7 @@ export default function Members() {
     setLoading(true);
     try {
       const { data } = await api.get("/members", {
-        params: { search: search || undefined, search_field: searchField, status, plan_id: planId === "all" ? undefined : planId, gender, batch, outlet_id: outletId === "all" ? undefined : outletId, page, limit: 20 },
+        params: { search: search || undefined, search_field: searchField, status, plan_id: planId === "all" ? undefined : planId, gender, batch, outlet_id: outletId === "all" ? undefined : outletId, due: due || undefined, page, limit: 20 },
       });
       setData(data);
     } catch {
@@ -66,7 +67,7 @@ export default function Members() {
     }
   };
 
-  useEffect(() => { load(); }, [status, planId, outletId, gender, batch, searchField, page]);
+  useEffect(() => { load(); }, [status, planId, outletId, gender, batch, searchField, page, due]);
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); load(); }, 350);
     return () => clearTimeout(t);
@@ -88,7 +89,7 @@ export default function Members() {
     }
   }, []);
 
-  const hasFilters = search || status !== "all" || planId !== "all" || outletId !== "all" || gender !== "all" || batch !== "all";
+  const hasFilters = search || status !== "all" || planId !== "all" || outletId !== "all" || gender !== "all" || batch !== "all" || due;
   const readOnly = user?.permission === "view" && user?.role !== "owner";
   const columns = [
     { key: "member", label: "Member", render: (m) => (
@@ -148,6 +149,19 @@ export default function Members() {
         )}
       </PageHeader>
 
+      <div className="mb-3 flex flex-wrap gap-2" data-testid="members-chips">
+        {[{ k: "all", l: "All" }, { k: "active", l: "Active" }, { k: "expiring", l: "Expiring" }, { k: "due", l: "Due" }].map((c) => {
+          const isOn = (due && c.k === "due") || (!due && ((c.k === "active" && status === "active") || (c.k === "expiring" && status === "expiring_soon") || (c.k === "all" && status === "all")));
+          return (
+            <button key={c.k} data-testid={`members-chip-${c.k}`}
+              onClick={() => { setPage(1); if (c.k === "all") { setStatus("all"); setDue(false); } else if (c.k === "active") { setStatus("active"); setDue(false); } else if (c.k === "expiring") { setStatus("expiring_soon"); setDue(false); } else { setStatus("all"); setDue(true); } }}
+              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${isOn ? "bg-brand text-white" : "border border-border bg-card text-muted-foreground hover:text-foreground"}`}>
+              {c.l}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-2.5" data-testid="members-filters">
         <Select value={searchField} onValueChange={setSearchField}>
           <SelectTrigger className="h-9 w-32 rounded-r-none border-r-0" data-testid="members-search-field"><SelectValue /></SelectTrigger>
@@ -204,7 +218,7 @@ export default function Members() {
         onRowClick={(m) => setDrawerId(m.id)}
         empty={hasFilters
           ? <EmptyState icon={Users} title="No members match your filters" description="Try a different search or clear the filters."
-                        action={<Button variant="outline" onClick={() => { setSearch(""); setStatus("all"); setPlanId("all"); setOutletId("all"); setGender("all"); setBatch("all"); }} data-testid="members-clear-filters">Clear Filters</Button>} testid="members-filtered-empty" />
+                        action={<Button variant="outline" onClick={() => { setSearch(""); setStatus("all"); setPlanId("all"); setOutletId("all"); setGender("all"); setBatch("all"); setDue(false); }} data-testid="members-clear-filters">Clear Filters</Button>} testid="members-filtered-empty" />
           : <EmptyState icon={Users} title="No members yet" description="Add your first member to begin managing memberships."
                         action={<Button className="bg-brand hover:bg-brand-hover" onClick={() => setFormOpen(true)} data-testid="empty-add-member"><Plus className="mr-1.5 h-4 w-4" />Add Member</Button>} testid="members-empty" />}
       />

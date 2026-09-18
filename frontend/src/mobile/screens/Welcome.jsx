@@ -1,5 +1,4 @@
 import { useNavigate } from "react-router-dom";
-import { Dumbbell } from "lucide-react";
 import { MButton } from "../ui";
 
 const HERO = "https://images.unsplash.com/photo-1637430308606-86576d8fef3c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODl8MHwxfHNlYXJjaHwxfHxneW0lMjBpbnRlcmlvciUyMGR1bWJiZWxscyUyMGRhcmt8ZW58MHx8fHwxNzg2MTIwOTIxfDA&ixlib=rb-4.1.0&q=85&w=900";
@@ -15,8 +14,8 @@ export default function Welcome() {
 
       <div className="relative flex flex-1 flex-col px-6 pb-[calc(32px+env(safe-area-inset-bottom))] pt-[calc(40px+env(safe-area-inset-top))]">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand shadow-lg shadow-brand/40">
-            <Dumbbell className="h-5 w-5 text-white" strokeWidth={2.5} />
+          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-brand/40">
+            <img src="/logo.png" alt="GymBoss_VVO" className="h-full w-full object-cover" />
           </div>
           <span className="font-display text-lg font-extrabold tracking-tight text-white">GymBoss<span className="text-brand">_VVO</span></span>
         </div>

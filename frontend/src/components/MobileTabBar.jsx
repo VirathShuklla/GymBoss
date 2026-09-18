@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, ClipboardCheck, IndianRupee, Menu } from "lucide-react";
+import { LayoutDashboard, Users, IndianRupee, Layers, Menu } from "lucide-react";
 
 const TABS = [
   { to: "/app/dashboard", label: "Home", icon: LayoutDashboard, end: true },
   { to: "/app/members", label: "Members", icon: Users },
-  { to: "/app/attendance", label: "Check-in", icon: ClipboardCheck },
   { to: "/app/payments", label: "Payments", icon: IndianRupee },
+  { to: "/app/plans", label: "Plans", icon: Layers },
 ];
 
 export function MobileTabBar({ onMore }) {

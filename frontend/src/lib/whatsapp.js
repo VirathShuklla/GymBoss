@@ -13,3 +13,33 @@ export const WA_TEMPLATES = [
   { key: "follow_up", label: "Enquiry Follow-Up", body: "Hi {member_name}, thanks for your interest in {gym_name}! We'd love to help you get started. When would be a good time to talk?" },
   { key: "custom", label: "Custom Message", body: "" },
 ];
+
+const _rdate = (v) =>
+  v ? new Date(`${String(v).slice(0, 10)}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const _rupee = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
+export const buildReceiptMessage = ({ payment, member, gym } = {}) => {
+  const first = (member?.full_name || "").split(" ")[0] || "Member";
+  const gymName = gym?.name || "our gym";
+  const lines = [
+    `Dear ${first},`,
+    "",
+    `Thank you for your payment at ${gymName}. Here is your receipt:`,
+    "",
+    `Receipt No: ${payment?.receipt_no || "—"}`,
+    `Date: ${_rdate(payment?.created_at)}`,
+    `Plan / Item: ${payment?.plan_name || member?.plan_name || "Membership"}`,
+    `Amount Paid: ${_rupee(payment?.amount)}`,
+    `Payment Mode: ${payment?.method || "—"}`,
+  ];
+  if ((member?.due_amount || 0) > 0) lines.push(`Balance Due: ${_rupee(member.due_amount)}`);
+  lines.push(
+    `Valid Until: ${_rdate(member?.membership_expiry)}`,
+    "",
+    "Please keep this message as your payment confirmation.",
+    "",
+    "Warm regards,",
+    gymName,
+  );
+  return lines.join("\n");
+};

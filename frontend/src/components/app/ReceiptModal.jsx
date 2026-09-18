@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { X, Printer } from "lucide-react";
+import { X, Printer, MessageCircle } from "lucide-react";
 import { inr, formatDate, formatPhone } from "../../lib/format";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Logo } from "../Logo";
+import { waMe, buildReceiptMessage } from "../../lib/whatsapp";
 
 export function ReceiptModal({ receipt, onClose }) {
   if (!receipt) return null;
@@ -41,8 +42,13 @@ export function ReceiptModal({ receipt, onClose }) {
           )}
           <p className="mt-5 text-center text-[11px] text-muted-foreground">Thank you for training with {gym?.name}. Powered by GymBoss_VVO.</p>
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={onClose} data-testid="receipt-close"><X className="mr-1.5 h-4 w-4" />Close</Button>
+          {member?.phone && (
+            <Button className="bg-[#25D366] text-white hover:bg-[#1fb857]" onClick={() => window.open(waMe(member.phone, buildReceiptMessage(receipt)), "_blank")} data-testid="receipt-whatsapp-button">
+              <MessageCircle className="mr-1.5 h-4 w-4" />Send on WhatsApp
+            </Button>
+          )}
           <Button className="bg-brand hover:bg-brand-hover" onClick={() => window.print()} data-testid="receipt-print-button">
             <Printer className="mr-1.5 h-4 w-4" />Print / Download
           </Button>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, ClipboardCheck, Users, CalendarClock, ArrowUpRight } from "lucide-react";
+import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarClock, ArrowUpRight } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
@@ -12,7 +12,6 @@ const METRICS = [
   { key: "active_members", label: "Active", icon: Users, color: "text-success" },
   { key: "total_members", label: "Total Members", icon: Users, color: "text-foreground" },
   { key: "today_enquiries", label: "Enquiries", icon: HelpCircle, color: "text-info" },
-  { key: "attendance_today", label: "Attendance", icon: ClipboardCheck, color: "text-brand" },
 ];
 
 export default function Home() {
