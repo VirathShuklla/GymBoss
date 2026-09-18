@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 12 verified financial correctness after demo seed rewrite + demo-only startup migration. Backend: 9/9 pytest tests PASSED including per-member consistency (55 members, 0 inconsistent), sum(dues)=finance.outstanding=41,997 exact match, full create/pay/renew flow with the 5 examples from the brief (₹6000/₹0 -> due 6000, /₹2000 -> 4000, /₹6000 -> 0, discount 1000 -> payable 5000, admission 1000 -> payable 7000), partial then full payment transitions (Due -> Partially Paid -> Paid) with due decreasing by exactly the paid amount, payment validation (amount<=0 -> 422, invalid method -> 422, missing member -> 404), renew recalcs payable/due and extends expiry, due=true filter only returns members with due_amount>0, persistence across re-login, and all dashboard/finance/reports endpoints return 200. Frontend: login OK, /app/dashboard shows Today's Collection + KPIs, /app/finance shows Revenue/Expenses/Net/Outstanding, /app/members chips (All/Active/Expiring/Due) work (Due chip returns only due>0 rows), /app/reports loads with tabs (Revenue, Member Growth, Outstanding Dues, Membership Expiry, Enquiry Conversion). No console errors seen during logged-in navigation.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter12_financial.py",
+    "/app/test_reports/pytest/iter12.xml"
+  ],
+  "action_items": [
+    "Consider hard-deleting or fully purging TEST_ prefixed members from the demo seed during startup migration OR make DELETE /api/members/{id} truly remove the record. Currently DELETE returns success but list_members still returns them (probably soft-delete flag not filtered, or delete does not set deleted_at) — leftover TEST_ members from previous test iterations (TEST_QA Member IPF-1224..1237, TEST_M_516045, and my new TEST_Renew/TEST_FinFlow/TEST_AdDisc) still show up in the Members list. Financially they still balance so it does not break the correctness invariants, but the demo view is cluttered."
+  ],
+  "critical_code_review_comments": [
+    "GET /api/members returns flat member fields but GET /api/members/{id} wraps as {member:{...}, payments:[...]} — inconsistent envelope, forces clients to branch. Prior iteration's Members.jsx works around this but any new consumer must remember.",
+    "members.py create_membership stores field name `payable` while frontend + finance may also read `payable_amount` in some places; single source of truth is now `payable` only. Grep frontend for `payable_amount` to make sure no stale reference remains.",
+    "record_payment computes new_due = due - amount (line ~434) rather than recomputing from payable - sum(payments). Works for happy-path but any legacy row where due drifted from the invariant would keep drifting. The demo-only migration masks this; consider always recomputing from payments on write for defence in depth."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter12_financial.py"
+  ],
+  "success_rate": { "backend": "100% (9/9)", "frontend": "100% of requested screens verified" },
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created and cleaned up transient TEST_ members through /api/members POST + DELETE inside each test's finally block. Some leftover TEST_ members from previous iterations remain because DELETE /api/members/{id} appears to not remove them from the list response (action item above). Final financial state: 55 members, sum(dues)=₹41,997, finance.outstanding=₹41,997 (identical).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iter12_financial.py -v -o addopts=''. Financial invariants confirmed on demo tenant. New TEST_ leftover members exist but obey payable = price + admission - discount and due = payable - sum(payments). To exercise UI, demo trial has 9 days left (previous iteration bumped it). All /app/* pages reachable without paywall gating.",
+  "rca_of_the_issue": "Original bug (₹6000 plan showing ₹7000/₹7911 due) was caused by demo seed writing random due_amount and random payment amounts unrelated to plan price. Fix under review: (a) demo seed now computes payable = price + admission - discount and inserts matching payment rows so due = payable - sum(payments); (b) demo-only startup migration recomputes payable/due for all seeded members. Verified via API: 0/55 members inconsistent, sum(dues) == finance.summary.outstanding to the rupee, create/pay/renew flows produce exactly the values in the brief."
+}

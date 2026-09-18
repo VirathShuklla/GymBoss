@@ -100,6 +100,14 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - **Code comments**: added module docstrings to backend server/deps/members/ops/comms/finance/billing/admin and header comments to the new/changed mobile screens.
 - Verified via screenshots (landing desktop, mobile Home checklist, mobile Finance) + backend health; frontend compiles clean.
 
+## Financial-logic audit + fix (2026-06)
+- **Bug**: demo/members could show a due unrelated to price (e.g. ₹6000 plan → random ₹7000/₹7911 due).
+- **Root cause**: the demo SEED fabricated `due_amount` via `rng.choice([...,plan_price])` and wrote payment rows with random amounts, with NO `payable`/`discount`/`admission` stored — so due ≠ payable − paid. The real backend math (create_membership/renew/record_payment in members.py) was already correct: payable = price − discount + admission; due = payable − paid; payments decrement due.
+- **Fix** (backend, source-of-truth only): (1) rewrote demo seed so each member has payable = price − discount + admission and a matching payment row so due = payable − Σ(payments); a few "today" payments each reduce their member's due. (2) Added a demo-only startup migration recomputing payable/due from plan price + discount + admission and actual payments. (3) One-time wiped & re-seeded the demo tenant to remove drift + leftover QA `TEST_` members.
+- **Existing records**: real tenants need NO recalculation (their data already obeys the invariant via correct write logic); only the demo tenant was corrected. record_payment intentionally decrements per-cycle (NOT Σ-all-payments) because renewals reset payable each cycle.
+- **Verified**: testing_agent iteration_12 → backend 9/9 (all 5 example cases, partial→full, validation 422/404, renewal, due filter, persistence), frontend 100% screens. Post-reseed direct check: 26 members, 0 inconsistent, Σdues == finance.outstanding (32,625), Σpayments == revenue (113,875), status mix 17 Paid/6 Partial/3 Due.
+- **Not a bug**: DELETE /members works (soft-delete + list filters deleted_at); the "leftover members" were un-cleaned QA test rows, now purged.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
