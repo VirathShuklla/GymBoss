@@ -510,6 +510,7 @@ async def seed_demo():
     for i, (name, phone, gender, dob) in enumerate(DEMO_MEMBERS):
         outlet = outlet1 if i % 3 else outlet2
         plan = plans[i % 4]
+        price = plan["price"]
         joined_days_ago = rng.randint(20, 300)
         joined = ts - timedelta(days=joined_days_ago)
         scenario = i % 10
@@ -523,7 +524,21 @@ async def seed_demo():
             expiry = today - timedelta(days=rng.randint(3, 40))
         else:
             expiry = today + timedelta(days=30)
-        due = rng.choice([0, 0, 0, 500, 1000, plan["price"]]) if scenario in (7, 8) else rng.choice([0, 0, 0, 500])
+        # Consistent finances (single source of truth):
+        #   payable = plan price - discount + admission charge
+        #   due     = payable - amount actually paid (backed by the real payment row below)
+        discount = rng.choice([0, 0, 0, 500, 1000])
+        admission = rng.choice([0, 0, 500])
+        payable = max(0, price - discount + admission)
+        pay_kind = rng.choice(["full", "full", "partial", "none"])
+        if pay_kind == "full":
+            paid = payable
+        elif pay_kind == "partial":
+            paid = round(payable * rng.choice([0.3, 0.5, 0.7]))
+        else:
+            paid = 0
+        due = max(0, payable - paid)
+        status = "Paid" if due == 0 else ("Partially Paid" if paid > 0 else "Due")
         mid = new_id()
         members.append({
             "id": mid,
@@ -538,9 +553,13 @@ async def seed_demo():
             "joining_date": (joined.date()).isoformat(),
             "plan_id": plan["id"],
             "plan_name": plan["name"],
-            "plan_price": plan["price"],
+            "plan_price": price,
             "membership_start": (expiry - timedelta(days=plan["duration"] * 30)).isoformat(),
             "membership_expiry": expiry.isoformat(),
+            "discount": discount,
+            "admission_amount": admission,
+            "payable": payable,
+            "payment_status": status,
             "due_amount": due,
             "frozen_until": (today + timedelta(days=10)).isoformat() if scenario == 9 else None,
             "freeze_history": [],
@@ -548,8 +567,8 @@ async def seed_demo():
             "created_at": joined,
             "deleted_at": None,
         })
-        n_payments = rng.randint(1, 3)
-        for j in range(n_payments):
+        # One admission payment equal to the amount paid, so revenue == paid and due == payable - paid.
+        if paid > 0:
             receipt += 1
             pay_date = ts - timedelta(days=rng.randint(0, 60), hours=rng.randint(0, 10))
             payments.append({
@@ -558,9 +577,11 @@ async def seed_demo():
                 "outlet_id": outlet,
                 "member_id": mid,
                 "member_name": name,
-                "type": "admission" if j == 0 else rng.choice(["renewal", "renewal", "due"]),
+                "type": "admission",
                 "plan_name": plan["name"],
-                "amount": plan["price"] if j == 0 else rng.choice([plan["price"], due or 500, 1000]),
+                "amount": paid,
+                "discount": discount,
+                "admission_amount": admission,
                 "method": rng.choice(["Cash", "UPI", "UPI", "Card", "Bank Transfer"]),
                 "receipt_no": f"RCPT-{receipt}",
                 "created_at": pay_date,
@@ -576,26 +597,25 @@ async def seed_demo():
                 "check_in": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=6 + i % 6, minutes=rng.randint(0, 59)) - timedelta(hours=5, minutes=30),
                 "check_out": None,
             })
-    for k, (name, method, amount, ptype) in enumerate([
-        ("Aarav Sharma", "UPI", 1500, "renewal"),
-        ("Riya Chawla", "Cash", 4000, "admission"),
-        ("Sahil Khan", "UPI", 500, "due"),
-    ]):
+    # A few payments collected "today" — each reduces that member's due so all totals stay consistent.
+    for k, m in enumerate([mm for mm in members if mm["due_amount"] > 0][:6]):
+        amt = m["due_amount"] if k % 2 == 0 else max(1, round(m["due_amount"] / 2))
         receipt += 1
-        m = next((x for x in members if x["full_name"] == name), members[0])
         payments.append({
             "id": new_id(),
             "organisation_id": org_id,
             "outlet_id": m["outlet_id"],
             "member_id": m["id"],
-            "member_name": name,
-            "type": ptype,
+            "member_name": m["full_name"],
+            "type": "due",
             "plan_name": m["plan_name"],
-            "amount": amount,
-            "method": method,
+            "amount": amt,
+            "method": rng.choice(["Cash", "UPI", "Card"]),
             "receipt_no": f"RCPT-{receipt}",
             "created_at": ts - timedelta(hours=2 + k),
         })
+        m["due_amount"] = max(0, m["due_amount"] - amt)
+        m["payment_status"] = "Paid" if m["due_amount"] == 0 else "Partially Paid"
     enquiries = [
         {"name": "Kunal Thakur", "phone": "+919812345001", "category": "Membership", "status": "New", "source": "Walk-In"},
         {"name": "Aishwarya Rao", "phone": "+919812345002", "category": "PT", "status": "Follow-Up", "source": "Instagram"},
@@ -739,6 +759,24 @@ async def startup():
             await db.organisations.update_one({"id": demo["id"]}, {"$set": {
                 "subscription.trial_started_at": ts,
                 "subscription.trial_ends_at": ts + timedelta(days=TRIAL_DAYS),
+            }})
+    # One-time consistency migration for the demo tenant: rebuild each member's
+    # payable/due from the single source of truth so numbers match everywhere.
+    #   payable = plan price - discount + admission ; due = max(0, payable - total actually paid)
+    if demo:
+        async for m in db.members.find({"organisation_id": demo["id"], "deleted_at": None}):
+            price = m.get("plan_price", 0) or 0
+            disc = m.get("discount", 0) or 0
+            adm = m.get("admission_amount", 0) or 0
+            payable = max(0, round(price - disc + adm, 2))
+            paid = 0
+            async for p in db.payments.find({"organisation_id": demo["id"], "member_id": m["id"]}, {"amount": 1}):
+                paid += p.get("amount", 0) or 0
+            due = max(0, round(payable - paid, 2))
+            m_status = "Paid" if due == 0 else ("Partially Paid" if paid > 0 else "Due")
+            await db.members.update_one({"id": m["id"]}, {"$set": {
+                "payable": payable, "discount": disc, "admission_amount": adm,
+                "due_amount": due, "payment_status": m_status,
             }})
 
 
