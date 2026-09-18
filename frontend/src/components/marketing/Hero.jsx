@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { CheckCircle2, Play } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { DashboardMockup } from "./DashboardMockup";
 import { usePublicConfig } from "../../hooks/usePublicConfig";
 import { inr } from "../../lib/format";
@@ -19,7 +19,7 @@ export function Hero() {
         {/* Handwritten annotations — desktop only */}
         <div className="pointer-events-none absolute inset-0 hidden lg:block" aria-hidden="true" data-testid="hero-annotations">
           <div className="absolute left-4 top-24 -rotate-[8deg] xl:left-10">
-            <p style={hand} className="text-3xl font-bold leading-tight text-brand">Stronger Gyms,<br />Brighter People</p>
+            <p style={hand} className="text-3xl font-bold leading-tight text-brand">From Chaos<br />to Control</p>
             <svg className="ml-8 mt-1 h-16 w-28 text-brand/60" viewBox="0 0 120 70" fill="none">
               <path d="M6 8 C 42 4, 82 22, 108 54" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
               <path d="M108 54 l -15 -1 M108 54 l -2 -15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
@@ -56,8 +56,7 @@ export function Hero() {
               Start Your 10-Day Free Trial →
             </Link>
             <a href="#how-it-works" data-testid="hero-cta-how"
-               className="inline-flex w-full items-center justify-center gap-2.5 rounded-full border border-slate-300 bg-white px-8 py-3.5 text-base font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:text-slate-900 sm:w-auto">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-brand/12 text-brand"><Play className="h-2.5 w-2.5 fill-current" /></span>
+               className="inline-flex w-full items-center justify-center rounded-full border border-slate-300 bg-white px-8 py-3.5 text-base font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:text-slate-900 sm:w-auto">
               See How It Works
             </a>
           </div>

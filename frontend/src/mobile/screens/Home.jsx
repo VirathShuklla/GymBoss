@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarClock, ArrowUpRight } from "lucide-react";
+import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarClock, ArrowUpRight, X, Check } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
@@ -16,7 +16,7 @@ const METRICS = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const { organisation, user, subscription } = useAuth();
+  const { organisation, user, subscription, reload } = useAuth();
   const [summary, setSummary] = useState(null);
   const [txns, setTxns] = useState(null);
 
@@ -43,6 +43,11 @@ export default function Home() {
           <MThemeToggle />
         </div>
       </div>
+
+      {organisation && !organisation.onboarding?.dismissed && (
+        <MOnboarding onboarding={organisation.onboarding}
+          onDismiss={async () => { await api.put("/onboarding", { dismissed: true }); reload(); }} />
+      )}
 
       <div className="mt-5 overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-today-card">
         <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Today's Collection</p>
@@ -110,6 +115,48 @@ export default function Home() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Getting-started checklist ("tutorial") shown until the owner dismisses it.
+// Each pending step deep-links into the relevant Manage tab; done steps come from
+// organisation.onboarding (set server-side as the owner completes each action).
+function MOnboarding({ onboarding, onDismiss }) {
+  const navigate = useNavigate();
+  const steps = [
+    { key: "plan", label: "Create your first plan", to: "/m/manage?tab=plans" },
+    { key: "member", label: "Add your first member", to: "/m/manage?add=member" },
+    { key: "staff", label: "Add staff", to: "/m/manage?tab=staff" },
+    { key: "payment", label: "Record a payment", to: "/m/manage?tab=members" },
+  ];
+  const done = steps.filter((s) => onboarding?.[s.key]).length;
+  return (
+    <div className="mt-5 rounded-3xl border border-brand/25 bg-brand/5 p-5" data-testid="m-onboarding">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-display text-base font-bold text-foreground">Get your gym ready</p>
+          <p className="text-xs text-muted-foreground">{done} of {steps.length} done</p>
+        </div>
+        <button onClick={onDismiss} data-testid="m-onboarding-dismiss" aria-label="Dismiss" className="rounded-md p-1 text-muted-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <ul className="mt-3 space-y-2">
+        {steps.map((s) => {
+          const d = onboarding?.[s.key];
+          return (
+            <li key={s.key} className="flex items-center gap-2.5 text-sm">
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full ${d ? "bg-success text-white" : "border-2 border-muted-foreground/40"}`}>
+                {d && <Check className="h-3 w-3" strokeWidth={3.5} />}
+              </span>
+              {d
+                ? <span className="text-muted-foreground line-through">{s.label}</span>
+                : <button onClick={() => navigate(s.to)} data-testid={`m-onboarding-${s.key}`} className="font-medium text-foreground">{s.label}</button>}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

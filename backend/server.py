@@ -1,3 +1,5 @@
+"""FastAPI entrypoint: auth (register/login/logout/refresh/me/forgot/reset), public config,
+dashboard summary, onboarding, outlets, router wiring, CORS, and startup (indexes + seeds)."""
 from dotenv import load_dotenv
 load_dotenv()
 

@@ -1,3 +1,5 @@
+"""Members & catalogue: plans, member CRUD, freeze/renew, payments, receipts, attendance,
+batches, member-code generation, and tenant-scoped file uploads."""
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone

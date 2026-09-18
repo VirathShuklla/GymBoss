@@ -93,6 +93,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - **Demo trial auto-refresh**: startup now resets the demo tenant's lapsed 10-day trial so the web app is never stuck behind the paywall in preview.
 - Verified: iteration_11 → backend 5/5 pytest, frontend 100% of flows (web + mobile), zero bugs. Razorpay hosted checkout not auto-completed (needs real card — user does final tap).
 
+## Landing polish + Mobile Finance/Reports/Onboarding + Docs (2026-06)
+- **Landing**: left annotation changed to "From Chaos to Control"; removed the play icon on "See How It Works"; panda logo image now has rounded (transparent) corners — regenerated `/frontend/public/logo.png` + all PWA icons (192/512/maskable/apple-touch) from a rounded, white-trimmed master so no white edges.
+- **Mobile app** (`/m`): added **Finance** and **Reports** tabs to Manage (finance-access gated: owner/admin/manager or finance_enabled) — new `mobile/manage/Finance.jsx` (range summary + collections-by-method + transactions) and `Reports.jsx` (revenue trend, outstanding dues, upcoming expiries, enquiry conversion), reusing /finance/* and /reports/* endpoints. Added the getting-started **onboarding checklist** ("Get your gym ready") to mobile Home (`m-onboarding`, deep-links into Manage, dismiss persists via PUT /onboarding).
+- **README** updated: mobile PWA section (replaces Attendance), mobile row in tech stack, intro reflects web+mobile.
+- **Code comments**: added module docstrings to backend server/deps/members/ops/comms/finance/billing/admin and header comments to the new/changed mobile screens.
+- Verified via screenshots (landing desktop, mobile Home checklist, mobile Finance) + backend health; frontend compiles clean.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

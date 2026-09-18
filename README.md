@@ -2,7 +2,7 @@
 
 **The modern gym operating system** — a production-oriented, multi-tenant SaaS platform for gym owners, built by **BuildVVO Technologies Private Limited** (India-first).
 
-GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, memberships, attendance, payments, enquiries, staff, outlets, expenses, finance, reports, exports — plus the SaaS billing that powers the product itself.
+GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, memberships, payments, enquiries, staff, outlets, expenses, finance, reports, exports — plus the SaaS billing that powers the product itself. It ships as a marketing website, a full web dashboard, and a separate installable mobile PWA at `/m`, all sharing one backend.
 
 | | |
 |---|---|
@@ -68,9 +68,11 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 - Single category-driven form — the **Category dropdown decides the tab**; conditional fields (duration for Membership/PT, sessions+trainer for PT, inventory for Product)
 - Edit / archive with confirmation
 
-### 6. Attendance
-- Check-in by member search (name/phone/ID), same-day duplicate guard, check-out
-- Today's list per outlet, monthly history with daily counts
+### 6. Mobile App (installable PWA, `/m`)
+- A separate, native-style mobile experience sharing the same backend and accounts (violet branding, light/dark)
+- Onboarding carousel → welcome → login/register → Home (today's collection, KPIs, getting-started checklist, recent transactions), Manage (Members, Plans, Enquiries, Expenses, Outlets, Staff — plus **Finance + Reports** for finance-enabled users), Profile (subscription + Razorpay pay button, theme, logout)
+- Members: debounced search + **Active / Expiring / Due** filter chips + member actions (renew, record payment, WhatsApp reminder, and WhatsApp receipt after a payment)
+- Installable via `manifest.json` + service worker; `start_url` is `/m`
 
 ### 7. Payments & Receipts
 - Record payments against dues (Cash / UPI / Card / Bank Transfer / Other), filters, pagination
@@ -120,6 +122,7 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 | Layer | Technology |
 |---|---|
 | Frontend | React 19 (CRA + craco), Tailwind CSS, shadcn/ui, lucide-react, recharts, sonner |
+| Mobile | Installable PWA at `/m` (manifest + service worker), same React codebase & API |
 | Backend | FastAPI (Python 3.11), Motor (async MongoDB), PyJWT, bcrypt, httpx |
 | Database | MongoDB |
 | Storage | Emergent object storage (`/objstore` proxy) |

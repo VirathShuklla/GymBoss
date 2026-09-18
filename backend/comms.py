@@ -1,3 +1,4 @@
+"""Communications: announcements engine (kept server-side; the UI module is currently disabled)."""
 from datetime import datetime, timezone
 from typing import Optional, List
 

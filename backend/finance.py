@@ -1,3 +1,4 @@
+"""Finance summaries, business reports, and the CSV export center (all finance-access gated)."""
 import csv
 import io
 import re

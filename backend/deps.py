@@ -1,3 +1,6 @@
+"""Shared backend core: Mongo client, JWT/password auth, tenancy + permission dependencies
+(get_org_user, require_write, require_manager, require_finance_access, require_super_admin),
+subscription/member derivations, counters, object storage, and settings (price + Razorpay) lookup."""
 from dotenv import load_dotenv
 load_dotenv()
 

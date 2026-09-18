@@ -1,3 +1,5 @@
+"""BuildVVO super-admin console: platform overview, gyms list/detail, disable/reactivate,
+platform settings (price + Razorpay keys), and audit logs."""
 import re
 from datetime import timedelta
 from typing import Optional

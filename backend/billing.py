@@ -1,3 +1,5 @@
+"""SaaS subscription billing (gym -> BuildVVO): Razorpay one-time orders and auto-debit
+subscriptions, HMAC signature verification, and webhook handling."""
 import hashlib
 import hmac
 import os
