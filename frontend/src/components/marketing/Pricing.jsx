@@ -30,8 +30,10 @@ export function Pricing() {
             Try GymBoss_VVO completely free for 10 days. No credit card required.
           </p>
         </div>
-        <div className="mx-auto mt-14 max-w-md" data-testid="pricing-card">
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lift">
+        <div className="relative mx-auto mt-14 max-w-md" data-testid="pricing-card">
+          <img src="/mascots/peek.png" alt="" aria-hidden="true" data-testid="pricing-mascot"
+               className="mascot-float pointer-events-none absolute -top-12 right-3 z-20 w-24 drop-shadow-xl sm:right-6 sm:w-28" />
+          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lift">
             <div className="bg-gradient-to-br from-brand to-[#5B21B6] px-8 py-8 text-center text-white">
               <span className="inline-block rounded-full bg-white/20 px-3.5 py-1 text-xs font-bold uppercase tracking-wide">
                 10-Day Free Trial
@@ -65,11 +67,6 @@ export function Pricing() {
               )}
             </div>
           </div>
-        </div>
-        {/* Panda inspecting the offer */}
-        <div className="pointer-events-none absolute bottom-6 right-2 hidden lg:block xl:right-12" aria-hidden="true" data-testid="pricing-mascot">
-          <span className="absolute inset-x-0 bottom-10 mx-auto h-40 w-40 rounded-full bg-brand/12 blur-2xl" />
-          <img src="/mascots/planning.png" alt="" className="mascot-float relative w-[190px] drop-shadow-2xl xl:w-[230px]" />
         </div>
       </div>
     </section>

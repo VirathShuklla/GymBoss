@@ -45,11 +45,12 @@ export function Hero() {
 
           {/* Mascot */}
           <div className="relative flex justify-center lg:justify-end" data-testid="hero-mascot">
-            <div className="pointer-events-none absolute inset-x-0 top-1/2 mx-auto h-[360px] w-[360px] -translate-y-1/2 rounded-full bg-brand/12 blur-3xl" aria-hidden="true" />
-            <div className="relative">
-              <span className="pointer-events-none absolute -bottom-2 left-1/2 h-6 w-3/4 -translate-x-1/2 rounded-[50%] bg-slate-900/12 blur-md" aria-hidden="true" />
-              <img src="/mascots/hero.png" alt="GymBoss mascot — a cool panda in gym gear" loading="eager"
-                   className="mascot-float relative z-10 w-[220px] drop-shadow-2xl sm:w-[280px] lg:w-[360px]" />
+            <div className="pointer-events-none absolute inset-x-0 top-1/2 mx-auto h-[340px] w-[340px] -translate-y-1/2 rounded-full bg-brand/12 blur-3xl" aria-hidden="true" />
+            <div className="mascot-float relative rounded-full bg-gradient-to-br from-brand/25 to-brand/5 p-2 shadow-2xl">
+              <div className="overflow-hidden rounded-full ring-1 ring-brand/20">
+                <img src="/mascots/hero_bust.jpg" alt="GymBoss mascot — a cool panda in gym gear" loading="eager"
+                     className="h-56 w-56 object-cover sm:h-72 sm:w-72 lg:h-[340px] lg:w-[340px]" />
+              </div>
             </div>
           </div>
         </div>

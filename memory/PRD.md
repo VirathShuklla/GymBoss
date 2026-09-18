@@ -73,11 +73,10 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Mobile Members search: debounced search bar (`m-members-search`, clear `m-members-search-clear`) hitting `GET /members?search=` (name/phone/member code). Verified: 52 → 1 result for "Aarav".
 
 ## Landing page — mascot branding + classy refresh (2026-06)
-- Integrated the GymBoss panda mascot (user avatar). Generated 3 isolated poses, background-removed to transparent PNGs at `/app/frontend/public/mascots/` (hero.png, motivating.png, planning.png).
-- Hero: two-column (copy left, clean mascot right with soft violet glow + ground shadow, gentle float). Removed the earlier "Meet GymBoss"/"Payment received" floating chips per user feedback (looked "vibe coded"). Dashboard mockup retained.
-- Pricing: added the tablet-reviewing panda beside the offer card ("looking over the offer"), desktop/lg+ only so mobile stays clean.
-- Final CTA + How It Works reverted to clean, mascot-free (kept classy, ad-conversion focused).
-- Verified desktop (1920) + mobile (390): no horizontal overflow, mascot stacks under copy on phones.
+- Hero uses a classy circular avatar (panda bust `hero_bust.jpg` on a violet disc with subtle ring + glow), replacing the full-body sticker look per user feedback.
+- Pricing: a peeking panda head (`peek.png`, background-removed) leans over the top of the offer card ("looking over the offer"), shown on all sizes, small + tasteful.
+- Removed floating chips / Final CTA + How It Works mascots to keep it ad-conversion clean.
+- Mascot assets in `/app/frontend/public/mascots/`. Verified desktop (1920) + mobile (390): no horizontal overflow.
 
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
