@@ -1,7 +1,7 @@
 """BuildVVO super-admin console: platform overview, gyms list/detail, disable/reactivate,
 platform settings (price + Razorpay keys), and audit logs."""
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -44,29 +44,83 @@ async def admin_overview(user: dict = Depends(require_super_admin)):
     }
 
 
+def _naive(dt):
+    """Coerce datetime or ISO string to a naive datetime for safe comparison/bucketing."""
+    if dt is None:
+        return None
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt)
+        except ValueError:
+            return None
+    return dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) else dt
+
+
+def _health(status, last_activity_days, members):
+    """Customer health from signals we actually track: subscription status, recency of
+    activity (last member payment / member added), and whether any members exist.
+    (No login/WhatsApp/attendance tracking exists, so those are intentionally not used.)"""
+    if status == "cancelled":
+        return "churned", 0
+    if status in ("expired", "payment_due"):
+        return "high_risk", 20
+    score = 100
+    if last_activity_days is None:
+        score -= 45
+    elif last_activity_days > 30:
+        score -= 55
+    elif last_activity_days > 14:
+        score -= 30
+    elif last_activity_days > 7:
+        score -= 10
+    if not members:
+        score -= 25
+    score = max(0, min(100, score))
+    cat = "healthy" if score >= 70 else ("at_risk" if score >= 40 else "high_risk")
+    return cat, score
+
+
 @router.get("/admin/gyms")
-async def admin_gyms(search: Optional[str] = None, user: dict = Depends(require_super_admin)):
+async def admin_gyms(search: Optional[str] = None, status: Optional[str] = None, health: Optional[str] = None, user: dict = Depends(require_super_admin)):
+    price = await get_plan_price()
     q = {}
     if search:
         q["name"] = {"$regex": re.escape(search.strip()), "$options": "i"}
-    orgs = await db.organisations.find(q).sort("created_at", -1).to_list(1000)
+    orgs = await db.organisations.find(q).sort("created_at", -1).to_list(2000)
+    # One aggregation each (no N+1) for per-gym member & payment activity.
+    pay_agg = {d["_id"]: d for d in await db.payments.aggregate([
+        {"$group": {"_id": "$organisation_id", "cnt": {"$sum": 1}, "last": {"$max": "$created_at"}, "sum": {"$sum": "$amount"}}},
+    ]).to_list(10000)}
+    mem_agg = {d["_id"]: d for d in await db.members.aggregate([
+        {"$match": {"deleted_at": None}}, {"$group": {"_id": "$organisation_id", "cnt": {"$sum": 1}, "last": {"$max": "$created_at"}}},
+    ]).to_list(10000)}
+    now = now_utc().replace(tzinfo=None)
+    owners = {u["organisation_id"]: u for u in await db.users.find({"role": "owner"}, {"_id": 0, "full_name": 1, "email": 1, "phone": 1, "organisation_id": 1}).to_list(10000)}
     result = []
     for org in orgs:
-        owner = await db.users.find_one({"organisation_id": org["id"], "role": "owner"}, {"_id": 0, "full_name": 1, "email": 1, "phone": 1})
-        member_count = await db.members.count_documents({"organisation_id": org["id"], "deleted_at": None})
-        last_payment = await db.subscription_payments.find_one({"organisation_id": org["id"], "status": "paid"}, {"_id": 0, "amount": 1, "paid_at": 1}, sort=[("paid_at", -1)])
+        oid = org["id"]
+        sub = derive_subscription(org, price)
+        m = mem_agg.get(oid, {})
+        p = pay_agg.get(oid, {})
+        last_activity = max([x for x in [_naive(m.get("last")), _naive(p.get("last"))] if x], default=None)
+        la_days = (now - last_activity).days if last_activity else None
+        cat, score = _health(sub["status"], la_days, m.get("cnt", 0))
         result.append({
-            "id": org["id"],
-            "name": org.get("name"),
-            "city": org.get("city"),
-            "is_demo": bool(org.get("is_demo")),
-            "disabled": bool(org.get("disabled")),
-            "created_at": org.get("created_at").isoformat() if org.get("created_at") else None,
-            "owner": owner,
-            "member_count": member_count,
-            "subscription": derive_subscription(org),
-            "last_payment": last_payment,
+            "id": oid, "name": org.get("name"), "city": org.get("city"),
+            "is_demo": bool(org.get("is_demo")), "disabled": bool(org.get("disabled")),
+            "created_at": _naive(org.get("created_at")).isoformat() if org.get("created_at") else None,
+            "owner": owners.get(oid), "member_count": m.get("cnt", 0),
+            "subscription": sub,
+            "monthly_revenue": price if sub["status"] == "active" else 0,
+            "collection_total": p.get("sum", 0),
+            "last_activity": last_activity.isoformat() if last_activity else None,
+            "last_activity_days": la_days,
+            "health": cat, "health_score": score,
         })
+    if status:
+        result = [g for g in result if g["subscription"]["status"] == status]
+    if health:
+        result = [g for g in result if g["health"] == health]
     return result
 
 
@@ -143,6 +197,137 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
     await db.settings.update_one({"id": "platform"}, {"$set": data}, upsert=True)
     await audit(user["id"], "platform.settings_updated", "platform", {"keys": [k for k, v in data.items() if v]})
     return await db.settings.find_one({"id": "platform"}, {"_id": 0})
+
+
+@router.get("/admin/analytics")
+async def admin_analytics(user: dict = Depends(require_super_admin)):
+    """All SaaS analytics from real data. Metrics we cannot source (marketing/CAC, website
+    visitors, per-user logins, WhatsApp-sent, attendance, refunds) are omitted, not faked."""
+    price = await get_plan_price()
+    now = now_utc().replace(tzinfo=None)
+    this_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    lm_start = (this_start - timedelta(days=1)).replace(day=1)
+
+    orgs = await db.organisations.find({}, {"subscription": 1, "created_at": 1, "is_demo": 1, "name": 1}).to_list(10000)
+    counts = {"trial": 0, "active": 0, "expired": 0, "payment_due": 0, "cancelled": 0}
+    trials_today = trials_3d = trials_7d = 0
+    for o in orgs:
+        s = derive_subscription(o, price)["status"]
+        counts[s] = counts.get(s, 0) + 1
+        if s == "trial":
+            te = _naive(o.get("subscription", {}).get("trial_ends_at"))
+            if te:
+                d = (te.date() - now.date()).days
+                if d <= 0:
+                    trials_today += 1
+                if 0 <= d <= 3:
+                    trials_3d += 1
+                if 0 <= d <= 7:
+                    trials_7d += 1
+    paying, trial = counts["active"], counts["trial"]
+    churned = counts["cancelled"] + counts["expired"] + counts["payment_due"]
+    total = len(orgs)
+    new_this = sum(1 for o in orgs if _naive(o.get("created_at")) and _naive(o["created_at"]) >= this_start)
+    new_last = sum(1 for o in orgs if _naive(o.get("created_at")) and lm_start <= _naive(o["created_at"]) < this_start)
+
+    # Last 12 month keys
+    keys, yy, mm = [], this_start.year, this_start.month
+    for _ in range(12):
+        keys.append(f"{yy:04d}-{mm:02d}")
+        mm -= 1
+        if mm == 0:
+            mm, yy = 12, yy - 1
+    keys = list(reversed(keys))
+
+    paid = await db.subscription_payments.find({"status": "paid"}, {"amount": 1, "paid_at": 1, "created_at": 1}).to_list(100000)
+    rev_by = {k: 0 for k in keys}
+    for p in paid:
+        d = _naive(p.get("paid_at") or p.get("created_at"))
+        if d and d.strftime("%Y-%m") in rev_by:
+            rev_by[d.strftime("%Y-%m")] += p.get("amount", 0)
+    signup_by = {k: 0 for k in keys}
+    for o in orgs:
+        d = _naive(o.get("created_at"))
+        if d and d.strftime("%Y-%m") in signup_by:
+            signup_by[d.strftime("%Y-%m")] += 1
+    running = sum(1 for o in orgs if _naive(o.get("created_at")) and _naive(o["created_at"]).strftime("%Y-%m") < keys[0])
+    series = []
+    for k in keys:
+        running += signup_by[k]
+        series.append({"month": k, "revenue": rev_by[k], "new_customers": signup_by[k], "total_customers": running})
+
+    rev_this, rev_last = rev_by[keys[-1]], rev_by[keys[-2]]
+    rev_growth = round(100 * (rev_this - rev_last) / rev_last, 1) if rev_last else (100.0 if rev_this else 0.0)
+    signup_growth = round(100 * (new_this - new_last) / new_last, 1) if new_last else (100.0 if new_this else 0.0)
+    lifetime = sum(p.get("amount", 0) for p in paid)
+    mrr = paying * price
+    ended = paying + churned
+    churn_rate = round(100 * churned / ended, 1) if ended else 0.0
+    retention = round(100 - churn_rate, 1)
+    avg_lifetime_months = round(100 / churn_rate, 1) if churn_rate else None
+
+    failed = await db.subscription_payments.count_documents({"status": "failed"})
+    pending = await db.subscription_payments.count_documents({"status": "created"})
+    success = len(paid)
+    expired_subs = await db.subscriptions.count_documents({"status": {"$in": ["halted", "cancelled"]}})
+    subs = await db.subscriptions.find({"status": "active"}, {"last_charged_at": 1}).to_list(10000)
+    renew_week = 0
+    for s in subs:
+        lc = _naive(s.get("last_charged_at"))
+        if lc and now <= lc + timedelta(days=30) <= now + timedelta(days=7):
+            renew_week += 1
+
+    # Product usage — real cross-tenant counts; "active gyms" uses member-payment recency as a
+    # login proxy (we don't track logins), stated as such in the UI.
+    total_members = await db.members.count_documents({"deleted_at": None})
+    members_this = await db.members.count_documents({"deleted_at": None, "created_at": {"$gte": this_start}})
+    member_payments = await db.payments.count_documents({})
+    recent = await db.payments.find({"created_at": {"$gte": now - timedelta(days=30)}}, {"organisation_id": 1, "created_at": 1}).to_list(100000)
+    dau, wau, mau = set(), set(), set()
+    for p in recent:
+        d, oid = _naive(p.get("created_at")), p.get("organisation_id")
+        if not d or not oid:
+            continue
+        mau.add(oid)
+        if d >= now - timedelta(days=7):
+            wau.add(oid)
+        if d >= now - timedelta(days=1):
+            dau.add(oid)
+
+    return {
+        "currency": "INR",
+        "kpis": {
+            "mrr": mrr, "arr": mrr * 12, "arpu": round(mrr / paying) if paying else 0,
+            "total_customers": total, "paying": paying, "trial": trial,
+            "expired": counts["expired"] + counts["payment_due"], "cancelled": counts["cancelled"],
+            "new_this_month": new_this, "new_last_month": new_last, "signup_growth": signup_growth,
+            "retention_rate": retention, "churn_rate": churn_rate,
+            "trial_to_paid": round(100 * paying / ended, 1) if ended else 0.0,
+            "avg_lifetime_months": avg_lifetime_months,
+        },
+        "revenue": {
+            "this_month": rev_this, "last_month": rev_last, "growth": rev_growth,
+            "current_mrr": mrr, "projected_arr": mrr * 12, "lifetime": lifetime,
+        },
+        "series": series,
+        "funnel": {
+            "registered": total, "trial_started": total,
+            "paid": paying, "retained_30d": len([s for s in subs if True]),
+            "converted_trials": paying, "expired_trials": counts["expired"] + counts["payment_due"],
+        },
+        "trials": {"ending_today": trials_today, "ending_3d": trials_3d, "ending_7d": trials_7d, "active": trial},
+        "payments": {
+            "successful": success, "failed": failed, "pending": pending,
+            "success_rate": round(100 * success / (success + failed), 1) if (success + failed) else 100.0,
+            "renewals_this_week": renew_week, "expired_subscriptions": expired_subs,
+            "revenue_collected": lifetime,
+        },
+        "usage": {
+            "dau": len(dau), "wau": len(wau), "mau": len(mau),
+            "total_members": total_members, "members_this_month": members_this,
+            "member_payments": member_payments,
+        },
+    }
 
 
 @router.get("/admin/audit-logs")
