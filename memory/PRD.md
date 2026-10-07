@@ -128,6 +128,9 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Verified: testing_agent iteration_15 → backend 24/24, frontend 100%. Test data cleaned, pricing restored to defaults.
 - Caveat: real eSSL devices call `/iclock/*` at the domain root; preview ingress only routes `/api/*` to backend, so production routing of `/iclock` must be confirmed (or device path set to /api/iclock if model supports it).
 
+## Landing pricing redesign (2026-10-07)
+- Pricing section only (user choice): Yearly highlighted as "Best Value" (dark card, first on mobile), automatic savings vs monthly price (strike-through + "You save ₹X", "Save N%"), per-month equivalent, fixed price-digit spacing (display font instead of monospace), trust row (no card, cancel anytime, data never deleted, UPI/card/netbanking). Self-verified by screenshot (desktop + 390px).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
