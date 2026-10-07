@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 14 verified the rebuilt Super-Admin SaaS analytics console. Backend 21/21 PASSED on test_iter14_superadmin.py — covered auth/access (owner & unauth get 403/401 on /api/admin/analytics and /api/admin/gyms), /api/admin/analytics shape + internal reconciliation (mrr == paying*price, arr == mrr*12, arpu == round(mrr/paying) or 0, retention_rate == 100-churn_rate, revenue.current_mrr == kpis.mrr, revenue.projected_arr == kpis.arr, series has 12 monotonically non-decreasing points, payments.success_rate = 100*s/(s+f), dau<=wau<=mau, trials ending_today<=3d<=7d), /api/admin/gyms shape + rules (monthly_revenue==0 for non-active, cancelled→churned, status/health filters return only matching rows, analytics.paying == count of active gyms), plan-price change propagates to MRR, audit-logs regression. Frontend: Super Admin dashboard renders all required testids (admin-core-kpis, admin-secondary-kpis, admin-revenue-chart with admin-metric-{revenue|new_customers|total_customers} toggles & admin-range-{3M|6M|1Y|All} chips, admin-growth-chart, admin-funnel, admin-payments, admin-usage, admin-actions). Customers tab chips filter-status-{all|active|trial|expired|cancelled} and filter-health-{all|healthy|at_risk|high_risk|churned} re-query backend and admin-gyms-table updates; 15 gyms shown with admin-view-<id> and admin-toggle-<id>; admin-gym-detail dialog opens from view; admin-toggle-confirm modal opens from power icon. Settings tab saves (toast 'Settings saved' observed) and Audit tab shows 100 log entries. Current platform state: 0 paying, 15 trial — so MRR/ARR legitimately ₹0 (as noted by main agent).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Action Required → Customers tab navigation", "issue": "Clicking admin-action-0..n does NOT switch to the Customers tab. data-state on admin-tab-customers stays 'inactive' and filter-status-trial / filter-health-high_risk never render. Root cause: SuperAdmin.jsx uses `document.getElementById('admin-tab-customers')?.click()` to switch tabs, but the Radix TabsTrigger does not respond to a synthetic .click() dispatched from a sibling React handler — the Radix root controls value via its own pointer handlers, not a bubbled click on the trigger node. Fix: make Tabs controlled (value={tab}, onValueChange={setTab}) and have goToCustomers() set tab='customers' along with the status/health filters. Direct user clicks on the TabsTrigger itself work fine; only the programmatic navigation from Action Required is broken.", "affected_selectors": ["admin-action-0", "admin-action-1", "admin-tab-customers"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter14_superadmin.py",
+    "/app/test_reports/pytest/iter14.xml"
+  ],
+  "action_items": [
+    "FIX (frontend only): In /app/frontend/src/pages/SuperAdmin.jsx convert <Tabs defaultValue='overview'> to controlled <Tabs value={tab} onValueChange={setTab}> and replace document.getElementById('admin-tab-customers')?.click() in goToCustomers() with setTab('customers'). Also update actions[1] (failed payments) which has the same pattern. This unblocks the primary 'Action Required → filtered Customers list' flow called out in the problem statement."
+  ],
+  "critical_code_review_comments": [
+    "funnel.retained_30d is computed as `len([s for s in subs if True])` which is just len(subs) (active Razorpay subscriptions). The label in UI is 'Active (Retained)' — fine, but the `if True` guard is dead code and misleading; replace with len(subs) or add a real recency filter.",
+    "/api/admin/overview still returns `trial_to_paid = 100 * paying / (paying + expired + cancelled)` whereas /api/admin/analytics uses the same denominator but excludes `payment_due` from the churn bucket (`ended = paying + churned` where churned = cancelled + expired + payment_due). The two endpoints are now inconsistent for the same KPI name — pick one definition.",
+    "admin_gyms applies `search` to the Mongo find query but `status` and `health` filters are applied in-process after fetching up to 2000 orgs. That is OK at current scale but will not scale; also means `limit` from caller cannot be honoured for filtered views. Consider pushing status filter into derived subscription and health into a computed field for pagination.",
+    "renewals_this_week logic: `now <= last_charged_at + 30d <= now + 7d` assumes a 30-day cycle regardless of actual plan interval; Razorpay plan period isn't read. Minor since only monthly plan exists, but hard-coded 30d is fragile.",
+    "In SuperAdmin.jsx goToCustomers() depends on an `id='admin-tab-customers'` attribute on the TabsTrigger — this is both a data-testid and an id; coupling navigation to DOM id is anti-React. Use controlled Tabs state instead (also fixes the Action Required bug above)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter14_superadmin.py"],
+  "success_rate": {"backend": "100% (21/21)", "frontend": "~85% — all static testids and filter/settings/audit flows pass; Action Required → Customers tab navigation is broken"},
+  "test_credentials": "Super admin GymBoss / GymBoss@2026 ; owner demo@gymbossvvo.in / Demo@2026",
+  "seed_data_creation": "None — only ran GET and a reversible PUT on /api/admin/settings (price restored in finally block).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iter14_superadmin.py -v -o addopts=''. Preview URL from frontend/.env. Super-admin login uses cookie auth (no Bearer token in body) — use requests.Session for backend tests. Current state: 15 trial orgs, 0 paying, so MRR/ARR = 0 is correct. Primary remaining issue: Action Required onClick does not switch tabs because Radix Tabs is uncontrolled and document.getElementById(...).click() does not fire its internal handler. After main agent fixes to controlled Tabs, re-verify admin-action-0 click sets admin-tab-customers data-state='active' and highlights filter-status-trial / filter-health-high_risk accordingly."
+}

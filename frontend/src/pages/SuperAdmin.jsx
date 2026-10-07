@@ -82,6 +82,7 @@ export default function SuperAdmin() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [a, setA] = useState(null);
+  const [tab, setTab] = useState("overview");
   const [gyms, setGyms] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -112,7 +113,7 @@ export default function SuperAdmin() {
     catch (err) { toast.error(err?.response?.data?.detail || "Could not save"); } finally { setBusy(false); }
   };
 
-  const goToCustomers = (status = "all", health = "all") => { setStatusFilter(status); setHealthFilter(health); document.getElementById("admin-tab-customers")?.click(); };
+  const goToCustomers = (status = "all", health = "all") => { setStatusFilter(status); setHealthFilter(health); setTab("customers"); };
 
   const chartData = useMemo(() => (a?.series || []).slice(-range).map((p) => ({ ...p, name: fmtMonth(p.month) })), [a, range]);
   const k = a?.kpis; const rev = a?.revenue; const pay = a?.payments; const use = a?.usage; const tr = a?.trials;
@@ -126,7 +127,7 @@ export default function SuperAdmin() {
 
   const actions = a ? [
     { n: tr.ending_3d, text: "trials expiring within 3 days", go: () => goToCustomers("trial"), danger: false },
-    { n: pay.failed, text: "subscription payments failed", go: () => document.getElementById("admin-tab-customers")?.click(), danger: true },
+    { n: pay.failed, text: "subscription payments failed", go: () => setTab("customers"), danger: true },
     { n: gyms ? gyms.filter((g) => g.health === "high_risk").length : (k.expired), text: "gyms at high churn risk", go: () => goToCustomers("all", "high_risk"), danger: true },
     { n: pay.renewals_this_week, text: "subscriptions renew this week", go: () => goToCustomers("active"), danger: false },
   ].filter((x) => x.n > 0) : [];
@@ -159,10 +160,10 @@ export default function SuperAdmin() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <Tabs defaultValue="overview">
+        <Tabs value={tab} onValueChange={setTab}>
           <TabsList data-testid="admin-tabs">
             <TabsTrigger value="overview" data-testid="admin-tab-overview"><LayoutDashboard className="mr-1.5 h-4 w-4" />Overview</TabsTrigger>
-            <TabsTrigger value="customers" id="admin-tab-customers" data-testid="admin-tab-customers"><Building2 className="mr-1.5 h-4 w-4" />Customers</TabsTrigger>
+            <TabsTrigger value="customers" data-testid="admin-tab-customers"><Building2 className="mr-1.5 h-4 w-4" />Customers</TabsTrigger>
             <TabsTrigger value="settings" data-testid="admin-tab-settings"><SettingsIcon className="mr-1.5 h-4 w-4" />Settings</TabsTrigger>
             <TabsTrigger value="audit" data-testid="admin-tab-audit"><ScrollText className="mr-1.5 h-4 w-4" />Audit</TabsTrigger>
           </TabsList>

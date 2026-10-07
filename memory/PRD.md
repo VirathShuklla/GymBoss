@@ -114,6 +114,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - **Verified**: testing_agent iteration_13 → backend 6/6 (6000 plan: pay 2000→due 4000, edit→5000→due 1000, reverse→due 6000/Due; clamp when amount>payable→0/Paid; 422/404 validation; sum(dues)==finance.outstanding), frontend 100% web + mobile selectors; onboarding auto-progresses on a fresh gym and dismiss persists. Direct curl confirmed edit/reverse math.
 - Known minor (not blocking): edit does not cap amount at payable (server clamps due, keeps finances consistent — treats excess as overpayment); reverse hard-deletes the payment (audit logs the amount).
 
+## Super Admin SaaS analytics console (2026-06)
+- Rebuilt `/superadmin` into a professional analytics dashboard (SuperAdmin.jsx) with controlled Tabs: Overview / Customers / Settings / Audit.
+- **Backend** `/api/admin/analytics` (admin.py): real-data KPIs — MRR (=paying×price), ARR, ARPU, total/paying/trial/expired/cancelled, new-this-month + MoM signup growth, retention, churn, trial→paid, avg lifetime; 12-month revenue+growth series (from paid `subscription_payments`); trial funnel; payments (successful/failed/pending/success-rate/renewals/expired); product usage (DAU/WAU/MAU via member-payment recency proxy, members managed, members this month, payments logged). `/api/admin/gyms` enhanced with per-gym health (healthy/at_risk/high_risk/churned) + score, monthly_revenue (price only if active), last_activity, and `status`/`health` filters (no N+1 — aggregations).
+- **Frontend**: priority KPI row, revenue chart with metric (Revenue/New/Total) + range (3M/6M/1Y/All) toggles, customer-growth chart, trial funnel w/ conversion %, payments & usage cards, clickable Action Required → filtered Customers tab, customers table w/ status+health chips, gym detail dialog, enable/disable.
+- **Data integrity**: all values from DB; trial≠paying, cancelled/expired≠paying, only paid subscription_payments count as revenue. Honest "Not tracked yet" note for marketing/CAC, website visitors, per-user logins, WhatsApp-sent, retention cohorts (no event data) — omitted rather than faked.
+- **Verified**: testing_agent iteration_14 → backend 21/21 (auth 403/401, metric reconciliation, filters, price→MRR propagation), frontend all testids + filter/settings/audit; fixed Action Required tab navigation (controlled Radix Tabs) and verified high-risk drill-down. Purged leftover QA test gyms.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

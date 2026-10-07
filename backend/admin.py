@@ -312,7 +312,7 @@ async def admin_analytics(user: dict = Depends(require_super_admin)):
         "series": series,
         "funnel": {
             "registered": total, "trial_started": total,
-            "paid": paying, "retained_30d": len([s for s in subs if True]),
+            "paid": paying, "retained_30d": len(subs),
             "converted_trials": paying, "expired_trials": counts["expired"] + counts["payment_due"],
         },
         "trials": {"ending_today": trials_today, "ending_3d": trials_3d, "ending_7d": trials_7d, "active": trial},
