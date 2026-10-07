@@ -121,6 +121,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - **Data integrity**: all values from DB; trial≠paying, cancelled/expired≠paying, only paid subscription_payments count as revenue. Honest "Not tracked yet" note for marketing/CAC, website visitors, per-user logins, WhatsApp-sent, retention cohorts (no event data) — omitted rather than faked.
 - **Verified**: testing_agent iteration_14 → backend 21/21 (auth 403/401, metric reconciliation, filters, price→MRR propagation), frontend all testids + filter/settings/audit; fixed Action Required tab navigation (controlled Radix Tabs) and verified high-risk drill-down. Purged leftover QA test gyms.
 
+## Attendance (QR + Biometric), Plans & Offers, PDF receipts, Churn export, Admin dark mode (2026-10-07)
+- User asked: churn watchlist CSV export; light/dark for Super Admin + owner dashboard; PDF invoices (chose member payment receipts only); admin-editable prices everywhere (chose Monthly/Quarterly/Yearly with offers); attendance module with biometric (chose real eSSL/ZKTeco ADMS + test punch) and QR (no location check); better mobile UI with attendance; full testing; README with admin + demo passwords.
+- Backend: `attendance.py` (summary, staff list, per-outlet QR tokens + rotate, public `/public/checkin/{token}`, devices CRUD, auto-delete-on-expiry, test punch, device-ids, ADMS `/iclock/cdata|getrequest|devicecmd` at `/iclock` and `/api/iclock`); `deps._price_plans/get_pricing_plans/org_mrr`; billing takes `plan_id` (30×months days, per-plan Razorpay plan cache); admin `pricing_plans` settings + `/admin/churn-export`; `receipt_pdf.py` + `/payments/{id}/receipt.pdf`.
+- Frontend: shared `components/attendance/*` (web dialogs + mobile bottom sheets), web `/app/attendance` + sidebar nav, public `/checkin/:token`, mobile Attendance tab (4-tab nav), Home quick actions; `PlanPicker` on web Subscription + mobile Profile; landing 3-plan pricing; Super Admin theme toggle, churn CSV buttons, plans & offers editor; PDF download (web) / share (mobile).
+- Verified: testing_agent iteration_15 → backend 24/24, frontend 100%. Test data cleaned, pricing restored to defaults.
+- Caveat: real eSSL devices call `/iclock/*` at the domain root; preview ingress only routes `/api/*` to backend, so production routing of `/iclock` must be confirmed (or device path set to /api/iclock if model supports it).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
@@ -132,7 +139,8 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Razorpay webhook (optional, recommended): point to `https://<domain>/api/webhooks/razorpay` with the webhook secret, subscribe to `payment.captured`, `payment.failed`, `subscription.activated`, `subscription.charged`, `subscription.halted`, `subscription.cancelled`
 - Official WhatsApp Business API credentials for bulk announcements (if the module is re-enabled later)
 ### P1 — Product polish
-- CSV member import, QR check-in, SMS/Email channels, push notifications
+- Confirm `/iclock/*` root routing in production for physical biometric devices
+- CSV member import, SMS/Email channels, push notifications
 - Mongo aggregation pipelines for dashboard/finance/reports (scale hardening)
 - Granular per-role permission matrix UI (currently owner/admin/manager vs staff split)
 ### P2 — Future

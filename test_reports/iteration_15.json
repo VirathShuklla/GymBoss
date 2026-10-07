@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 15 end-to-end verified new features: churn export CSV, pricing-plans admin, member payment PDF, attendance (QR public, biometric devices, ADMS push protocol, device-ids), dark-mode toggle, mobile /m attendance + plan picker, landing #pricing. Backend: 24/24 PASSED on test_iter15_attendance_pricing.py — churn-export auth (401 unauth, 403 owner), high_risk CSV header + demo exclusion, all_risk >= high_risk, pricing GET/PUT validation (offer<price enforced -> 422), public_config reflects effective_price + hides inactive plans, receipt.pdf returns application/pdf starting %PDF for owner, 404 for other org, attendance summary + /attendance/qr + outlet tokens, public /public/checkin/{token} (member by code OK, repeat -> duplicate/out, staff by email OK, invalid token 404, unknown member 404), /attendance/devices invalid serial 422, add device OK, duplicate serial 409, test-punch 200, device-ids 200, ADMS /api/iclock/cdata handshake returns 'GET OPTION FROM…', ATTLOG upload creates punch and dedupes repost, /iclock/getrequest returns OK, admin analytics usage shows attendance_today/attendance_month/biometric_devices ints. Frontend: Super Admin dashboard testids all present (admin-theme-toggle dropdown -> theme-dark/theme-light flips html.dark; admin-tab-customers chips admin-export-churn + admin-export-churn-all visible; admin-tab-settings pricing testids all present: settings-pricing, settings-plan-price-{monthly|quarterly|yearly}, settings-plan-offer-{monthly|quarterly|yearly}, settings-plan-label-monthly, settings-plan-active-{quarterly|yearly}, admin-settings-save). Owner /app/dashboard shows topbar-theme-toggle; dropdown -> theme-dark flips html.dark correctly. /app/attendance shows att-stat-today/inside/staff/devices, att-open-qr/bio, checkin-search/button, tab-today/staff/history. QR dialog opens with att-qr-code, att-qr-download, att-qr-open, att-qr-rotate, 2 att-qr-outlet-* pills. Bio dialog opens with att-bio-connect, att-bio-guide, att-bio-supported. /app/subscription shows subscription-price and 3 web-plan-* picks. Landing /#pricing renders pricing-plan-{monthly|quarterly|yearly} + pricing-price-* when scrolled. Mobile /m: login OK; home has m-nav-{home|attendance|manage|profile}, m-quick-check-in, m-metric-attendance-today. /m/attendance shows m-att-hero/qr/bio/manual/list. /m/profile shows 3 m-plan-* picks. No horizontal overflow. Live /api/public/config currently returns monthly=999, quarterly=2499, yearly=9999 (pre-existing state before this run; test_restore returned DB to the exact snapshot captured before mutations).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter15_attendance_pricing.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [
+    "Note: current platform pricing in DB is monthly=999, quarterly=2499, yearly=9999 — not the review's stated defaults (2997/11988). This was the pre-existing state; main agent may wish to re-align seeded defaults to match the stated spec if intended."
+  ],
+  "critical_code_review_comments": [
+    "attendance.py punch() uses day_start() tied to today's IST day — a punch created near IST midnight could be looked up against a day_start() that drifted after a few seconds; low risk but worth passing `now` through.",
+    "ADMS /iclock/cdata POST uses $or on check_in or check_out to dedupe repost — this will not dedupe when the same device sends an out-punch that corresponds to an earlier in-punch's check_in time. A composite (device_id, member_id, raw_ts) index would be more robust.",
+    "receipt_pdf.py uses 'Rs.' prefix instead of ₹ — Helvetica cannot render the rupee glyph, so this is the correct trade-off; just document it.",
+    "admin.py churn-export reuses admin_gyms() in-process and iterates all orgs (fine at current scale, same caveat as iter14 comment).",
+    "deps._price_plans forces monthly active=True regardless of stored value — correct, but means UI should never render a disabled toggle for monthly (current implementation does)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter15_attendance_pricing.py"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100% — all required testids present and interactive flows verified"},
+  "test_credentials": "Super admin GymBoss / GymBoss@2026 ; owner demo@gymbossvvo.in / Demo@2026",
+  "seed_data_creation": "Created transient attendance punches (QR member punch for first active demo member, QR staff punch for owner, biometric test-punch, ADMS ATTLOG push) in demo org for today. Devices were cleaned up by fixtures; attendance rows remain (low impact, timestamped today). No TEST_ members or orgs created. Pricing settings were mutated during tests and restored to pre-test snapshot in test_restore.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iter15_attendance_pricing.py -v -o addopts='' . Theme toggle is a dropdown: click admin-theme-toggle (or topbar-theme-toggle) first, then click theme-dark/theme-light/theme-system from the opened menu. ADMS endpoints are reachable at /api/iclock/* (preview ingress does not route /iclock/* without /api prefix). Current pricing in DB: monthly 999 / quarterly 2499 / yearly 9999 (not the 2997/11988 defaults mentioned in review). Everything else from iter 14 context still applies."
+}
