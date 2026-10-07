@@ -9,6 +9,7 @@ import Register from "./screens/Register";
 import Home from "./screens/Home";
 import Manage from "./screens/Manage";
 import Profile from "./screens/Profile";
+import Attendance from "./screens/Attendance";
 
 function Loader() {
   return (
@@ -45,6 +46,7 @@ export default function MobileApp() {
         <Route path="register" element={<Register />} />
         <Route element={<Protected><MobileLayout /></Protected>}>
           <Route path="home" element={<Home />} />
+          <Route path="attendance" element={<Attendance />} />
           <Route path="manage" element={<Manage />} />
           <Route path="profile" element={<Profile />} />
         </Route>

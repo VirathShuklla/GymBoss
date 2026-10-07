@@ -8,6 +8,7 @@ import { inr, formatDate } from "../../lib/format";
 import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
 import api, { apiError } from "../../lib/api";
 import { MButton } from "../ui";
+import { PlanPicker, planPeriod } from "../../components/PlanPicker";
 
 function loadRazorpayScript() {
   return new Promise((resolve, reject) => {
@@ -31,6 +32,7 @@ export default function Profile() {
   const [billing, setBilling] = useState(null);
   const [busy, setBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
+  const [planId, setPlanId] = useState("monthly");
 
   const loadBilling = async () => {
     try {
@@ -45,6 +47,11 @@ export default function Profile() {
   const autodebitHalted = autodebit?.status === "halted";
   const isActive = subscription?.status === "active";
   const needsPayment = !isActive || autodebitHalted;
+  const plans = billing?.plans || [];
+  const chosen = plans.find((p) => p.id === planId) || plans[0];
+  const activePlan = plans.find((p) => p.id === subscription?.plan);
+  const shownPrice = isActive ? (subscription?.amount || price) : (chosen?.effective_price || price);
+  const shownPeriod = planPeriod(isActive ? (subscription?.plan_months || 1) : (chosen?.months || 1));
 
   const statusText = {
     trial: `Free trial · ${subscription?.trial_days_left ?? 0} days left`,
@@ -57,13 +64,13 @@ export default function Profile() {
   const pay = async () => {
     setBusy(true);
     try {
-      const { data: sub } = await api.post("/subscription/autodebit/start");
+      const { data: sub } = await api.post("/subscription/autodebit/start", { plan_id: chosen?.id || "monthly" });
       await loadRazorpayScript();
       const rzp = new window.Razorpay({
         key: sub.key_id,
         subscription_id: sub.subscription_id,
         name: "GymBoss_VVO",
-        description: `GymBoss_VVO Pro — ${inr(sub.amount / 100)}/month`,
+        description: `GymBoss_VVO ${chosen?.name || "Pro"} — ${inr(sub.amount / 100)}/${shownPeriod}`,
         prefill: { name: user?.full_name, email: user?.email, contact: user?.phone },
         theme: { color: "#7C3AED" },
         handler: async (resp) => {
@@ -124,7 +131,8 @@ export default function Profile() {
           <Crown className="h-4 w-4 opacity-90" />
           <p className="text-xs font-bold uppercase tracking-wider opacity-90">GymBoss_VVO Pro</p>
         </div>
-        <p className="mt-2 font-num text-3xl font-extrabold">{inr(price)}<span className="text-sm font-semibold opacity-80">/month</span></p>
+        <p className="mt-2 font-num text-3xl font-extrabold" data-testid="m-sub-price">{inr(shownPrice)}<span className="text-sm font-semibold opacity-80">/{shownPeriod}</span></p>
+        {isActive && activePlan && <p className="text-xs opacity-80">{activePlan.name} plan</p>}
         <p className="mt-1 text-sm opacity-90">{statusText}</p>
       </div>
 
@@ -133,7 +141,7 @@ export default function Profile() {
         <div className="mt-3 space-y-2.5">
           <div className="flex items-center gap-2.5 rounded-2xl border border-success/25 bg-success/8 px-4 py-3.5 text-sm text-foreground" data-testid="m-billing-active">
             <Check className="h-4 w-4 shrink-0 text-success" strokeWidth={3} />
-            Billing active — {inr(price)}/month{subscription?.subscription_ends_at ? `, paid through ${formatDate(subscription.subscription_ends_at)}` : ""}.
+            Billing active — {inr(shownPrice)}/{shownPeriod}{subscription?.subscription_ends_at ? `, paid through ${formatDate(subscription.subscription_ends_at)}` : ""}.
           </div>
           <button onClick={cancelAutodebit} disabled={cancelBusy} data-testid="m-cancel-autodebit"
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-xs font-semibold text-muted-foreground active:scale-[0.99] disabled:opacity-60">
@@ -148,8 +156,9 @@ export default function Profile() {
               <p className="mt-0.5 text-xs text-muted-foreground">Tap below to retry and keep your access uninterrupted.</p>
             </div>
           )}
+          {plans.length > 1 && <div className="mb-3"><p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Choose your plan</p><PlanPicker plans={plans} value={chosen?.id} onChange={setPlanId} testid="m-plan" /></div>}
           <MButton onClick={pay} loading={busy} data-testid="m-pay-button">
-            Pay {inr(price)}/month
+            Pay {inr(shownPrice)}/{shownPeriod}
           </MButton>
           <p className="mt-2 text-center text-[11px] text-muted-foreground">Secure payment via Razorpay · UPI, cards & netbanking</p>
         </div>

@@ -93,7 +93,7 @@ export default function Settings() {
                 <span className="badge-status badge-expiring">Not Connected</span>
               </div>
               <p className="mt-3 font-display text-base font-bold text-foreground">Razorpay</p>
-              <p className="mt-1 text-sm text-muted-foreground">Powers your GymBoss_VVO subscription billing (₹999/month). Online activation is being enabled by BuildVVO.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Powers your GymBoss_VVO subscription billing (from {inr(subscription?.plan_price_inr || 999)}/month). Online activation is being enabled by BuildVVO.</p>
             </div>
           </div>
         </TabsContent>

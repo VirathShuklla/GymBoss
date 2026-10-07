@@ -5,6 +5,7 @@ import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
 import { waMe, buildReceiptMessage } from "../../lib/whatsapp";
+import { shareReceiptPdf } from "../../lib/files";
 import { buildReminderOptions } from "../reminders";
 import { MButton, Field, TextInput, PhoneInput, Pills, BottomSheet, ListSkeleton, EmptyRow, StatusChip } from "../ui";
 import { ModuleHeader } from "./ModuleHeader";
@@ -352,6 +353,11 @@ export default function Members({ autoAdd }) {
               data-testid="m-receipt-whatsapp">
               <MessageCircle className="h-5 w-5" /> Send receipt on WhatsApp
             </a>
+            <button data-testid="m-receipt-pdf"
+              onClick={async () => { try { const shared = await shareReceiptPdf(receipt.payment.id, receipt.payment.receipt_no, buildReceiptMessage(receipt)); if (!shared) toast.success("PDF receipt downloaded"); } catch (e) { if (e?.name !== "AbortError") toast.error("Could not create the PDF"); } }}
+              className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card text-sm font-semibold text-foreground active:scale-[0.98]">
+              <Receipt className="h-4 w-4" /> Share / download PDF receipt
+            </button>
             <button onClick={closeActions} data-testid="m-receipt-done"
               className="mt-2 h-11 w-full rounded-2xl border border-border text-sm font-semibold text-muted-foreground">Done</button>
           </>

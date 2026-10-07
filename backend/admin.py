@@ -1,13 +1,16 @@
 """BuildVVO super-admin console: platform overview, gyms list/detail, disable/reactivate,
 platform settings (price + Razorpay keys), and audit logs."""
+import csv
+import io
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from deps import db, now_utc, require_super_admin, derive_subscription, audit, get_plan_price, PLAN_PRICE_INR
+from deps import db, now_utc, require_super_admin, derive_subscription, audit, get_plan_price, get_pricing_plans, org_mrr, PLAN_PRICE_INR
 
 router = APIRouter(tags=["super-admin"])
 
@@ -111,7 +114,7 @@ async def admin_gyms(search: Optional[str] = None, status: Optional[str] = None,
             "created_at": _naive(org.get("created_at")).isoformat() if org.get("created_at") else None,
             "owner": owners.get(oid), "member_count": m.get("cnt", 0),
             "subscription": sub,
-            "monthly_revenue": price if sub["status"] == "active" else 0,
+            "monthly_revenue": org_mrr(sub, price),
             "collection_total": p.get("sum", 0),
             "last_activity": last_activity.isoformat() if last_activity else None,
             "last_activity_days": la_days,
@@ -163,7 +166,17 @@ async def admin_toggle_gym(org_id: str, user: dict = Depends(require_super_admin
     return {"id": org_id, "disabled": disabled}
 
 
+class PricingPlanBody(BaseModel):
+    id: str
+    name: Optional[str] = None
+    price: int
+    offer_price: Optional[int] = None
+    offer_label: Optional[str] = ""
+    active: Optional[bool] = True
+
+
 class PlatformSettingsBody(BaseModel):
+    pricing_plans: Optional[List[PricingPlanBody]] = None
     whatsapp_number: Optional[str] = ""
     support_email: Optional[str] = ""
     play_store_url: Optional[str] = ""
@@ -177,6 +190,7 @@ class PlatformSettingsBody(BaseModel):
 @router.get("/admin/settings")
 async def admin_get_settings(user: dict = Depends(require_super_admin)):
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
+    settings["pricing_plans"] = await get_pricing_plans()
     return settings
 
 
@@ -187,6 +201,20 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
         if data["plan_price_inr"] is None or int(data["plan_price_inr"]) < 1:
             raise HTTPException(422, "Price must be at least ₹1")
         data["plan_price_inr"] = int(data["plan_price_inr"])
+    if "pricing_plans" in data:
+        plans = data["pricing_plans"] or []
+        ids = {p["id"] for p in plans}
+        if not ids <= {"monthly", "quarterly", "yearly"}:
+            raise HTTPException(422, "Unknown plan")
+        for p in plans:
+            if p["price"] < 1:
+                raise HTTPException(422, f"{p.get('name') or p['id']}: price must be at least ₹1")
+            if p.get("offer_price") and not (1 <= p["offer_price"] < p["price"]):
+                raise HTTPException(422, f"{p.get('name') or p['id']}: offer price must be lower than the regular price")
+            p["offer_label"] = (p.get("offer_label") or "").strip()[:40]
+            if p["id"] == "monthly":
+                p["active"] = True
+                data["plan_price_inr"] = p["price"]
     if data.get("razorpay_key_id"):
         kid = data["razorpay_key_id"].strip()
         if not kid.startswith(("rzp_test_", "rzp_live_")):
@@ -196,7 +224,28 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
         return await db.settings.find_one({"id": "platform"}, {"_id": 0})
     await db.settings.update_one({"id": "platform"}, {"$set": data}, upsert=True)
     await audit(user["id"], "platform.settings_updated", "platform", {"keys": [k for k, v in data.items() if v]})
-    return await db.settings.find_one({"id": "platform"}, {"_id": 0})
+    return await admin_get_settings(user)
+
+
+@router.get("/admin/churn-export")
+async def admin_churn_export(health: str = "high_risk", user: dict = Depends(require_super_admin)):
+    """CSV of churn-risk gyms for win-back campaigns."""
+    levels = {"high_risk": ["high_risk"], "at_risk": ["at_risk"], "all_risk": ["high_risk", "at_risk"]}.get(health, ["high_risk"])
+    gyms = [g for g in await admin_gyms(search=None, status=None, health=None, user=user) if g["health"] in levels and not g["is_demo"]]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Gym", "City", "Owner", "Email", "Phone", "Subscription Status", "Health", "Health Score",
+                "Members", "Last Activity", "Days Since Activity", "Signed Up", "Trial Ends", "Subscription Ends"])
+    for g in gyms:
+        o, s = g.get("owner") or {}, g["subscription"]
+        w.writerow([g["name"], g.get("city") or "", o.get("full_name", ""), o.get("email", ""), o.get("phone", ""),
+                    s["status"], g["health"].replace("_", " ").title(), g["health_score"], g["member_count"],
+                    (g.get("last_activity") or "")[:10], "" if g["last_activity_days"] is None else g["last_activity_days"],
+                    (g.get("created_at") or "")[:10], (s.get("trial_ends_at") or "")[:10], (s.get("subscription_ends_at") or "")[:10]])
+    await audit(user["id"], "admin.churn_export", "platform", {"rows": len(gyms), "health": health})
+    fname = f"churn-watchlist-{now_utc().date().isoformat()}.csv"
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @router.get("/admin/analytics")
@@ -211,8 +260,11 @@ async def admin_analytics(user: dict = Depends(require_super_admin)):
     orgs = await db.organisations.find({}, {"subscription": 1, "created_at": 1, "is_demo": 1, "name": 1}).to_list(10000)
     counts = {"trial": 0, "active": 0, "expired": 0, "payment_due": 0, "cancelled": 0}
     trials_today = trials_3d = trials_7d = 0
+    mrr_total = 0
     for o in orgs:
-        s = derive_subscription(o, price)["status"]
+        sd = derive_subscription(o, price)
+        s = sd["status"]
+        mrr_total += org_mrr(sd, price)
         counts[s] = counts.get(s, 0) + 1
         if s == "trial":
             te = _naive(o.get("subscription", {}).get("trial_ends_at"))
@@ -260,7 +312,7 @@ async def admin_analytics(user: dict = Depends(require_super_admin)):
     rev_growth = round(100 * (rev_this - rev_last) / rev_last, 1) if rev_last else (100.0 if rev_this else 0.0)
     signup_growth = round(100 * (new_this - new_last) / new_last, 1) if new_last else (100.0 if new_this else 0.0)
     lifetime = sum(p.get("amount", 0) for p in paid)
-    mrr = paying * price
+    mrr = mrr_total
     ended = paying + churned
     churn_rate = round(100 * churned / ended, 1) if ended else 0.0
     retention = round(100 - churn_rate, 1)
@@ -294,6 +346,11 @@ async def admin_analytics(user: dict = Depends(require_super_admin)):
         if d >= now - timedelta(days=1):
             dau.add(oid)
 
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=5, minutes=30)
+    att_today = await db.attendance.count_documents({"check_in": {"$gte": today_start}})
+    att_month = await db.attendance.count_documents({"check_in": {"$gte": this_start}})
+    devices = await db.biometric_devices.count_documents({})
+
     return {
         "currency": "INR",
         "kpis": {
@@ -326,6 +383,7 @@ async def admin_analytics(user: dict = Depends(require_super_admin)):
             "dau": len(dau), "wau": len(wau), "mau": len(mau),
             "total_members": total_members, "members_this_month": members_this,
             "member_payments": member_payments,
+            "attendance_today": att_today, "attendance_month": att_month, "biometric_devices": devices,
         },
     }
 

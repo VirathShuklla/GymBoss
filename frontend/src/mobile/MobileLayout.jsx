@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { Home, LayoutGrid, User } from "lucide-react";
+import { Home, LayoutGrid, User, ClipboardCheck } from "lucide-react";
 
 const NAV = [
   { to: "/m/home", label: "Home", icon: Home },
+  { to: "/m/attendance", label: "Attendance", icon: ClipboardCheck },
   { to: "/m/manage", label: "Manage", icon: LayoutGrid },
   { to: "/m/profile", label: "Profile", icon: User },
 ];

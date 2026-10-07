@@ -10,7 +10,15 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 | App | `/app/dashboard` (login required) |
 | Super Admin | `/superadmin` (BuildVVO staff only) |
 | Trial | 10-day free trial, no credit card |
-| Price | ₹999/month (configurable by super admin) |
+| Price | Monthly / Quarterly / Yearly plans with optional offers (all set by super admin) |
+| Public check-in | `/checkin/{token}` (QR attendance page, no login) |
+
+### Login credentials
+
+| Account | Login ID | Password | Where |
+|---|---|---|---|
+| **Super Admin** (BuildVVO) | `GymBoss` | `GymBoss@2026` | `/login` → `/superadmin` |
+| **Demo gym owner** | `demo@gymbossvvo.in` | `Demo@2026` | `/login` → `/app/dashboard`, or `/m` (mobile) |
 
 ---
 
@@ -37,7 +45,7 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 ### 1. Public Marketing Website
 - Landing page: sticky navbar (Features / How It Works / Pricing / FAQ anchors), hero with live-style dashboard mockup, 9 feature cards, 3-step "How It Works", pricing card (10-day free trial → configurable ₹/month), FAQ accordion, final CTA band, dark footer with dynamic copyright year
 - Floating WhatsApp contact button (number configurable by super admin; falls back to FAQ anchor when unset)
-- All pricing copy is **driven by the platform price setting** — change it once in Super Admin and the whole site updates
+- Pricing section shows **Monthly / Quarterly / Yearly** cards with strike-through offer prices and offer labels. All pricing copy comes from the Super Admin plan settings: change it once and the landing page, web app, mobile app and Razorpay checkout all update
 - No fake testimonials, no fake store badges (app-store URLs configurable; shows "coming soon" until set)
 
 ### 2. Authentication & Onboarding
@@ -72,12 +80,41 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 - A separate, native-style mobile experience sharing the same backend and accounts (violet branding, light/dark)
 - Onboarding carousel → welcome → login/register → Home (today's collection, KPIs, getting-started checklist, recent transactions), Manage (Members, Plans, Enquiries, Expenses, Outlets, Staff — plus **Finance + Reports** for finance-enabled users), Profile (subscription + Razorpay pay button, theme, logout)
 - Members: debounced search + **Active / Expiring / Due** filter chips + member actions (renew, record payment, WhatsApp reminder, and WhatsApp receipt after a payment)
+- Bottom navigation: **Home · Attendance · Manage · Profile**. Home has 4 quick actions (Add Member, Payment, Check-in, Renewals) and tappable KPI tiles, including today's check-ins
+- **Attendance tab**: "Inside the gym now" counter, QR Check-in sheet (show / share / download QR), Biometric sheet (setup guide, supported devices, contact, connected devices, auto-delete on expiry, connect a device, test punch), manual check-in, and today's member and staff lists
+- Profile: plan picker (Monthly / Quarterly / Yearly) before paying with Razorpay
+- After recording a payment: WhatsApp receipt text **and** share/download the **PDF receipt** (uses the phone's share sheet, so it can go straight to WhatsApp)
 - Installable via `manifest.json` + service worker; `start_url` is `/m`
 
 ### 7. Payments & Receipts
 - Record payments against dues (Cash / UPI / Card / Bank Transfer / Other), filters, pagination
-- Professional receipt modal (gym, member, plan, method, receipt no., outstanding) with Print/Download
+- Professional receipt modal (gym, member, plan, method, receipt no., outstanding) with Print, **Download PDF** and Send on WhatsApp
+- **PDF receipts** generated on the server (`GET /api/payments/{id}/receipt.pdf`, reportlab, A5, gym-branded)
 - Receipt opens automatically after recording a payment
+- Edit or reverse a wrongly recorded payment (web and mobile); dues recalculate automatically
+
+### 7b. Attendance (`/app/attendance` and `/m/attendance`)
+Three ways to mark attendance. All of them use the same rule: **the first scan of the day is Punch In, the next is Punch Out** (scans less than 1 minute apart are ignored).
+
+**QR check-in (no hardware)**
+1. Open Attendance → *QR Check-in*. Each outlet has its own QR code.
+2. Print it or share it, and put it at the entrance.
+3. Members scan it with their phone camera, which opens `/checkin/{token}`. They enter their member ID (e.g. `IPF-1001`, or just `1001`) or their phone number.
+4. Staff choose the **Staff** tab and enter their phone or email. Staff attendance is stored separately.
+5. Expired or frozen members are refused with a clear "please renew at the front desk" message.
+6. *Generate a new QR* invalidates the old printed code.
+
+**Biometric (eSSL / ZKTeco over the ADMS push protocol)**
+1. Attendance → *Biometric* → *Connect a Device*: pick the model (eSSL X990, K30, K40, MB20, MB160, MB460, or another eSSL/ZKTeco ADMS model) and enter the serial number and a name.
+2. On the device: Menu → COMM → Cloud Server Setting (ADMS). Turn on Enable Domain Name, set the server address to your app domain and port 443 (or 80), and save.
+3. Enrol each member on the device with **User ID = the number in their member code** (`IPF-1001` → `1001`). The Setup Guide lists every member's device ID.
+4. The device polls `GET /iclock/getrequest` and pushes punches to `POST /iclock/cdata?table=ATTLOG`. These are served at both `/iclock/*` and `/api/iclock/*`. The device shows **Online** when it has polled in the last 5 minutes.
+5. **Auto delete access on expiry** (per-device toggle): the server sends `DATA DELETE USERINFO PIN=…` for expired members. They stay in the app; re-enrol them after renewal.
+6. **Test punch** simulates a fingerprint scan through the same code path, so you can check everything without a machine.
+
+**Manual**: search a member and check them in or out.
+
+The dashboard shows today's attendance count, and Super Admin shows platform-wide check-ins and device counts.
 
 ### 8. Enquiries (CRM)
 - Lead capture with source (Walk-In/Instagram/Facebook/Google/Website/Referral/WhatsApp), statuses (New → Converted/Lost), follow-up scheduling with history
@@ -101,15 +138,18 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 
 ### 13. SaaS Subscription (Gym → BuildVVO)
 - Trial (10 days) → active → payment_due/expired states, all backend-derived (never client-side)
-- Razorpay order → checkout → HMAC signature verification → +30 days access; webhook endpoint for captured/failed
+- Plans: **Monthly (1 month), Quarterly (3 months), Yearly (12 months)**. The gym owner picks one on the web Subscription page or in mobile Profile, and access is extended by 30 × months days
+- Razorpay auto-debit subscription (one Razorpay plan per app plan, recreated automatically when the price changes) → checkout → HMAC signature verification; webhook endpoint for charged/halted/cancelled/captured/failed
 - Payment history; honest "being configured" state until keys exist
 - Separate from member payments — never mixed
 
 ### 14. BuildVVO Super Admin (`/superadmin`)
-- Overview: total gyms, trial/paying/expired/cancelled, new signups (30d), MRR, subscription revenue, trial→paid conversion
-- Gyms table: owner, city, members, subscription status, last payment; detail drawer
+- **Light / Dark / System theme** toggle in the header
+- Overview: MRR (multi-month plans spread per month), ARR, ARPU, paying customers, retention, churn, trial → paid, revenue and customer-growth charts, trial funnel, payment analytics, product usage (including check-ins and biometric devices), Action Required
+- Customers table: owner, status, health (Healthy / At Risk / High Risk / Churned), MRR, members, last activity; detail dialog
+- **Churn watchlist export**: "Export churn watchlist" (high risk) and "Incl. at-risk" download a CSV (`GET /api/admin/churn-export?health=high_risk|all_risk`) with gym, owner contact, status, health score, members and last activity, ready for a win-back campaign. Demo gyms are excluded
 - Disable / reactivate gym accounts (data preserved, access blocked, audit-logged)
-- **Platform Settings**: support WhatsApp number, support email, app-store URLs, **monthly subscription price** (propagates site-wide + billing + MRR), **Razorpay Key ID / Secret / Webhook Secret** (DB settings override env)
+- **Platform Settings**: support WhatsApp number, support email, app-store URLs, **Subscription Plans & Offers** (price, offer price, offer label, and show/hide for Quarterly and Yearly; changes go live on the landing page, web app, mobile app and Razorpay checkout), **Razorpay Key ID / Secret / Webhook Secret** (DB settings override env)
 - Audit log viewer (registrations, deletions, freezes, payments, admin actions)
 
 ### 15. File Storage
@@ -344,13 +384,15 @@ All under `/api`. Auth via httpOnly cookies or `Authorization: Bearer`.
 | Dashboard | `GET /dashboard/summary` · `GET /dashboard/recent-transactions` · `GET|PUT /onboarding` |
 | Members | `GET|POST /members` · `GET /members/next-code` · `GET|PUT|DELETE /members/{id}` · `POST /members/{id}/freeze|unfreeze|renew` |
 | Plans | `GET|POST /plans` · `PUT|DELETE /plans/{id}` |
-| Payments | `GET|POST /payments` · `GET /payments/{id}/receipt` |
-| Attendance | `POST /attendance/check-in` · `POST /attendance/{id}/check-out` · `GET /attendance` · `GET /attendance/history` |
+| Payments | `GET|POST /payments` · `PUT|DELETE /payments/{id}` · `GET /payments/{id}/receipt` · `GET /payments/{id}/receipt.pdf` |
+| Attendance | `POST /attendance/check-in` · `POST /attendance/{id}/check-out` · `GET /attendance` · `GET /attendance/history` · `GET /attendance/summary` · `GET /attendance/staff` · `GET /attendance/qr` · `POST /attendance/qr/{outlet_id}/rotate` · `GET|POST /attendance/devices` · `PUT|DELETE /attendance/devices/{id}` · `POST /attendance/devices/{id}/test-punch` · `GET /attendance/device-ids` |
+| Public check-in | `GET|POST /public/checkin/{token}` |
+| ADMS (devices) | `GET|POST /iclock/cdata` · `GET /iclock/getrequest` · `POST /iclock/devicecmd` (also under `/api`) |
 | Misc | `GET /batches` · `POST /uploads` · `GET /files/{id}` |
 | Operations | `GET|POST|PUT /enquiries(/{id})` · `POST /enquiries/{id}/follow-ups` · `GET|POST|PUT|DELETE /expenses(/{id})` · `GET|POST|PUT /outlets(/{id})` · `POST /outlets/{id}/toggle` · `GET|POST|PUT|DELETE /staff(/{id})` · `POST /staff/{id}/toggle` · `PUT /gym/profile` · `PUT /profile` |
 | Finance | `GET /finance/summary` · `GET /finance/transactions` · `GET /reports/*` (revenue-trend, member-growth, outstanding-dues, membership-expiry, enquiry-conversion) · `GET /export/{dataset}` |
-| Billing | `GET /subscription` · `POST /subscription/create-order` · `POST /subscription/verify` · `POST /webhooks/razorpay` |
-| Super Admin | `GET /admin/overview` · `GET /admin/gyms(/{id})` · `POST /admin/gyms/{id}/toggle` · `GET|PUT /admin/settings` · `GET /admin/audit-logs` |
+| Billing | `GET /subscription` (includes `plans`) · `POST /subscription/create-order {plan_id}` · `POST /subscription/verify` · `POST /subscription/autodebit/start {plan_id}` · `POST /subscription/autodebit/verify|cancel` · `POST /webhooks/razorpay` |
+| Super Admin | `GET /admin/overview` · `GET /admin/analytics` · `GET /admin/gyms(/{id})` · `POST /admin/gyms/{id}/toggle` · `GET|PUT /admin/settings` · `GET /admin/churn-export` · `GET /admin/audit-logs` |
 
 Interactive docs: `http://localhost:8001/docs` (FastAPI Swagger UI).
 
@@ -385,7 +427,7 @@ Frontend flows are verified with Playwright end-to-end suites (landing, 3-step r
 ## Roadmap / Backlog
 
 - **P0 (needs credentials)**: live Razorpay keys (Super Admin → Platform Settings)
-- **P1**: CSV member import, QR check-in, official WhatsApp Business API (if bulk announcements return), granular per-module permission matrix
+- **P1**: CSV member import, official WhatsApp Business API (if bulk announcements return), granular per-module permission matrix
 - **P2**: Android/iOS apps on this same backend, Mongo aggregation pipelines for dashboard/finance at scale, app-store badges when live
 
 ---

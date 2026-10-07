@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation, Link } from "react-router-do
 import {
   LayoutDashboard, Users, Layers, IndianRupee, UserPlus,
   Receipt, Building2, UserCog, BarChart3, FileBarChart, Download, Settings,
-  LifeBuoy, Menu, PanelLeftClose, PanelLeftOpen, Bell, ChevronDown, LogOut, Crown, MessageCircle, Zap,
+  LifeBuoy, Menu, PanelLeftClose, PanelLeftOpen, Bell, ChevronDown, LogOut, Crown, MessageCircle, Zap, ClipboardCheck,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { Logo } from "../components/Logo";
@@ -20,6 +20,7 @@ import { Button } from "../components/ui/button";
 const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/app/members", label: "Members", icon: Users },
+  { to: "/app/attendance", label: "Attendance", icon: ClipboardCheck },
   { to: "/app/plans", label: "Plans & Catalogue", icon: Layers },
   { to: "/app/payments", label: "Payments", icon: IndianRupee },
   { to: "/app/enquiries", label: "Enquiries", icon: UserPlus },

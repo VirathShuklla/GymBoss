@@ -546,6 +546,15 @@ async def payment_receipt(payment_id: str, user: dict = Depends(get_org_user)):
     }
 
 
+@router.get("/payments/{payment_id}/receipt.pdf")
+async def payment_receipt_pdf(payment_id: str, user: dict = Depends(get_org_user)):
+    from receipt_pdf import build_receipt_pdf
+    r = await payment_receipt(payment_id, user)
+    pdf = build_receipt_pdf(r)
+    name = f"Receipt-{r['payment'].get('receipt_no') or payment_id[:8]}.pdf"
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+
+
 # ---------------- Attendance ----------------
 
 class CheckInBody(BaseModel):
@@ -571,7 +580,7 @@ async def check_in(body: CheckInBody, user: dict = Depends(get_org_user)):
     doc = {
         "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
         "member_id": m["id"], "member_name": m["full_name"], "member_code": m["member_code"],
-        "check_in": now_utc(), "check_out": None,
+        "check_in": now_utc(), "check_out": None, "source": "manual",
     }
     await db.attendance.insert_one(doc)
     doc.pop("_id", None)

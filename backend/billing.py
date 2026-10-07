@@ -10,7 +10,9 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
-from deps import db, now_utc, new_id, get_org_user, derive_subscription, audit, get_plan_price, get_razorpay_keys, PLAN_PRICE_INR
+from typing import Optional
+
+from deps import db, now_utc, new_id, get_org_user, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +47,21 @@ async def get_subscription(user: dict = Depends(get_org_user)):
         "payments": payments,
         "razorpay_configured": bool(key_id) and key_id.startswith(("rzp_test_", "rzp_live_")),
         "autodebit": autodebit,
+        "plans": await get_pricing_plans(active_only=True),
     }
 
 
+class PlanChoice(BaseModel):
+    plan_id: Optional[str] = "monthly"
+
+
 @router.post("/subscription/create-order")
-async def create_order(user: dict = Depends(get_org_user)):
+async def create_order(body: PlanChoice | None = None, user: dict = Depends(get_org_user)):
     key_id, key_secret = await get_razorpay_keys()
     if not key_id or not key_secret:
         raise HTTPException(503, "Online payments are being configured. Please contact BuildVVO support to activate your subscription.")
-    price = await get_plan_price()
+    plan = await get_pricing_plan(body.plan_id if body else None)
+    price = plan["effective_price"]
     org_id = user["organisation_id"]
     async with httpx.AsyncClient(timeout=30) as http:
         resp = await http.post(
@@ -66,9 +74,9 @@ async def create_order(user: dict = Depends(get_org_user)):
     order = resp.json()
     await db.subscription_payments.insert_one({
         "id": new_id(), "organisation_id": org_id, "order_id": order["id"],
-        "amount": price, "currency": "INR", "status": "created", "created_at": now_utc(),
+        "amount": price, "currency": "INR", "status": "created", "plan_id": plan["id"], "created_at": now_utc(),
     })
-    return {"order_id": order["id"], "amount": price * 100, "currency": "INR", "key_id": key_id}
+    return {"order_id": order["id"], "amount": price * 100, "currency": "INR", "key_id": key_id, "plan": plan}
 
 
 class VerifyBody(BaseModel):
@@ -77,22 +85,24 @@ class VerifyBody(BaseModel):
     razorpay_signature: str
 
 
-async def activate_subscription(org_id: str, payment_id: str, actor: str = "razorpay"):
+async def activate_subscription(org_id: str, payment_id: str, actor: str = "razorpay", plan_id: str | None = None):
     now = now_utc()
-    price = await get_plan_price()
     org = await db.organisations.find_one({"id": org_id})
     sub = (org or {}).get("subscription", {})
+    plan = await get_pricing_plan(plan_id or sub.get("plan"))
+    price = plan["effective_price"]
     base = sub.get("subscription_ends_at")
     if base and base > now:
         start = base
     else:
         start = now
-    ends = start + timedelta(days=30)
+    ends = start + timedelta(days=30 * plan["months"])
     await db.organisations.update_one({"id": org_id}, {"$set": {
         "subscription.status": "active",
         "subscription.subscription_started_at": sub.get("subscription_started_at") or now,
         "subscription.subscription_ends_at": ends,
-        "subscription.plan": "monthly",
+        "subscription.plan": plan["id"],
+        "subscription.plan_months": plan["months"],
         "subscription.amount": price,
     }})
     await db.subscription_payments.update_one(
@@ -111,7 +121,8 @@ async def verify_payment(body: VerifyBody, user: dict = Depends(get_org_user)):
     expected = hmac.new(key_secret.encode(), f"{body.razorpay_order_id}|{body.razorpay_payment_id}".encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, body.razorpay_signature):
         raise HTTPException(400, "Payment verification failed")
-    ends = await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"])
+    rec = await db.subscription_payments.find_one({"order_id": body.razorpay_order_id, "organisation_id": user["organisation_id"]})
+    await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], plan_id=(rec or {}).get("plan_id"))
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     return {"message": "Subscription activated", "subscription": derive_subscription(org, await get_plan_price())}
 
@@ -139,14 +150,14 @@ async def razorpay_webhook(request: Request):
             pay_entity = event.get("payload", {}).get("payment", {}).get("entity", {})
             await db.subscriptions.update_one({"id": local["id"]}, {"$set": {"status": "active", "last_charged_at": now_utc()}})
             if event_name == "subscription.charged":
-                price = await get_plan_price()
+                price = local.get("amount") or await get_plan_price()
                 ts = now_utc()
                 await db.subscription_payments.insert_one({
                     "id": new_id(), "organisation_id": local["organisation_id"], "order_id": sub_id,
                     "payment_id": pay_entity.get("id", ""), "amount": price, "currency": "INR",
                     "status": "paid", "kind": "autodebit_renewal", "created_at": ts, "paid_at": ts,
                 })
-            await activate_subscription(local["organisation_id"], pay_entity.get("id", ""))
+            await activate_subscription(local["organisation_id"], pay_entity.get("id", ""), plan_id=local.get("plan_key"))
         elif event_name == "subscription.halted":
             await db.subscriptions.update_one({"id": local["id"]}, {"$set": {"status": "halted"}})
             await audit("razorpay", "subscription.halted", local["organisation_id"], {"rzp_subscription": sub_id}, local["organisation_id"])
@@ -162,7 +173,7 @@ async def razorpay_webhook(request: Request):
     if not record:
         return {"status": "unknown_order"}
     if event.get("event") == "payment.captured" and record.get("status") != "paid":
-        await activate_subscription(record["organisation_id"], entity.get("id", ""))
+        await activate_subscription(record["organisation_id"], entity.get("id", ""), plan_id=record.get("plan_id"))
     elif event.get("event") == "payment.failed":
         await db.subscription_payments.update_one({"order_id": order_id}, {"$set": {"status": "failed"}})
     return {"status": "processed"}
@@ -170,26 +181,31 @@ async def razorpay_webhook(request: Request):
 
 # ---------------- Auto-debit subscriptions (UPI Autopay / card recurring) ----------------
 
-async def get_or_create_rzp_plan(price: int) -> str:
-    cache = await db.settings.find_one({"id": "razorpay_plan_cache"}) or {}
+async def get_or_create_rzp_plan(plan: dict) -> str:
+    cache_id = "razorpay_plan_cache" if plan["id"] == "monthly" else f"razorpay_plan_cache_{plan['id']}"
+    price = plan["effective_price"]
+    cache = await db.settings.find_one({"id": cache_id}) or {}
     if cache.get("price") == price and cache.get("plan_id"):
         return cache["plan_id"]
     data, _ = await razorpay_request("POST", "/plans", {
         "period": "monthly",
-        "interval": 1,
-        "item": {"name": "GymBoss_VVO Monthly", "amount": price * 100, "currency": "INR"},
+        "interval": plan["months"],
+        "item": {"name": f"GymBoss_VVO {plan['name']}", "amount": price * 100, "currency": "INR"},
     })
-    await db.settings.update_one({"id": "razorpay_plan_cache"}, {"$set": {"price": price, "plan_id": data["id"]}}, upsert=True)
+    await db.settings.update_one({"id": cache_id}, {"$set": {"price": price, "plan_id": data["id"]}}, upsert=True)
     return data["id"]
 
 
 @router.post("/subscription/autodebit/start")
-async def autodebit_start(user: dict = Depends(get_org_user)):
+async def autodebit_start(body: PlanChoice | None = None, user: dict = Depends(get_org_user)):
     org_id = user["organisation_id"]
-    price = await get_plan_price()
-    plan_id = await get_or_create_rzp_plan(price)
+    plan = await get_pricing_plan(body.plan_id if body else None)
+    price = plan["effective_price"]
+    plan_id = await get_or_create_rzp_plan(plan)
     existing = await db.subscriptions.find_one({"organisation_id": org_id, "status": {"$in": ["created", "active"]}})
-    _, key_id = None, None
+    if existing and existing["status"] == "created" and existing.get("plan_id") != plan_id:
+        await db.subscriptions.update_one({"id": existing["id"]}, {"$set": {"status": "abandoned"}})
+        existing = None
     if existing:
         key_id = (await get_razorpay_keys())[0]
         return {"subscription_id": existing["razorpay_subscription_id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": existing["status"]}
@@ -202,7 +218,7 @@ async def autodebit_start(user: dict = Depends(get_org_user)):
     })
     await db.subscriptions.insert_one({
         "id": new_id(), "organisation_id": org_id, "razorpay_subscription_id": data["id"],
-        "plan_id": plan_id, "amount": price, "status": "created", "created_at": now_utc(),
+        "plan_id": plan_id, "plan_key": plan["id"], "amount": price, "status": "created", "created_at": now_utc(),
     })
     await audit(user["id"], "subscription.autodebit_started", org_id, {"rzp_subscription": data["id"]}, org_id)
     return {"subscription_id": data["id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": "created"}
@@ -227,13 +243,13 @@ async def autodebit_verify(body: AutodebitVerifyBody, user: dict = Depends(get_o
         raise HTTPException(404, "Subscription not found")
     ts = now_utc()
     await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "active", "activated_at": ts, "last_charged_at": ts}})
-    price = await get_plan_price()
+    price = sub.get("amount") or await get_plan_price()
     await db.subscription_payments.insert_one({
         "id": new_id(), "organisation_id": user["organisation_id"], "order_id": body.razorpay_subscription_id,
         "payment_id": body.razorpay_payment_id, "amount": price, "currency": "INR",
         "status": "paid", "kind": "autodebit", "created_at": ts, "paid_at": ts,
     })
-    await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"])
+    await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], plan_id=sub.get("plan_key"))
     await audit(user["id"], "subscription.autodebit_activated", user["organisation_id"], {"rzp_subscription": body.razorpay_subscription_id}, user["organisation_id"])
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     return {"message": "Auto-debit activated", "subscription": derive_subscription(org, price)}

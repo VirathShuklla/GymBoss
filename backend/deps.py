@@ -172,7 +172,17 @@ def derive_subscription(org: dict | None, plan_price: int | None = None) -> dict
         "trial_ends_at": trial_ends.isoformat() if trial_ends else None,
         "subscription_ends_at": sub_ends.isoformat() if sub_ends else None,
         "plan_price_inr": plan_price or PLAN_PRICE_INR,
+        "plan": sub.get("plan"),
+        "plan_months": sub.get("plan_months") or 1,
+        "amount": sub.get("amount"),
     }
+
+
+def org_mrr(sub: dict, monthly_price: int) -> int:
+    """Monthly recurring value of an active subscription (multi-month plans spread per month)."""
+    if sub.get("status") != "active":
+        return 0
+    return round((sub.get("amount") or monthly_price) / (sub.get("plan_months") or 1))
 
 
 def public_user(user: dict) -> dict:
@@ -260,12 +270,47 @@ async def next_receipt_no(org_id: str) -> str:
     return f"RCPT-{doc['seq']}"
 
 
-async def get_plan_price() -> int:
-    settings = await db.settings.find_one({"id": "platform"}) or {}
+PLAN_SLOTS = [("monthly", "Monthly", 1), ("quarterly", "Quarterly", 3), ("yearly", "Yearly", 12)]
+
+
+def _price_plans(settings: dict) -> list:
+    """Admin-managed SaaS plans; each gets an effective price (offer price when set and lower)."""
+    stored = {p.get("id"): p for p in settings.get("pricing_plans") or []}
     try:
-        return int(settings.get("plan_price_inr") or PLAN_PRICE_INR)
+        base_monthly = int(settings.get("plan_price_inr") or PLAN_PRICE_INR)
     except (TypeError, ValueError):
-        return PLAN_PRICE_INR
+        base_monthly = PLAN_PRICE_INR
+    plans = []
+    for pid, name, months in PLAN_SLOTS:
+        s = stored.get(pid, {})
+        price = int(s.get("price") or (base_monthly * months))
+        offer = s.get("offer_price")
+        offer = int(offer) if offer not in (None, "", 0) and int(offer) < price else None
+        effective = offer or price
+        plans.append({
+            "id": pid, "name": s.get("name") or name, "months": months, "price": price,
+            "offer_price": offer, "offer_label": (s.get("offer_label") or "").strip(),
+            "active": s.get("active", True) if pid != "monthly" else True,
+            "effective_price": effective, "per_month": round(effective / months),
+            "save_pct": round(100 * (price - effective) / price) if offer else 0,
+        })
+    return plans
+
+
+async def get_pricing_plans(active_only: bool = False) -> list:
+    settings = await db.settings.find_one({"id": "platform"}) or {}
+    plans = _price_plans(settings)
+    return [p for p in plans if p["active"]] if active_only else plans
+
+
+async def get_pricing_plan(plan_id: str | None) -> dict:
+    plans = await get_pricing_plans(active_only=True)
+    return next((p for p in plans if p["id"] == (plan_id or "monthly")), plans[0])
+
+
+async def get_plan_price() -> int:
+    """Effective monthly plan price (used for MRR and 'from ₹X/month' copy)."""
+    return (await get_pricing_plan("monthly"))["effective_price"]
 
 
 async def get_razorpay_keys() -> tuple:

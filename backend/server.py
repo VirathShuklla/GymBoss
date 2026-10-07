@@ -25,7 +25,7 @@ from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
     get_org_user, derive_subscription, public_user, org_public, audit, init_storage,
-    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR,
+    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans,
 )
 from members import router as members_router
 from ops import router as ops_router
@@ -33,6 +33,7 @@ from comms import router as comms_router
 from finance import router as finance_router
 from billing import router as billing_router
 from admin import router as admin_router
+from attendance import router as attendance_router, adms_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -290,6 +291,7 @@ async def public_config():
         "app_store_url": settings.get("app_store_url") or "",
         "trial_days": TRIAL_DAYS,
         "plan_price_inr": await get_plan_price(),
+        "pricing_plans": await get_pricing_plans(active_only=True),
     }
 
 
@@ -803,6 +805,9 @@ app.include_router(comms_router, prefix="/api")
 app.include_router(finance_router, prefix="/api")
 app.include_router(billing_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(attendance_router, prefix="/api")
+app.include_router(adms_router, prefix="/api")
+app.include_router(adms_router)
 
 frontend_origin = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(

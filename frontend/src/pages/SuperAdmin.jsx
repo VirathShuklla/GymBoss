@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2, Settings as SettingsIcon, ScrollText, Eye, Power, LogOut, LayoutDashboard, Users,
-  TrendingUp, TrendingDown, IndianRupee, Activity, AlertTriangle, CreditCard, Repeat, Zap, X, Minus,
+  TrendingUp, TrendingDown, IndianRupee, Activity, AlertTriangle, CreditCard, Repeat, Zap, X, Minus, Download, Loader2,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
@@ -17,6 +17,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
+import { ThemeToggle } from "../components/ThemeToggle";
+import { downloadBlob } from "../lib/files";
 
 const fmtMonth = (k) => { const [y, m] = k.split("-"); return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" }); };
 const pct = (v) => `${v > 0 ? "+" : ""}${v}%`;
@@ -109,9 +112,22 @@ export default function SuperAdmin() {
   };
   const saveSettings = async (e) => {
     e.preventDefault(); setBusy(true);
-    try { const { data } = await api.put("/admin/settings", { ...settings, plan_price_inr: Number(settings.plan_price_inr) }); setSettings((s) => ({ ...s, ...data })); toast.success("Settings saved"); loadAnalytics(); }
+    const { plan_price_inr, ...rest } = settings;
+    const pricing_plans = (settings.pricing_plans || []).map((p) => ({ id: p.id, name: p.name, price: Number(p.price), offer_price: p.offer_price ? Number(p.offer_price) : null, offer_label: p.offer_label || "", active: p.active }));
+    try { const { data } = await api.put("/admin/settings", { ...rest, pricing_plans }); setSettings((s) => ({ ...s, ...data })); toast.success("Settings saved. New prices are live everywhere."); loadAnalytics(); }
     catch (err) { toast.error(err?.response?.data?.detail || "Could not save"); } finally { setBusy(false); }
   };
+
+  const [exporting, setExporting] = useState(false);
+  const exportChurn = async (level = "high_risk") => {
+    setExporting(true);
+    try {
+      const res = await api.get("/admin/churn-export", { params: { health: level }, responseType: "blob" });
+      downloadBlob(res.data, `churn-watchlist-${level}-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success("Churn watchlist downloaded");
+    } catch { toast.error("Export failed"); } finally { setExporting(false); }
+  };
+  const setPlan = (id, patch) => setSettings((s) => ({ ...s, pricing_plans: s.pricing_plans.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
 
   const goToCustomers = (status = "all", health = "all") => { setStatusFilter(status); setHealthFilter(health); setTab("customers"); };
 
@@ -155,7 +171,10 @@ export default function SuperAdmin() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-white"><Zap className="h-5 w-5" /></span>
             <div><p className="font-display text-sm font-bold text-foreground">BuildVVO Admin</p><p className="text-xs text-muted-foreground">GymBoss_VVO Control Center</p></div>
           </div>
+          <div className="flex items-center gap-2">
+          <ThemeToggle testid="admin-theme-toggle" />
           <button onClick={async () => { await logout(); navigate("/login"); }} data-testid="admin-logout" className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground"><LogOut className="h-4 w-4" />Logout</button>
+          </div>
         </div>
       </header>
 
@@ -269,13 +288,15 @@ export default function SuperAdmin() {
                       {[
                         { l: "Daily Active", v: use.dau }, { l: "Weekly Active", v: use.wau }, { l: "Monthly Active", v: use.mau },
                         { l: "Members Managed", v: use.total_members }, { l: "Members (mo)", v: use.members_this_month }, { l: "Payments Logged", v: use.member_payments },
+                        { l: "Check-ins Today", v: use.attendance_today }, { l: "Check-ins (mo)", v: use.attendance_month }, { l: "Biometric Devices", v: use.biometric_devices },
                       ].map((x) => <div key={x.l} className="rounded-xl border border-border p-3"><p className="text-xs text-muted-foreground">{x.l}</p><p className="font-num text-lg font-bold text-foreground">{x.v}</p></div>)}
                     </div>
                   </Card>
                 </div>
 
                 {/* Row 6 — Action required */}
-                <Card title="Action Required" subtitle="Things needing your attention today" testid="admin-actions">
+                <Card title="Action Required" subtitle="Things needing your attention today" testid="admin-actions"
+                  action={<Button size="sm" variant="outline" onClick={() => exportChurn("high_risk")} disabled={exporting} data-testid="admin-actions-export">{exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}Churn CSV</Button>}>
                   {actions.length === 0 ? (
                     <p className="py-6 text-center text-sm text-muted-foreground" data-testid="admin-actions-empty">All clear — nothing needs attention right now.</p>
                   ) : (
@@ -298,7 +319,13 @@ export default function SuperAdmin() {
           {/* ---------------- CUSTOMERS ---------------- */}
           <TabsContent value="customers" className="mt-6">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <SearchInput value={search} onChange={setSearch} placeholder="Search gyms…" testid="admin-search" />
+              <div className="flex flex-wrap items-center gap-2">
+                <SearchInput value={search} onChange={setSearch} placeholder="Search gyms…" testid="admin-search" />
+                <Button size="sm" className="bg-brand hover:bg-brand-hover" onClick={() => exportChurn("high_risk")} disabled={exporting} data-testid="admin-export-churn">
+                  {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}Export churn watchlist
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => exportChurn("all_risk")} disabled={exporting} data-testid="admin-export-churn-all">Incl. at-risk</Button>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {[["all", "All"], ["active", "Active"], ["trial", "Trial"], ["expired", "Expired"], ["cancelled", "Cancelled"]].map(([v, l]) => (
                   <button key={v} onClick={() => setStatusFilter(v)} data-testid={`filter-status-${v}`} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${statusFilter === v ? "bg-brand text-white" : "border border-border bg-card text-muted-foreground"}`}>{l}</button>
@@ -319,7 +346,25 @@ export default function SuperAdmin() {
               <div className="space-y-1.5"><Label>Support Email</Label><Input type="email" value={settings.support_email} onChange={(e) => setSettings({ ...settings, support_email: e.target.value })} placeholder="support@buildvvo.com" data-testid="settings-support-email" /></div>
               <div className="space-y-1.5"><Label>Google Play URL</Label><Input value={settings.play_store_url} onChange={(e) => setSettings({ ...settings, play_store_url: e.target.value })} data-testid="settings-play-store" /></div>
               <div className="space-y-1.5"><Label>App Store URL</Label><Input value={settings.app_store_url} onChange={(e) => setSettings({ ...settings, app_store_url: e.target.value })} data-testid="settings-app-store" /></div>
-              <div className="space-y-1.5"><Label>Monthly Subscription Price (₹)</Label><Input type="number" min="1" value={settings.plan_price_inr} onChange={(e) => setSettings({ ...settings, plan_price_inr: e.target.value })} data-testid="settings-plan-price" /></div>
+              <div className="rounded-xl border border-border p-4" data-testid="settings-pricing">
+                <p className="text-sm font-semibold text-foreground">Subscription Plans & Offers</p>
+                <p className="mb-3 text-xs text-muted-foreground">Changes update the landing page, the gym app, the mobile app and Razorpay checkout instantly.</p>
+                <div className="space-y-3">
+                  {(settings.pricing_plans || []).map((p) => (
+                    <div key={p.id} className="rounded-lg bg-secondary/50 p-3" data-testid={`settings-plan-${p.id}`}>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-bold text-foreground">{p.name} <span className="font-normal text-muted-foreground">· {p.months} month{p.months > 1 ? "s" : ""}</span></p>
+                        {p.id !== "monthly" && <label className="flex items-center gap-2 text-xs text-muted-foreground">Show<Switch checked={p.active} onCheckedChange={(v) => setPlan(p.id, { active: v })} data-testid={`settings-plan-active-${p.id}`} /></label>}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1"><Label className="text-xs">Price (₹)</Label><Input type="number" min="1" value={p.price} onChange={(e) => setPlan(p.id, { price: e.target.value })} data-testid={`settings-plan-price-${p.id}`} /></div>
+                        <div className="space-y-1"><Label className="text-xs">Offer price</Label><Input type="number" min="1" value={p.offer_price || ""} placeholder="None" onChange={(e) => setPlan(p.id, { offer_price: e.target.value })} data-testid={`settings-plan-offer-${p.id}`} /></div>
+                        <div className="space-y-1"><Label className="text-xs">Offer label</Label><Input value={p.offer_label || ""} maxLength={40} placeholder="e.g. Launch offer" onChange={(e) => setPlan(p.id, { offer_label: e.target.value })} data-testid={`settings-plan-label-${p.id}`} /></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <div className="rounded-xl border border-border p-4">
                 <p className="mb-3 text-sm font-semibold text-foreground">Razorpay</p>
                 <div className="space-y-3">

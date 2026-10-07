@@ -7,6 +7,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
 import { PageHeader, DataTable, StatusBadge, EmptyState } from "../../components/app/ui";
 import { Button } from "../../components/ui/button";
+import { PlanPicker, planPeriod } from "../../components/PlanPicker";
 
 const INCLUDED = [
   "Unlimited members & staff",
@@ -32,6 +33,7 @@ export default function Subscription() {
   const config = usePublicConfig();
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [planId, setPlanId] = useState("monthly");
 
   const load = async () => {
     const { data } = await api.get("/subscription");
@@ -42,13 +44,13 @@ export default function Subscription() {
   const pay = async () => {
     setBusy(true);
     try {
-      const { data: sub } = await api.post("/subscription/autodebit/start");
+      const { data: sub } = await api.post("/subscription/autodebit/start", { plan_id: chosen?.id || "monthly" });
       await loadRazorpayScript();
       const rzp = new window.Razorpay({
         key: sub.key_id,
         subscription_id: sub.subscription_id,
         name: "GymBoss_VVO",
-        description: `GymBoss_VVO Pro — ${inr(sub.amount / 100)}/month`,
+        description: `GymBoss_VVO ${chosen?.name || "Pro"} — ${inr(sub.amount / 100)}/${period}`,
         prefill: { name: user?.full_name, email: user?.email, contact: user?.phone },
         theme: { color: "#7C3AED" },
         handler: async (resp) => {
@@ -79,6 +81,10 @@ export default function Subscription() {
   const isTrial = sub?.status === "trial";
   const isActive = sub?.status === "active";
   const needsPayment = !isActive;
+  const plans = data?.plans || [];
+  const chosen = plans.find((p) => p.id === planId) || plans[0];
+  const shown = isActive ? (sub?.amount || price) : (chosen?.effective_price || price);
+  const period = planPeriod(isActive ? (sub?.plan_months || 1) : (chosen?.months || 1));
   const trialPct = isTrial ? Math.round(((10 - (sub?.trial_days_left ?? 10)) / 10) * 100) : 100;
 
   const statusMeta = {
@@ -136,7 +142,7 @@ export default function Subscription() {
             <div className="mt-5 flex items-center gap-2.5 rounded-lg border border-success/25 bg-success/8 px-4 py-3" data-testid="autodebit-active-card">
               <Check className="h-4 w-4 shrink-0 text-success" strokeWidth={3} />
               <p className="text-sm text-foreground">
-                Billing is active — {inr(price)}/month{sub?.subscription_ends_at ? `, paid through ${formatDate(sub.subscription_ends_at)}` : ""}.
+                Billing is active — {inr(shown)}/{period}{sub?.subscription_ends_at ? `, paid through ${formatDate(sub.subscription_ends_at)}` : ""}.
                 <span className="text-muted-foreground"> Manage it from My Profile.</span>
               </p>
             </div>
@@ -162,12 +168,14 @@ export default function Subscription() {
               <Sparkles className="h-4 w-4 opacity-80" />
               <p className="text-xs font-bold uppercase tracking-wider opacity-80">GymBoss_VVO Pro</p>
             </div>
-            <p className="mt-2 font-display text-4xl font-extrabold tracking-tight">
-              {inr(price)}<span className="text-base font-semibold opacity-80">/month</span>
+            <p className="mt-2 font-display text-4xl font-extrabold tracking-tight" data-testid="subscription-price">
+              {inr(shown)}<span className="text-base font-semibold opacity-80">/{period}</span>
             </p>
+            {!isActive && chosen?.offer_price && <p className="font-num text-sm line-through opacity-70">{inr(chosen.price)}</p>}
             <p className="mt-1 text-xs opacity-75">per gym · all outlets included</p>
           </div>
           <div className="p-6">
+            {!isActive && plans.length > 1 && <div className="mb-5"><p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Choose your plan</p><PlanPicker plans={plans} value={chosen?.id} onChange={setPlanId} testid="web-plan" /></div>}
             <ul className="grid grid-cols-1 gap-2.5">
               {INCLUDED.map((f) => (
                 <li key={f} className="flex items-center gap-2.5 text-sm text-foreground">
@@ -182,7 +190,7 @@ export default function Subscription() {
               </div>
             ) : data?.razorpay_configured ? (
               <Button className="mt-6 h-11 w-full rounded-xl bg-brand text-base font-semibold hover:bg-brand-hover" onClick={pay} disabled={busy} data-testid="subscribe-button">
-                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Pay {inr(price)}/month
+                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Pay {inr(shown)}/{period}
               </Button>
             ) : (
               <div className="mt-6 rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground" data-testid="razorpay-not-configured">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarClock, ArrowUpRight, X, Check } from "lucide-react";
+import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarClock, ArrowUpRight, X, Check, ClipboardCheck } from "lucide-react";
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
@@ -12,6 +12,7 @@ const METRICS = [
   { key: "active_members", label: "Active", icon: Users, color: "text-success" },
   { key: "total_members", label: "Total Members", icon: Users, color: "text-foreground" },
   { key: "today_enquiries", label: "Enquiries", icon: HelpCircle, color: "text-info" },
+  { key: "attendance_today", label: "Check-ins Today", icon: ClipboardCheck, color: "text-brand", to: "/m/attendance" },
 ];
 
 export default function Home() {
@@ -71,14 +72,15 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-3">
+      <div className="mt-4 grid grid-cols-4 gap-2.5">
         {[
           { label: "Add Member", icon: UserPlus, to: "/m/manage?add=member" },
           { label: "Payment", icon: IndianRupee, to: "/m/manage?tab=members" },
+          { label: "Check-in", icon: ClipboardCheck, to: "/m/attendance" },
           { label: "Renewals", icon: RefreshCw, to: "/m/manage?tab=members" },
         ].map((a) => (
           <button key={a.label} onClick={() => navigate(a.to)} data-testid={`m-quick-${a.label.toLowerCase().replace(/\s/g, "-")}`}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card py-4 text-xs font-semibold text-foreground active:scale-95">
+            className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-[11px] font-semibold text-foreground active:scale-95">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 text-brand"><a.icon className="h-5 w-5" /></span>
             {a.label}
           </button>
@@ -87,13 +89,13 @@ export default function Home() {
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {METRICS.map((m) => (
-          <div key={m.key} className="rounded-2xl border border-border bg-card px-4 py-3.5" data-testid={`m-metric-${m.key.replace(/_/g, "-")}`}>
+          <button key={m.key} onClick={() => navigate(m.to || (m.key === "due_members" ? "/m/manage?tab=members" : "/m/manage"))} className="rounded-2xl border border-border bg-card px-4 py-3.5 text-left active:scale-[0.98]" data-testid={`m-metric-${m.key.replace(/_/g, "-")}`}>
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{m.label}</p>
               <m.icon className={`h-4 w-4 ${m.color}`} />
             </div>
             <p className={`font-num mt-1 text-2xl font-extrabold ${m.color}`}>{summary ? summary[m.key] ?? 0 : "—"}</p>
-          </div>
+          </button>
         ))}
       </div>
 

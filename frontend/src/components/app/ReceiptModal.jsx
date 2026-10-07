@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { X, Printer, MessageCircle } from "lucide-react";
+import { X, Printer, MessageCircle, FileDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { downloadReceiptPdf } from "../../lib/files";
 import { inr, formatDate, formatPhone } from "../../lib/format";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -7,7 +9,12 @@ import { Logo } from "../Logo";
 import { waMe, buildReceiptMessage } from "../../lib/whatsapp";
 
 export function ReceiptModal({ receipt, onClose }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
   if (!receipt) return null;
+  const pdf = async () => {
+    setPdfBusy(true);
+    try { await downloadReceiptPdf(receipt.payment.id, receipt.payment.receipt_no); } catch { toast.error("Could not create the PDF. Please try again."); } finally { setPdfBusy(false); }
+  };
   const { payment, member, gym, outlet } = receipt;
   return (
     <Dialog open={Boolean(receipt)} onOpenChange={(o) => !o && onClose()}>
@@ -49,8 +56,11 @@ export function ReceiptModal({ receipt, onClose }) {
               <MessageCircle className="mr-1.5 h-4 w-4" />Send on WhatsApp
             </Button>
           )}
-          <Button className="bg-brand hover:bg-brand-hover" onClick={() => window.print()} data-testid="receipt-print-button">
-            <Printer className="mr-1.5 h-4 w-4" />Print / Download
+          <Button variant="outline" onClick={() => window.print()} data-testid="receipt-print-button">
+            <Printer className="mr-1.5 h-4 w-4" />Print
+          </Button>
+          <Button className="bg-brand hover:bg-brand-hover" onClick={pdf} disabled={pdfBusy} data-testid="receipt-pdf-button">
+            {pdfBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <FileDown className="mr-1.5 h-4 w-4" />}Download PDF
           </Button>
         </div>
       </DialogContent>

@@ -26,6 +26,8 @@ import Support from "./pages/app/Support";
 import Profile from "./pages/app/Profile";
 import ComingSoon from "./pages/app/ComingSoon";
 import MobileApp from "./mobile/MobileApp";
+import Attendance from "./pages/app/Attendance";
+import CheckIn from "./pages/CheckIn";
 
 function FullPageLoader() {
   return (
@@ -81,6 +83,7 @@ function App() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="members" element={<Members />} />
+              <Route path="attendance" element={<Attendance />} />
               <Route path="plans" element={<Plans />} />
               <Route path="payments" element={<Payments />} />
               <Route path="enquiries" element={<Enquiries />} />
@@ -96,6 +99,7 @@ function App() {
               <Route path="profile" element={<Profile />} />
               <Route path=":module" element={<ComingSoon />} />
             </Route>
+            <Route path="/checkin/:token" element={<CheckIn />} />
             <Route path="/m/*" element={<MobileApp />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
