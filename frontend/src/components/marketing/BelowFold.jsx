@@ -1,8 +1,5 @@
 import { Features } from "./Features";
-import { ValueStack } from "./ValueStack";
 import { HowItWorks } from "./HowItWorks";
-import { RoiCalculator } from "./RoiCalculator";
-import { Comparison } from "./Comparison";
 import { Pricing } from "./Pricing";
 import { Faq } from "./Faq";
 import { FinalCta } from "./FinalCta";
@@ -15,10 +12,7 @@ export default function BelowFold() {
   return (
     <>
       <Features />
-      <ValueStack />
       <HowItWorks />
-      <RoiCalculator />
-      <Comparison />
       <Pricing />
       <Faq />
       <FinalCta />

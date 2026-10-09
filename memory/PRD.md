@@ -138,6 +138,9 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Verified: testing_agent iteration_16 → backend 12/12, frontend 100%. Test events/orgs cleaned.
 - Note: excel_import_used is defined but the app has no Excel import feature yet, so it will stay 0.
 
+## Landing simplified (2026-10-09)
+- Removed "Do the maths" ROI calculator, "8 tools" value stack and Register-vs-Excel comparison (files deleted). Features are now mentioned once: 8 outcome-led cards (with "Replaces:" line) in Features; How It Works = 3 setup steps; Pricing keeps plan cards + per-day + trust row + one "every plan includes every feature" line; FAQ rewritten as objection-handling and removed two inaccurate claims (CSV import, WhatsApp Business API bulk). Page order: Hero → Features → How It Works → Pricing → FAQ → Final CTA (+ sticky mobile CTA). Self-verified by screenshots desktop + 390px (no overflow).
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026

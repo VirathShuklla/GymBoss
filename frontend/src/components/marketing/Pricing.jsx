@@ -5,18 +5,6 @@ import { usePublicConfig } from "../../hooks/usePublicConfig";
 import { inr } from "../../lib/format";
 import { track } from "../../lib/track";
 
-const INCLUDED = [
-  "Unlimited members",
-  "Membership & plan management",
-  "QR & biometric attendance",
-  "Payment tracking, reminders & PDF receipts",
-  "Enquiries & lead follow-ups",
-  "Announcements via WhatsApp",
-  "Staff & role management",
-  "Multi-outlet support",
-  "Reports & exports",
-  "Dedicated support",
-];
 const TRUST = [
   { icon: CreditCard, text: "No credit card for the trial" },
   { icon: RotateCcw, text: "Cancel anytime" },
@@ -133,18 +121,10 @@ export function Pricing() {
           <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">Pay by UPI, card or netbanking</span>
         </div>
 
-        <div className="mx-auto mt-12 max-w-4xl rounded-3xl border border-slate-200 bg-white p-6 sm:p-8">
-          <p className="text-center font-display text-base font-bold text-slate-900">Everything included in every plan</p>
-          <ul className="mt-5 grid gap-x-8 gap-y-3 sm:grid-cols-2">
-            {INCLUDED.map((f) => (
-              <li key={f} className="flex items-start gap-2.5 text-sm text-slate-700">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50"><Check className="h-3 w-3 text-emerald-600" strokeWidth={3.5} /></span>
-                {f}
-              </li>
-            ))}
-          </ul>
+        <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-slate-200 bg-white px-6 py-4 text-center" data-testid="pricing-included">
+          <p className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-900"><Check className="h-4 w-4 shrink-0 text-emerald-600" strokeWidth={3} />Every plan includes every feature. Unlimited members, no add-ons, no per-member fees.</p>
           {!hasStoreLinks && (
-            <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-slate-400">
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
               <Smartphone className="h-3.5 w-3.5" /> Android & iOS apps coming soon. The web app works on every phone today.
             </p>
           )}

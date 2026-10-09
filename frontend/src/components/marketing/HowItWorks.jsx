@@ -1,9 +1,9 @@
 import { Building2, Users, TrendingUp } from "lucide-react";
 
 const STEPS = [
-  { icon: Building2, title: "Register Your Gym", desc: "Create your account and set up your gym and first outlet in minutes." },
-  { icon: Users, title: "Add Members & Staff", desc: "Add existing members, membership plans and your team with role-based access." },
-  { icon: TrendingUp, title: "Manage & Grow", desc: "Track attendance, collect payments, send reminders and understand your gym's performance." },
+  { icon: Building2, title: "Sign up in 2 minutes", desc: "Create your account with your gym name and phone number. No credit card, no setup fee." },
+  { icon: Users, title: "Add your plans and members", desc: "Enter your membership plans and existing members. Most gyms are fully set up on day one." },
+  { icon: TrendingUp, title: "Collect more, chase less", desc: "GymBoss shows who is due and expiring every day, so you spend your time on the gym floor, not on paperwork." },
 ];
 
 export function HowItWorks() {
@@ -12,10 +12,10 @@ export function HowItWorks() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <h2 className="font-display text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-            How <span className="text-brand">GymBoss_VVO</span> Works
+            Up and running <span className="text-brand">today</span>
           </h2>
           <p className="mt-4 text-base text-slate-600 sm:text-lg">
-            Get started in minutes and transform how your gym runs.
+            Three steps. No training, no IT person needed.
           </p>
         </div>
         <div className="relative mt-16 grid gap-10 sm:grid-cols-3 sm:gap-8">
