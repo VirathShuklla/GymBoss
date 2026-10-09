@@ -131,6 +131,13 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 ## Landing pricing redesign (2026-10-07)
 - Pricing section only (user choice): Yearly highlighted as "Best Value" (dark card, first on mobile), automatic savings vs monthly price (strike-through + "You save ₹X", "Save N%"), per-month equivalent, fixed price-digit spacing (display font instead of monospace), trust row (no card, cancel anytime, data never deleted, UPI/card/netbanking). Self-verified by screenshot (desktop + 390px).
 
+## Conversion tracking, Activated Trial, trial UX, landing value sections (2026-10-09)
+- User asked: landing page as a conversion machine with very high perceived value (chose: keep look, add sections + speed work); simpler Super Admin; track 20 conversion events (chose first-party only); Activated Trial (1 plan, 3 members, 1 payment; editable now); funnel Visitors→Signup Started→Registered→Gym Created→Activated→Paying→Retained with %; non-aggressive trial countdown showing value created; trial expiry never deletes data (chose read-only mode); performance.
+- Backend: `analytics.py` (events collection, POST /api/events whitelist, milestones via after_change, link_visitor on register, GET /trial/status, GET /admin/funnel); write block (402) for expired trials in deps.get_org_user (subscription/auth/support/events/onboarding allowed); billing tracks payment_initiated/successful/failed + subscription_started; admin activation_rules setting.
+- Frontend: lib/track.js (visitor id, UTM first-touch, WhatsApp tracking via window.open/link capture), TrialBanner + ExpiredBanner (web + mobile), Super Admin Funnel tab (FunnelTab.jsx) with plain-language descriptions, landing ValueStack / RoiCalculator / Comparison / StickyMobileCta, per-day pricing, React.lazy code-splitting of all non-landing routes + below-fold, trimmed Google Fonts, blur effects hidden on mobile.
+- Verified: testing_agent iteration_16 → backend 12/12, frontend 100%. Test events/orgs cleaned.
+- Note: excel_import_used is defined but the app has no Excel import feature yet, so it will stay 0.
+
 ## Credentials (see /app/memory/test_credentials.md)
 - Demo owner: demo@gymbossvvo.in / Demo@2026
 - Super admin: GymBoss / GymBoss@2026
