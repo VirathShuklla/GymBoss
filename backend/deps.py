@@ -109,12 +109,18 @@ async def get_current_user(request: Request) -> dict:
     return user
 
 
-async def get_org_user(user: dict = Depends(get_current_user)) -> dict:
+WRITE_ALLOWED_WHEN_EXPIRED = ("/api/subscription", "/api/auth", "/api/support", "/api/events", "/api/onboarding")
+
+
+async def get_org_user(request: Request, user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") == "super_admin" or not user.get("organisation_id"):
         raise HTTPException(status_code=403, detail="Organisation account required")
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     if org and org.get("disabled"):
         raise HTTPException(status_code=403, detail="This gym account has been disabled. Contact BuildVVO support.")
+    if (request.method not in ("GET", "HEAD", "OPTIONS") and not request.url.path.startswith(WRITE_ALLOWED_WHEN_EXPIRED)
+            and derive_subscription(org)["status"] == "expired"):
+        raise HTTPException(status_code=402, detail="Your trial has ended, so GymBoss is in view-only mode. Your data is safe. Reactivate GymBoss to add or edit again.")
     user["org_doc"] = org
     return user
 

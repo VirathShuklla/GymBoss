@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { usePublicConfig } from "../../hooks/usePublicConfig";
 import { inr } from "../../lib/format";
+import { track } from "../../lib/track";
 
 export function FinalCta() {
   const config = usePublicConfig();
@@ -16,7 +17,7 @@ export function FinalCta() {
           Start your 10-day free trial and manage your members, payments and operations from one simple dashboard.
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link to="/register" data-testid="final-cta-trial"
+          <Link to="/register" data-testid="final-cta-trial" onClick={() => track("hero_cta_click", { location: "final" })}
                 className="w-full rounded-full bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lift transition-all hover:-translate-y-0.5 sm:w-auto">
             Start Free Trial
           </Link>
@@ -25,7 +26,7 @@ export function FinalCta() {
             Login
           </Link>
         </div>
-        <p className="mt-6 text-sm text-white/75">10 days free · No credit card · {inr(config?.plan_price_inr || 999)}/month after trial</p>
+        <p className="mt-6 text-sm text-white/75">10 days free · No credit card · Your data is never deleted · From {inr(config?.plan_price_inr || 999)}/month</p>
       </div>
     </section>
   );

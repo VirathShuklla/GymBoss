@@ -1,33 +1,39 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Landing from "./pages/Landing";
-import Login from "./pages/auth/Login";
-import Register from "./pages/auth/Register";
-import ForgotPassword from "./pages/auth/ForgotPassword";
-import ResetPassword from "./pages/auth/ResetPassword";
-import SuperAdmin from "./pages/SuperAdmin";
-import AppLayout from "./layouts/AppLayout";
-import Dashboard from "./pages/app/Dashboard";
-import Members from "./pages/app/Members";
-import Plans from "./pages/app/Plans";
-import Payments from "./pages/app/Payments";
-import Enquiries from "./pages/app/Enquiries";
-import Expenses from "./pages/app/Expenses";
-import Outlets from "./pages/app/Outlets";
-import Staff from "./pages/app/Staff";
-import Finance from "./pages/app/Finance";
-import Reports from "./pages/app/Reports";
-import ExportCenter from "./pages/app/ExportCenter";
-import Settings from "./pages/app/Settings";
-import Subscription from "./pages/app/Subscription";
-import Support from "./pages/app/Support";
-import Profile from "./pages/app/Profile";
-import ComingSoon from "./pages/app/ComingSoon";
-import MobileApp from "./mobile/MobileApp";
-import Attendance from "./pages/app/Attendance";
-import CheckIn from "./pages/CheckIn";
+import { installWhatsAppTracking } from "./lib/track";
+
+// Everything except the landing page is code-split so first-time visitors download only what they see.
+const Login = lazy(() => import("./pages/auth/Login"));
+const Register = lazy(() => import("./pages/auth/Register"));
+const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/auth/ResetPassword"));
+const SuperAdmin = lazy(() => import("./pages/SuperAdmin"));
+const AppLayout = lazy(() => import("./layouts/AppLayout"));
+const Dashboard = lazy(() => import("./pages/app/Dashboard"));
+const Members = lazy(() => import("./pages/app/Members"));
+const Plans = lazy(() => import("./pages/app/Plans"));
+const Payments = lazy(() => import("./pages/app/Payments"));
+const Enquiries = lazy(() => import("./pages/app/Enquiries"));
+const Expenses = lazy(() => import("./pages/app/Expenses"));
+const Outlets = lazy(() => import("./pages/app/Outlets"));
+const Staff = lazy(() => import("./pages/app/Staff"));
+const Finance = lazy(() => import("./pages/app/Finance"));
+const Reports = lazy(() => import("./pages/app/Reports"));
+const ExportCenter = lazy(() => import("./pages/app/ExportCenter"));
+const Settings = lazy(() => import("./pages/app/Settings"));
+const Subscription = lazy(() => import("./pages/app/Subscription"));
+const Support = lazy(() => import("./pages/app/Support"));
+const Profile = lazy(() => import("./pages/app/Profile"));
+const ComingSoon = lazy(() => import("./pages/app/ComingSoon"));
+const MobileApp = lazy(() => import("./mobile/MobileApp"));
+const Attendance = lazy(() => import("./pages/app/Attendance"));
+const CheckIn = lazy(() => import("./pages/CheckIn"));
+
+installWhatsAppTracking();
 
 function FullPageLoader() {
   return (
@@ -72,6 +78,7 @@ function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
+          <Suspense fallback={<FullPageLoader />}>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
@@ -103,6 +110,7 @@ function App() {
             <Route path="/m/*" element={<MobileApp />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </Suspense>
           <Toaster richColors position="top-right" />
         </AuthProvider>
       </ThemeProvider>

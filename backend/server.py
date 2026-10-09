@@ -34,6 +34,7 @@ from finance import router as finance_router
 from billing import router as billing_router
 from admin import router as admin_router
 from attendance import router as attendance_router, adms_router
+from analytics import router as analytics_router, link_visitor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class RegisterBody(BaseModel):
     gym_name: str = Field(min_length=2, max_length=80)
     outlet_name: str = Field(min_length=2, max_length=80)
     city: Optional[str] = None
+    visitor_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class LoginBody(BaseModel):
@@ -157,6 +159,7 @@ async def register(body: RegisterBody, response: Response):
         {"id": new_id(), "organisation_id": org_id, "name": "Evening (4–9 PM)", "created_at": ts},
     ])
     await audit(user["id"], "org.registered", org_id, {"gym": org["name"]}, org_id)
+    await link_visitor(body.visitor_id, org_id, user["id"])
     set_auth_cookies(response, user)
     return {"user": public_user(user), "organisation": org_public(org)}
 
@@ -701,6 +704,9 @@ async def startup():
     await db.users.create_index("email", unique=True, sparse=True)
     await db.users.create_index("username", unique=True, sparse=True)
     await db.users.create_index("organisation_id")
+    await db.events.create_index([("event", 1), ("created_at", -1)])
+    await db.events.create_index("org_id")
+    await db.events.create_index("visitor_id")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.password_reset_tokens.create_index("token_hash", unique=True)
     await db.login_attempts.create_index("identifier")
@@ -806,6 +812,7 @@ app.include_router(finance_router, prefix="/api")
 app.include_router(billing_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(attendance_router, prefix="/api")
+app.include_router(analytics_router, prefix="/api")
 app.include_router(adms_router, prefix="/api")
 app.include_router(adms_router)
 

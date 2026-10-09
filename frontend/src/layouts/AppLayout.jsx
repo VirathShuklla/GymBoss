@@ -16,6 +16,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Button } from "../components/ui/button";
+import { ExpiredBanner } from "../components/TrialBanner";
 
 const NAV = [
   { to: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -34,29 +35,6 @@ const NAV = [
   { to: "/app/support", label: "Help & Support", icon: LifeBuoy },
 ];
 
-function TrialExpired({ onSubscribe, onLogout, price = 999 }) {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center" data-testid="trial-expired-screen">
-      <Logo />
-      <div className="mt-8 max-w-md rounded-2xl border border-border bg-card p-8 shadow-card">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-warning/15 text-warning">
-          <Zap className="h-6 w-6" />
-        </div>
-        <h1 className="mt-5 font-display text-2xl font-bold text-foreground">Your free trial has ended</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Your gym data is safe and exactly where you left it. Continue using GymBoss_VVO for just{" "}
-          <span className="font-num font-bold text-foreground">{inr(price)}</span>/month.
-        </p>
-        <Button className="mt-6 w-full rounded-lg bg-brand font-semibold hover:bg-brand-hover" data-testid="subscribe-now-button" onClick={onSubscribe}>
-          Subscribe Now — {inr(price)}/month
-        </Button>
-        <button onClick={onLogout} className="mt-5 text-sm font-medium text-muted-foreground hover:text-foreground" data-testid="trial-expired-logout">
-          Logout
-        </button>
-      </div>
-    </div>
-  );
-}
 
 export default function AppLayout() {
   const { user, organisation, outlets, subscription, logout } = useAuth();
@@ -68,10 +46,6 @@ export default function AppLayout() {
   const config = usePublicConfig();
 
   const expired = ["expired", "payment_due"].includes(subscription?.status);
-  const allowedWhenExpired = ["/app/subscription", "/app/support", "/app/profile", "/app/settings"];
-  if (expired && !allowedWhenExpired.some((p) => location.pathname.startsWith(p))) {
-    return <TrialExpired price={subscription?.plan_price_inr} onSubscribe={() => navigate("/app/subscription")} onLogout={async () => { await logout(); navigate("/login"); }} />;
-  }
 
   const daysLeft = subscription?.trial_days_left ?? 0;
   const trialWarn = subscription?.status === "trial" && daysLeft <= 3;
@@ -219,6 +193,7 @@ export default function AppLayout() {
           </DropdownMenu>
         </header>
         <main className="flex-1 px-4 py-6 pb-[calc(84px+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-8">
+          {expired && !location.pathname.startsWith("/app/subscription") && <ExpiredBanner planPath="/app/subscription" price={subscription?.plan_price_inr} status={subscription?.status} />}
           <div className="mx-auto w-full max-w-[1440px]">
             <Outlet context={{ outletId: outletId === "all" ? undefined : outletId }} />
           </div>

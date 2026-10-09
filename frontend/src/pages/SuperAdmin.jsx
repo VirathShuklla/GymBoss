@@ -20,6 +20,7 @@ import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { downloadBlob } from "../lib/files";
+import { FunnelTab } from "../components/admin/FunnelTab";
 
 const fmtMonth = (k) => { const [y, m] = k.split("-"); return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short", year: "2-digit" }); };
 const pct = (v) => `${v > 0 ? "+" : ""}${v}%`;
@@ -182,6 +183,7 @@ export default function SuperAdmin() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList data-testid="admin-tabs">
             <TabsTrigger value="overview" data-testid="admin-tab-overview"><LayoutDashboard className="mr-1.5 h-4 w-4" />Overview</TabsTrigger>
+            <TabsTrigger value="funnel" data-testid="admin-tab-funnel"><TrendingUp className="mr-1.5 h-4 w-4" />Funnel</TabsTrigger>
             <TabsTrigger value="customers" data-testid="admin-tab-customers"><Building2 className="mr-1.5 h-4 w-4" />Customers</TabsTrigger>
             <TabsTrigger value="settings" data-testid="admin-tab-settings"><SettingsIcon className="mr-1.5 h-4 w-4" />Settings</TabsTrigger>
             <TabsTrigger value="audit" data-testid="admin-tab-audit"><ScrollText className="mr-1.5 h-4 w-4" />Audit</TabsTrigger>
@@ -340,6 +342,7 @@ export default function SuperAdmin() {
           </TabsContent>
 
           {/* ---------------- SETTINGS ---------------- */}
+          <TabsContent value="funnel" className="mt-6"><FunnelTab /></TabsContent>
           <TabsContent value="settings" className="mt-6">
             <form onSubmit={saveSettings} className="max-w-lg space-y-4 rounded-2xl border border-border bg-card p-6 shadow-card" data-testid="admin-settings-form">
               <div className="space-y-1.5"><Label>Support WhatsApp Number</Label><Input value={settings.whatsapp_number} onChange={(e) => setSettings({ ...settings, whatsapp_number: e.target.value })} placeholder="e.g., 919876543210" data-testid="settings-whatsapp" /></div>

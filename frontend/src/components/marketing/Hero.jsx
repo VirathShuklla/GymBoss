@@ -3,6 +3,7 @@ import { CheckCircle2 } from "lucide-react";
 import { DashboardMockup } from "./DashboardMockup";
 import { usePublicConfig } from "../../hooks/usePublicConfig";
 import { inr } from "../../lib/format";
+import { track } from "../../lib/track";
 
 const hand = { fontFamily: "Caveat, cursive" };
 
@@ -11,9 +12,9 @@ export function Hero() {
   const price = inr(config?.plan_price_inr || 999);
   return (
     <section className="relative overflow-hidden bg-[#FBF6EC]" data-testid="hero-section">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
-      <div className="pointer-events-none absolute -left-24 top-44 h-72 w-72 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
-      <div className="pointer-events-none absolute -right-24 top-64 h-72 w-72 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute left-1/2 top-0 hidden h-[420px] w-[820px] -translate-x-1/2 rounded-full bg-brand/10 blur-3xl sm:block" aria-hidden="true" />
+      <div className="pointer-events-none absolute -left-24 top-44 hidden h-72 w-72 rounded-full bg-brand/10 blur-3xl lg:block" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-24 top-64 hidden h-72 w-72 rounded-full bg-brand/10 blur-3xl lg:block" aria-hidden="true" />
       <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-20 text-center sm:px-6 sm:pt-28 lg:px-8">
 
         {/* Handwritten annotations — desktop only */}
@@ -51,17 +52,17 @@ export function Hero() {
             Manage members, memberships, payments, staff and WhatsApp communication from one simple platform — built for Indian gyms.
           </p>
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link to="/register" data-testid="hero-cta-trial"
+            <Link to="/register" data-testid="hero-cta-trial" onClick={() => track("hero_cta_click", { location: "hero" })}
                   className="w-full rounded-full bg-brand px-8 py-3.5 text-base font-semibold text-white shadow-glow transition-all hover:-translate-y-0.5 hover:bg-brand-hover sm:w-auto">
               Start Your 10-Day Free Trial →
             </Link>
-            <a href="#how-it-works" data-testid="hero-cta-how"
+            <a href="#how-it-works" data-testid="hero-cta-how" onClick={() => track("demo_click", { via: "how_it_works" })}
                className="inline-flex w-full items-center justify-center rounded-full border border-slate-300 bg-white px-8 py-3.5 text-base font-semibold text-slate-700 transition-colors hover:border-slate-400 hover:text-slate-900 sm:w-auto">
               See How It Works
             </a>
           </div>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-slate-500">
-            {["10-Day Free Trial", "No Credit Card Required", `${price}/month after trial`].map((t) => (
+            {["10-Day Free Trial", "No Credit Card Required", `From ${price}/month after trial`].map((t) => (
               <span key={t} className="inline-flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4 text-brand" /> {t}
               </span>

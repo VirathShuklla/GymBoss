@@ -5,6 +5,7 @@ import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
 import { ListSkeleton, MThemeToggle } from "../ui";
+import { TrialBanner } from "../../components/TrialBanner";
 
 const METRICS = [
   { key: "due_members", label: "Due Members", icon: Wallet, color: "text-danger" },
@@ -47,6 +48,8 @@ export default function Home() {
           <MThemeToggle />
         </div>
       </div>
+
+      <div className="mt-4"><TrialBanner planPath="/m/profile" /></div>
 
       {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed ? (
         <MOnboarding onboarding={ob}

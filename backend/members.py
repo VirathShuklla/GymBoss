@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel, Field
 
+from analytics import after_change
 from deps import (
     db, now_utc, today_ist, new_id, get_org_user, require_write, get_current_user, audit,
     add_duration, member_status, days_left, member_public,
@@ -49,6 +50,7 @@ async def create_plan(body: PlanBody, user: dict = Depends(require_write)):
     doc = {"id": new_id(), "organisation_id": user["organisation_id"], **body.model_dump(), "created_at": now_utc()}
     await db.plans.insert_one(doc)
     await db.organisations.update_one({"id": user["organisation_id"]}, {"$set": {"onboarding.plan": True}})
+    await after_change(user["organisation_id"], user["id"], plan_created=True)
     doc.pop("_id", None)
     return doc
 
@@ -190,6 +192,7 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
     if enquiry_id:
         await db.enquiries.update_one({"id": enquiry_id, "organisation_id": org_id}, {"$set": {"status": "Converted", "converted_member_id": member["id"]}})
     await audit(user["id"], "member.created", member["id"], {"name": member["full_name"]}, org_id)
+    await after_change(org_id, user["id"])
     return member_public(member)
 
 
@@ -401,6 +404,7 @@ async def renew_member(member_id: str, body: RenewBody, user: dict = Depends(req
             "created_at": ts, "created_by": user["id"],
         })
     await audit(user["id"], "member.renewed", member_id, {"plan": plan["name"]}, org_id)
+    await after_change(org_id, user["id"])
     updated = await db.members.find_one({"id": member_id})
     return member_public(updated)
 
@@ -436,6 +440,7 @@ async def record_payment(body: PaymentBody, user: dict = Depends(require_write))
     await db.members.update_one({"id": m["id"]}, {"$set": {"due_amount": new_due, "payment_status": new_status}})
     await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}})
     await audit(user["id"], "payment.recorded", payment["id"], {"amount": body.amount, "member": m["full_name"]}, org_id)
+    await after_change(org_id, user["id"])
     payment.pop("_id", None)
     payment["member_due_remaining"] = new_due
     return payment

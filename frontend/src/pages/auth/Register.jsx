@@ -8,6 +8,7 @@ import { AuthShell } from "../../components/AuthShell";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { track, visitorId } from "../../lib/track";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -87,6 +88,7 @@ export default function Register() {
         gym_name: form.gym_name.trim(),
         outlet_name: form.outlet_name.trim(),
         city: form.city.trim() || undefined,
+        visitor_id: visitorId(),
       });
       toast.success("Your 10-day free trial has started. Welcome to GymBoss_VVO!");
       navigate("/app", { replace: true });
@@ -103,6 +105,7 @@ export default function Register() {
 
   return (
     <AuthShell title="Create Your Account" subtitle="Start your 10-day free trial — no credit card required" wide>
+      <div onFocusCapture={() => track("signup_started", {}, { oncePerSession: true })}>
       <Stepper step={step} />
       <div data-testid={`register-step-${step}`}>
         {step === 1 && (
@@ -187,6 +190,7 @@ export default function Register() {
         Already have an account?{" "}
         <Link to="/login" className="font-semibold text-brand hover:underline" data-testid="register-login-link">Login</Link>
       </p>
+      </div>
     </AuthShell>
   );
 }

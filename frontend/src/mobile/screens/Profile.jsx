@@ -9,6 +9,7 @@ import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
 import api, { apiError } from "../../lib/api";
 import { MButton } from "../ui";
 import { PlanPicker, planPeriod } from "../../components/PlanPicker";
+import { track } from "../../lib/track";
 
 function loadRazorpayScript() {
   return new Promise((resolve, reject) => {
@@ -84,7 +85,7 @@ export default function Profile() {
           }
         },
       });
-      rzp.on("payment.failed", () => toast.error("Payment failed. No amount was charged."));
+      rzp.on("payment.failed", (r) => { track("payment_failed", { plan: chosen?.id, reason: r?.error?.reason }); toast.error("Payment failed. No amount was charged."); });
       rzp.open();
     } catch (e) {
       toast.error(apiError(e, "Could not start payment"), { duration: 6000 });

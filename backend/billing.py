@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from deps import db, now_utc, new_id, get_org_user, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans
+from analytics import track
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ async def create_order(body: PlanChoice | None = None, user: dict = Depends(get_
         "id": new_id(), "organisation_id": org_id, "order_id": order["id"],
         "amount": price, "currency": "INR", "status": "created", "plan_id": plan["id"], "created_at": now_utc(),
     })
+    await track("payment_initiated", org_id, user["id"], props={"plan": plan["id"], "amount": price, "mode": "order"})
     return {"order_id": order["id"], "amount": price * 100, "currency": "INR", "key_id": key_id, "plan": plan}
 
 
@@ -110,6 +112,9 @@ async def activate_subscription(org_id: str, payment_id: str, actor: str = "razo
         {"$set": {"status": "paid", "payment_id": payment_id, "paid_at": now}},
     )
     await audit(actor, "subscription.activated", org_id, {"payment_id": payment_id, "ends": ends.isoformat()}, org_id)
+    if not await db.events.find_one({"event": "payment_successful", "props.payment_id": payment_id}):
+        await track("payment_successful", org_id, props={"payment_id": payment_id, "plan": plan["id"], "amount": price})
+    await track("subscription_started", org_id, props={"plan": plan["id"]}, once=True)
     return ends
 
 
@@ -176,6 +181,9 @@ async def razorpay_webhook(request: Request):
         await activate_subscription(record["organisation_id"], entity.get("id", ""), plan_id=record.get("plan_id"))
     elif event.get("event") == "payment.failed":
         await db.subscription_payments.update_one({"order_id": order_id}, {"$set": {"status": "failed"}})
+        rec = await db.subscription_payments.find_one({"order_id": order_id})
+        if rec:
+            await track("payment_failed", rec["organisation_id"], props={"order_id": order_id, "source": "webhook"})
     return {"status": "processed"}
 
 
@@ -206,6 +214,7 @@ async def autodebit_start(body: PlanChoice | None = None, user: dict = Depends(g
     if existing and existing["status"] == "created" and existing.get("plan_id") != plan_id:
         await db.subscriptions.update_one({"id": existing["id"]}, {"$set": {"status": "abandoned"}})
         existing = None
+    await track("payment_initiated", org_id, user["id"], props={"plan": plan["id"], "amount": price, "mode": "autodebit"})
     if existing:
         key_id = (await get_razorpay_keys())[0]
         return {"subscription_id": existing["razorpay_subscription_id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": existing["status"]}

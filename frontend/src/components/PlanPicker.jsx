@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import { inr } from "../lib/format";
+import { track } from "../lib/track";
 
 const per = (m) => (m === 1 ? "month" : m === 12 ? "year" : `${m} months`);
 
@@ -10,7 +11,7 @@ export function PlanPicker({ plans, value, onChange, testid = "plan-picker" }) {
       {(plans || []).map((p) => {
         const on = value === p.id;
         return (
-          <button type="button" key={p.id} onClick={() => onChange(p.id)} data-testid={`${testid}-${p.id}`}
+          <button type="button" key={p.id} onClick={() => { onChange(p.id); track("subscription_plan_selected", { plan: p.id, price: p.effective_price }); }} data-testid={`${testid}-${p.id}`}
             className={`flex items-center gap-3 rounded-2xl border-2 px-4 py-3 text-left transition-colors ${on ? "border-brand bg-brand/5" : "border-border bg-card"}`}>
             <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${on ? "border-brand bg-brand text-white" : "border-muted-foreground/40"}`}>
               {on && <Check className="h-3 w-3" strokeWidth={3.5} />}

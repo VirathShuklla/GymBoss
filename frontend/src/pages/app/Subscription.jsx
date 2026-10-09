@@ -8,6 +8,7 @@ import { usePublicConfig, waLink } from "../../hooks/usePublicConfig";
 import { PageHeader, DataTable, StatusBadge, EmptyState } from "../../components/app/ui";
 import { Button } from "../../components/ui/button";
 import { PlanPicker, planPeriod } from "../../components/PlanPicker";
+import { track } from "../../lib/track";
 
 const INCLUDED = [
   "Unlimited members & staff",
@@ -64,7 +65,7 @@ export default function Subscription() {
           }
         },
       });
-      rzp.on("payment.failed", () => toast.error("Payment failed. No amount was charged."));
+      rzp.on("payment.failed", (r) => { track("payment_failed", { plan: chosen?.id, reason: r?.error?.reason }); toast.error("Payment failed. No amount was charged."); });
       rzp.open();
     } catch (e) {
       toast.error(apiError(e, "Could not start payment"), { duration: 6000 });

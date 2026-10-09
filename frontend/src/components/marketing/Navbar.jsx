@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { Logo } from "../Logo";
+import { track } from "../../lib/track";
 
 const LINKS = [
   { label: "Features", href: "#features" },
@@ -28,7 +29,7 @@ export function MarketingNavbar() {
           <Link to="/login" data-testid="nav-login" className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900">
             Login
           </Link>
-          <Link to="/register" data-testid="nav-register"
+          <Link to="/register" data-testid="nav-register" onClick={() => track("hero_cta_click", { location: "nav" })}
                 className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-hover hover:shadow-lift">
             Start Free Trial
           </Link>
@@ -48,7 +49,7 @@ export function MarketingNavbar() {
             ))}
             <div className="mt-3 flex gap-3">
               <Link to="/login" className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-700">Login</Link>
-              <Link to="/register" className="flex-1 rounded-full bg-brand px-4 py-2.5 text-center text-sm font-semibold text-white">Start Free Trial</Link>
+              <Link to="/register" onClick={() => track("hero_cta_click", { location: "nav_mobile" })} className="flex-1 rounded-full bg-brand px-4 py-2.5 text-center text-sm font-semibold text-white">Start Free Trial</Link>
             </div>
           </div>
         </div>

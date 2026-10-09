@@ -1,7 +1,9 @@
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Check, Smartphone, CreditCard, ShieldCheck, RotateCcw, Sparkles, ArrowRight } from "lucide-react";
 import { usePublicConfig } from "../../hooks/usePublicConfig";
 import { inr } from "../../lib/format";
+import { track } from "../../lib/track";
 
 const INCLUDED = [
   "Unlimited members",
@@ -59,9 +61,9 @@ function PlanCard({ p, featured }) {
       </div>
       <div className={`mt-2 min-h-[44px] text-sm ${featured ? "text-slate-300" : "text-slate-500"}`}>
         {p.months > 1 ? (
-          <p>Just <span className={`font-semibold ${featured ? "text-white" : "text-slate-900"}`}>{inr(p.per_month)}/month</span>, billed every {per(p.months)}</p>
+          <p>Just <span className={`font-semibold ${featured ? "text-white" : "text-slate-900"}`}>{inr(p.per_month)}/month</span> · only {inr(Math.round(p.effective_price / (p.months * 30)))}/day</p>
         ) : (
-          <p>Billed monthly. Switch plans anytime.</p>
+          <p>Only {inr(Math.round(p.effective_price / 30))}/day. Switch plans anytime.</p>
         )}
         {p.compareAt && (
           <p className="mt-0.5">
@@ -73,6 +75,7 @@ function PlanCard({ p, featured }) {
 
       <Link
         to="/register"
+        onClick={() => track("pricing_cta_click", { plan: p.id, price: p.effective_price })}
         data-testid={`pricing-cta-${p.id}`}
         className={`group mt-7 flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-colors ${
           featured ? "bg-brand text-white hover:bg-brand-hover" : "border border-slate-300 text-slate-900 hover:border-slate-900 hover:bg-slate-900 hover:text-white"
@@ -94,10 +97,18 @@ export function Pricing() {
   const plans = raw.map((p) => withSavings(p, monthly));
   const featured = plans.some((p) => p.id === "yearly") ? "yearly" : plans[plans.length - 1]?.id;
   const cols = plans.length > 2 ? "md:grid-cols-3" : plans.length === 2 ? "max-w-3xl md:grid-cols-2" : "max-w-md";
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !("IntersectionObserver" in window)) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { track("pricing_viewed", {}, { oncePerSession: true }); io.disconnect(); } }, { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   return (
-    <section id="pricing" className="relative overflow-hidden bg-gradient-to-b from-white via-violet-50/40 to-white py-20 sm:py-28" data-testid="pricing-section">
-      <div className="pointer-events-none absolute left-1/2 top-40 h-96 w-96 -translate-x-1/2 rounded-full bg-brand/10 blur-3xl" />
+    <section id="pricing" ref={ref} className="relative overflow-hidden bg-gradient-to-b from-white via-violet-50/40 to-white py-20 sm:py-28" data-testid="pricing-section">
+      <div className="pointer-events-none absolute left-1/2 top-40 hidden h-96 w-96 -translate-x-1/2 rounded-full bg-brand/10 blur-3xl sm:block" />
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-sm font-bold uppercase tracking-widest text-brand">Pricing</p>

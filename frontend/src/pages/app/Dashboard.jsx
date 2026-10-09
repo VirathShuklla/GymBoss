@@ -8,6 +8,7 @@ import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
 import { Skeleton } from "../../components/ui/skeleton";
+import { TrialBanner } from "../../components/TrialBanner";
 
 const PRIMARY_KPIS = [
   { key: "today_collection", label: "Today's Collection", icon: IndianRupee, color: "text-success", tile: "bg-success/12", money: true },
@@ -149,6 +150,8 @@ export default function Dashboard() {
       </div>
 
       {billingHalted && <BillingHaltedAlert />}
+
+      <TrialBanner planPath="/app/subscription" />
 
       {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed ? (
         <OnboardingChecklist onboarding={ob} onDismiss={dismissOnboarding} />

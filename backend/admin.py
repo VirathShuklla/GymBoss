@@ -175,7 +175,14 @@ class PricingPlanBody(BaseModel):
     active: Optional[bool] = True
 
 
+class ActivationRules(BaseModel):
+    min_plans: int = 1
+    min_members: int = 3
+    min_payments: int = 1
+
+
 class PlatformSettingsBody(BaseModel):
+    activation_rules: Optional[ActivationRules] = None
     pricing_plans: Optional[List[PricingPlanBody]] = None
     whatsapp_number: Optional[str] = ""
     support_email: Optional[str] = ""
@@ -191,6 +198,8 @@ class PlatformSettingsBody(BaseModel):
 async def admin_get_settings(user: dict = Depends(require_super_admin)):
     settings = await db.settings.find_one({"id": "platform"}, {"_id": 0}) or {}
     settings["pricing_plans"] = await get_pricing_plans()
+    from analytics import activation_rules
+    settings["activation_rules"] = await activation_rules()
     return settings
 
 
@@ -215,6 +224,10 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
             if p["id"] == "monthly":
                 p["active"] = True
                 data["plan_price_inr"] = p["price"]
+    if data.get("activation_rules"):
+        r = data["activation_rules"]
+        if any(not (0 <= int(v) <= 100) for v in r.values()) or not any(r.values()):
+            raise HTTPException(422, "Activation rules must be between 0 and 100, and at least one must be above 0")
     if data.get("razorpay_key_id"):
         kid = data["razorpay_key_id"].strip()
         if not kid.startswith(("rzp_test_", "rzp_live_")):

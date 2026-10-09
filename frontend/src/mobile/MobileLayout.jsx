@@ -1,5 +1,7 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Home, LayoutGrid, User, ClipboardCheck } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { ExpiredBanner } from "../components/TrialBanner";
 
 const NAV = [
   { to: "/m/home", label: "Home", icon: Home },
@@ -9,9 +11,13 @@ const NAV = [
 ];
 
 export default function MobileLayout() {
+  const { subscription } = useAuth();
+  const { pathname } = useLocation();
+  const expired = ["expired", "payment_due"].includes(subscription?.status);
   return (
     <div className="min-h-screen bg-background" data-testid="m-app-shell">
       <main className="mx-auto max-w-md px-5 pb-[calc(96px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))]">
+        {expired && pathname !== "/m/profile" && <ExpiredBanner planPath="/m/profile" price={subscription?.plan_price_inr} status={subscription?.status} />}
         <Outlet />
       </main>
       <nav className="m-bottomnav" data-testid="m-bottomnav">
