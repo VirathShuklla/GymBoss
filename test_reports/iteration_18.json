@@ -1,0 +1,44 @@
+{
+  "summary": "Tested the delete-account backend and UI (web + mobile), staff login-email/password editing (web + mobile), and a mobile UI polish regression at 390x844 in light and dark. Backend: 15/16 pytest pass. The one failure is a security probe that found a privilege-escalation hole (see critical). Web: delete dialog gating, wrong-password toast, successful delete, staff edit labels/email/password all work. One gap: after a successful delete the browser lands on /login, not '/'. The staff edit dialog's 'Type' select shows blank. Mobile: onboarding/welcome/login (toggle)/register/home/attendance/manage/profile load with no horizontal overflow in light and dark. Home has no emoji, the trial badge is on one line (32px), the onboarding checklist is hidden for demo, there are 6 metrics and recent transactions show. Manage tabs stay sticky (top=4px after scroll) and the active tab scrolls into view. Member search and the actions sheet (renew/payment/reminder views) open. Change-password sheet, theme selector, logout -> /m/welcome, staff Edit account sheet (prefilled, Save Changes, toast 'Account updated', old email 401 / new 200) and mobile delete -> /m/welcome all work.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/staff/{id}", "issue": "Role is NOT validated on update (create checks STAFF_ROLES, update does not). A manager/admin staff can PUT their own staff record with role='owner'. Their users.role becomes 'owner'. They can then call POST /api/auth/delete-account and it takes the owner branch, permanently wiping the ENTIRE gym. Reproduced end-to-end: self role->owner 200, delete-account 200 'all gym data permanently deleted'. Fix: in update_staff, `if data['role'] not in STAFF_ROLES: raise 422`. Also make delete_account only allow the org-wipe when user.id == organisation.owner_id (or similar), not just role=='owner'.", "priority": "CRITICAL"},
+      {"endpoint": "PUT /api/staff/{id}", "issue": "require_manager lets a 'manager' (or admin) staff change another staff member's login email/password, including an 'admin' account, and then log in as them (account takeover). Probe test_manager_can_reset_admin_password got 200. The spec says the OWNER edits staff login credentials. Restrict email/password changes on a staff login to the owner (or at least block managers from editing admins and themselves elevating).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/auth/delete-account", "issue": "No brute-force throttle on wrong password, unlike change-password (5/15min -> 429). It can be used as a password oracle with a stolen session."},
+      {"endpoint": "Demo tenant", "issue": "Demo owner's trial shows '1d trial left' / '1 day remaining' on mobile home. The demo will soon hit an expired/locked state. Extend the demo subscription/trial in the seed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Web Staff edit dialog", "issue": "'Type' select is blank when editing an existing staff. The backend stores lowercase roles ('trainer') but ROLES options are capitalized ('Trainer'), and 'receptionist' is not in ROLES at all. Normalize the role on load (capitalize) or use lowercase values with display labels.", "selector": "[data-testid='staff-form-role']", "priority": "MEDIUM"},
+      {"component": "Web DeleteAccountCard", "issue": "After a successful owner delete the user lands on /login, not '/' as specified. logout() sets the guest state and ProtectedRoute redirects to /login before navigate('/') takes effect. The user is still logged out correctly (me 401). Fix: navigate first, then logout, or use window.location.replace('/').", "selector": "[data-testid='delete-account-submit']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Mobile /m/profile (dark)", "issues": ["After closing a sheet, the 'Delete my account' button shows a heavy white outline (probably a focus ring when focus returns). It looks out of place next to the softer Logout card. Consider a danger-tinted border or focus-visible only."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter18_delete_account_staff_email.py", "/app/test_reports/pytest/pytest_iter18.xml"],
+  "action_items": [
+    "CRITICAL: validate role against STAFF_ROLES in ops.update_staff (block role='owner' etc.)",
+    "CRITICAL: in delete_account, run the org wipe only when the caller is the actual org owner (e.g. org.owner_id == user.id), not just role=='owner'",
+    "HIGH: restrict changes to a staff login's email/password to the owner (managers must not take over admin accounts)",
+    "Web Staff edit: fix the blank Type select (role casing mismatch) and add Receptionist to ROLES",
+    "Web delete account: make success redirect to '/' instead of /login",
+    "Optional: rate-limit wrong-password attempts on delete-account; extend the demo tenant trial"
+  ],
+  "critical_code_review_comments": [
+    "ops.update_staff: role not validated, and no ownership/hierarchy checks on credential changes (see critical)",
+    "server.delete_account: the role-based owner check combined with the unvalidated role update is a full tenant-wipe vector",
+    "delete_account wipes every collection by organisation_id/org_id. Collections that key the tenant differently (e.g. uploaded files on disk/object storage) are not removed even though the copy says 'uploaded files'. Verify any file storage gets cleaned up."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter18_delete_account_staff_email.py"],
+  "success_rate": {"backend": "94% (15/16; the failure is a security finding)", "frontend": "92% (core flows pass; 2 minor UI bugs)"},
+  "seed_data_creation": "Only throwaway tenants test_iter18_*@testgym.in were created (most were deleted by the delete-account tests). Demo data was not modified (demo delete got 403 as expected; no demo edits saved).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_iter18_delete_account_staff_email.py. test_manager_can_reset_admin_password is expected to fail until the role/permission fix lands. Add a regression test: a manager PUTs their own staff with role='owner' -> should be 422, and delete-account by a non-owner must never wipe the org. Mobile testids: m-seg-staff, m-staff-<id>, m-staff-email/password/save, m-delete-account, m-del-*.",
+  "rca of the issue": "Privilege escalation: StaffBody.role is free-form. create_staff validates it but update_staff only lowercases it and copies it into users.role. delete_account trusts users.role=='owner' to choose the org-wipe branch. Repro: owner creates a manager login -> manager logs in -> PUT /api/staff/<own id> with role 'owner' -> re-login -> POST /api/auth/delete-account {password, confirm:'DELETE'} -> 200, org gone."
+}

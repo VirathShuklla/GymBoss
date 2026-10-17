@@ -11,7 +11,8 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 
-const ROLES = ["Staff", "Trainer", "Manager", "Admin", "Sales"];
+const ROLES = ["Staff", "Trainer", "Receptionist", "Manager", "Admin", "Sales"];
+const cap = (r) => (r ? r[0].toUpperCase() + r.slice(1).toLowerCase() : "Staff");
 const PERMISSIONS = [
   { value: "view", label: "View" },
   { value: "manage", label: "View & Edit" },
@@ -41,7 +42,7 @@ export default function Staff() {
   useEffect(() => { load(); }, []);
 
   useEffect(() => {
-    if (dialogOpen) setForm(editStaff ? { ...blank, ...editStaff, phone: (editStaff.phone || "").replace(/\D/g, "").slice(-10), password: "" } : blank);
+    if (dialogOpen) setForm(editStaff ? { ...blank, ...editStaff, role: cap(editStaff.role), phone: (editStaff.phone || "").replace(/\D/g, "").slice(-10), password: "" } : blank);
   }, [dialogOpen, editStaff]);
 
   const submit = async (e) => {

@@ -151,6 +151,7 @@ async def register(body: RegisterBody, response: Response):
         "status": "active",
         "created_at": ts,
     }
+    org["owner_id"] = user["id"]
     await db.organisations.insert_one(org)
     await db.outlets.insert_one(outlet)
     await db.users.insert_one(user)
@@ -324,11 +325,17 @@ async def delete_account(body: DeleteAccountBody, response: Response, user: dict
     if (user.get("email") or "").lower() == os.environ.get("DEMO_OWNER_EMAIL", "").lower():
         raise HTTPException(status_code=403, detail="The demo account cannot be deleted.")
     full = await db.users.find_one({"id": user["id"]})
+    lock_key = f"delacct:{user['id']}"
+    if await db.login_attempts.count_documents({"identifier": lock_key, "created_at": {"$gt": now_utc() - timedelta(minutes=15)}}) >= 5:
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
     if not verify_password(body.password, full["password_hash"]):
+        await db.login_attempts.insert_one({"identifier": lock_key, "email": lock_key, "created_at": now_utc()})
         raise HTTPException(status_code=400, detail="Your password is incorrect.")
     org_id = user.get("organisation_id")
-    if user.get("role") == "owner" and org_id:
-        org = await db.organisations.find_one({"id": org_id}) or {}
+    org = await db.organisations.find_one({"id": org_id}) if org_id else None
+    is_owner = (user.get("role") == "owner" and not user.get("staff_id") and org
+                and org.get("owner_id", user["id"]) == user["id"])
+    if is_owner:
         for sub in await db.subscriptions.find({"organisation_id": org_id, "status": {"$in": ["active", "created", "halted"]}}).to_list(20):
             try:
                 await razorpay_request("POST", f"/subscriptions/{sub['razorpay_subscription_id']}/cancel")
@@ -849,7 +856,7 @@ async def startup():
         ends = sub.get("trial_ends_at")
         if ends is not None and getattr(ends, "tzinfo", None) is None:
             ends = ends.replace(tzinfo=timezone.utc)
-        if sub.get("status") == "trial" and (not ends or ends <= now_utc()):
+        if sub.get("status") == "trial" and (not ends or ends <= now_utc() + timedelta(days=3)):
             ts = now_utc()
             await db.organisations.update_one({"id": demo["id"]}, {"$set": {
                 "subscription.trial_started_at": ts,

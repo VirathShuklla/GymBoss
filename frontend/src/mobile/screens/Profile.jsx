@@ -225,7 +225,7 @@ export default function Profile() {
           <LogOut className="h-5 w-5" /> Logout
         </button>
         <button onClick={() => setDelOpen(true)} data-testid="m-delete-account"
-          className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-semibold text-muted-foreground transition-colors active:text-danger">
+          className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-semibold text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-danger/40 active:text-danger">
           <Trash2 className="h-4 w-4" /> Delete my account
         </button>
       </div>

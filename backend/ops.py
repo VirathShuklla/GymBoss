@@ -266,6 +266,8 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
         raise HTTPException(404, "Staff member not found")
     data = body.model_dump(exclude={"password"})
     data["role"] = body.role.lower()
+    if data["role"] not in STAFF_ROLES:
+        raise HTTPException(422, "Invalid role")
     data["name"] = body.name.strip()
     if data.get("permission") not in PERMISSIONS:
         data["permission"] = "view"
@@ -276,6 +278,10 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     if body.password and len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     login_id = existing.get("user_id")
+    if login_id and (body.password or email != existing.get("email")) and user.get("role") != "owner":
+        raise HTTPException(403, "Only the gym owner can change a staff member's login email or password")
+    if login_id == user["id"] and data["role"] != existing.get("role"):
+        raise HTTPException(403, "You cannot change your own role")
     if (login_id or body.password) and not email:
         raise HTTPException(422, "Email is required for a staff login account")
     if email and (login_id or body.password) and await db.users.find_one({"email": email, "id": {"$ne": login_id}}):

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Loader2, Sun, Moon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useTheme } from "../contexts/ThemeContext";
@@ -68,8 +69,13 @@ export function BottomSheet({ open, onOpenChange, title, subtitle, children, tes
 }
 
 export function Seg({ tabs, value, onChange }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current?.querySelector(`[data-testid="m-seg-${value}"]`);
+    if (el) ref.current.scrollTo({ left: el.offsetLeft - ref.current.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
+  }, [value]);
   return (
-    <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 py-1">
+    <div ref={ref} className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5 py-1">
       {tabs.map((t) => (
         <button
           key={t.value}

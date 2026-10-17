@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
@@ -14,7 +13,6 @@ export const deleteCopy = (role) => role === "owner"
   : "This permanently deletes your staff login. Your gym's data is not affected. This cannot be undone.";
 
 export function useDeleteAccount(redirectTo) {
-  const navigate = useNavigate();
   const { logout } = useAuth();
   const [busy, setBusy] = useState(false);
   const run = async ({ password, confirm }) => {
@@ -25,7 +23,7 @@ export function useDeleteAccount(redirectTo) {
       const { data } = await api.post("/auth/delete-account", { password, confirm: confirm.trim() });
       toast.success(data.message);
       await logout();
-      navigate(redirectTo, { replace: true });
+      window.location.replace(redirectTo);
     } catch (err) {
       toast.error(apiError(err, "Could not delete account"));
     } finally {
