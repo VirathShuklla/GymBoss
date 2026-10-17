@@ -7,6 +7,7 @@ module.exports = {
   ],
   theme: {
     extend: {
+      opacity: { 8: "0.08", 12: "0.12" },
       fontFamily: {
         display: ['Outfit', 'DM Sans', 'sans-serif'],
         sans: ['DM Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],

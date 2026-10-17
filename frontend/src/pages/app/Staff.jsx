@@ -51,7 +51,6 @@ export default function Staff() {
       const payload = { ...form, salary: form.salary ? Number(form.salary) : null, outlet_id: form.outlet_id || undefined };
       if (!payload.password) delete payload.password;
       if (editStaff) {
-        delete payload.password;
         await api.put(`/staff/${editStaff.id}`, payload);
         toast.success("Staff member updated");
       } else {
@@ -156,14 +155,19 @@ export default function Staff() {
                 <Input required inputMode="numeric" className="rounded-l-none" placeholder="Phone number" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} data-testid="staff-form-phone" />
               </div>
             </div>
-            <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Enter your email" data-testid="staff-form-email" /></div>
-            {!editStaff && (
-              <div className="space-y-1.5">
-                <Label>Password <span className="font-normal text-muted-foreground">(optional — creates a staff login)</span></Label>
-                <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" data-testid="staff-form-password" />
-                <p className="text-xs text-muted-foreground">Requires an email. The password is never stored in plaintext and cannot be viewed later.</p>
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <Label>{editStaff?.has_login ? "Login Email" : "Email"}</Label>
+              <Input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Enter your email" data-testid="staff-form-email" />
+              {editStaff?.has_login && <p className="text-xs text-muted-foreground">Changing this updates the email they log in with and signs them out of other devices.</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                {editStaff?.has_login ? "New Password" : "Password"}{" "}
+                <span className="font-normal text-muted-foreground">({editStaff?.has_login ? "optional — leave blank to keep current" : "optional — creates a staff login"})</span>
+              </Label>
+              <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Minimum 8 characters" data-testid="staff-form-password" />
+              <p className="text-xs text-muted-foreground">Requires an email. The password is never stored in plaintext and cannot be viewed later.</p>
+            </div>
             <div className="flex justify-end gap-3 pt-1">
               <Button type="button" variant="outline" className="flex-1" onClick={() => setDialogOpen(false)} data-testid="staff-form-cancel">Cancel</Button>
               <Button type="submit" className="flex-1 bg-brand hover:bg-brand-hover" disabled={busy} data-testid="staff-form-submit">

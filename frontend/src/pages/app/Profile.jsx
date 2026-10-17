@@ -9,6 +9,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ChangePasswordCard } from "../../components/app/ChangePasswordCard";
+import { DeleteAccountCard } from "../../components/app/DeleteAccountCard";
 
 export default function Profile() {
   const { user, organisation, reload } = useAuth();
@@ -109,6 +110,7 @@ export default function Profile() {
           )}
         </div>
         <ChangePasswordCard />
+        <DeleteAccountCard />
       </div>
 
       <ConfirmDialog open={cancelOpen} onClose={() => setCancelOpen(false)} onConfirm={cancelSubscription} busy={cancelBusy}

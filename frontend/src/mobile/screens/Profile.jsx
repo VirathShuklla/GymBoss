@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck, Sun, Moon, Monitor, Check, Loader2, KeyRound, FileText } from "lucide-react";
+import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck, Sun, Moon, Monitor, Check, Loader2, KeyRound, FileText, Trash2 } from "lucide-react";
+import { DeleteAccountSheet } from "../DeleteAccountSheet";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -40,6 +41,7 @@ export default function Profile() {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [planId, setPlanId] = useState("monthly");
   const [pwOpen, setPwOpen] = useState(false);
+  const [delOpen, setDelOpen] = useState(false);
 
   const loadBilling = async () => {
     try {
@@ -222,7 +224,12 @@ export default function Profile() {
           className="flex w-full items-center gap-3 rounded-2xl border border-danger/25 bg-danger/5 px-4 py-3.5 text-sm font-semibold text-danger active:scale-[0.99]">
           <LogOut className="h-5 w-5" /> Logout
         </button>
+        <button onClick={() => setDelOpen(true)} data-testid="m-delete-account"
+          className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-semibold text-muted-foreground transition-colors active:text-danger">
+          <Trash2 className="h-4 w-4" /> Delete my account
+        </button>
       </div>
+      <DeleteAccountSheet open={delOpen} onOpenChange={setDelOpen} />
       <p className="mt-6 text-center text-xs text-muted-foreground/60">GymBoss_VVO · v1.0.0</p>
       <ChangePasswordSheet open={pwOpen} onOpenChange={setPwOpen} />
     </div>

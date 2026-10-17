@@ -191,7 +191,7 @@ export default function Members({ autoAdd }) {
         <div className="space-y-2.5">
           {shown.map((m) => (
             <button key={m.id} onClick={() => openMember(m)} data-testid={`m-member-${m.id}`}
-              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-left active:scale-[0.99]">
+              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 m-row text-left">
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/12 font-display text-sm font-bold text-brand">
                 {m.full_name?.slice(0, 2).toUpperCase()}
               </div>
@@ -370,7 +370,7 @@ export default function Members({ autoAdd }) {
 function ActionRow({ icon: Icon, tile, title, desc, onClick, testid }) {
   return (
     <button onClick={onClick} data-testid={testid}
-      className="flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card px-4 py-3.5 text-left active:scale-[0.99]">
+      className="flex w-full items-center gap-3.5 rounded-2xl border border-border bg-card px-4 py-3.5 m-row text-left">
       <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${tile}`}><Icon className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-bold text-foreground">{title}</span>

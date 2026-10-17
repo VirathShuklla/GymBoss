@@ -4,7 +4,7 @@ import { IndianRupee, UserPlus, RefreshCw, HelpCircle, Wallet, Users, CalendarCl
 import api from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
-import { ListSkeleton, MThemeToggle } from "../ui";
+import { ListSkeleton, MThemeToggle, EmptyRow } from "../ui";
 import { TrialBanner } from "../../components/TrialBanner";
 
 const METRICS = [
@@ -34,14 +34,14 @@ export default function Home() {
 
   return (
     <div className="m-anim" data-testid="m-home">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Hi {user?.full_name?.split(" ")[0] || "there"} 👋</p>
-          <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">{organisation?.name}</h1>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-muted-foreground">Hi {user?.full_name?.split(" ")[0] || "there"}, welcome back</p>
+          <h1 className="font-display text-2xl font-extrabold leading-tight tracking-tight text-foreground line-clamp-2">{organisation?.name}</h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {trial && (
-            <button onClick={() => navigate("/m/profile")} className="rounded-full bg-brand/10 px-3 py-1.5 text-xs font-bold text-brand" data-testid="m-trial-badge">
+            <button onClick={() => navigate("/m/profile")} className="whitespace-nowrap rounded-full bg-brand/10 px-3 py-2 text-xs font-bold text-brand active:scale-95" data-testid="m-trial-badge">
               {subscription?.trial_days_left}d trial left
             </button>
           )}
@@ -51,7 +51,7 @@ export default function Home() {
 
       <div className="mt-4"><TrialBanner planPath="/m/profile" /></div>
 
-      {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed ? (
+      {(() => { const ob = onb || organisation?.onboarding; return ob && !ob.dismissed && !["plan", "member", "staff", "payment"].every((k) => ob[k]) ? (
         <MOnboarding onboarding={ob}
           onDismiss={async () => { setOnb((p) => ({ ...(p || {}), dismissed: true })); await api.put("/onboarding", { dismissed: true }); reload(); }} />
       ) : null; })()}
@@ -83,7 +83,7 @@ export default function Home() {
           { label: "Renewals", icon: RefreshCw, to: "/m/manage?tab=members" },
         ].map((a) => (
           <button key={a.label} onClick={() => navigate(a.to)} data-testid={`m-quick-${a.label.toLowerCase().replace(/\s/g, "-")}`}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-[11px] font-semibold text-foreground active:scale-95">
+            className="m-row flex flex-col items-center gap-2 rounded-2xl border border-border bg-card py-3.5 text-[11px] font-semibold text-foreground">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 text-brand"><a.icon className="h-5 w-5" /></span>
             {a.label}
           </button>
@@ -92,7 +92,7 @@ export default function Home() {
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {METRICS.map((m) => (
-          <button key={m.key} onClick={() => navigate(m.to || (m.key === "due_members" ? "/m/manage?tab=members" : "/m/manage"))} className="rounded-2xl border border-border bg-card px-4 py-3.5 text-left active:scale-[0.98]" data-testid={`m-metric-${m.key.replace(/_/g, "-")}`}>
+          <button key={m.key} onClick={() => navigate(m.to || (m.key === "due_members" ? "/m/manage?tab=members" : "/m/manage"))} className="m-row rounded-2xl border border-border bg-card px-4 py-3.5 text-left" data-testid={`m-metric-${m.key.replace(/_/g, "-")}`}>
             <div className="flex items-center justify-between">
               <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{m.label}</p>
               <m.icon className={`h-4 w-4 ${m.color}`} />
@@ -108,7 +108,7 @@ export default function Home() {
       {!txns ? (
         <ListSkeleton rows={4} />
       ) : txns.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border py-12 text-center text-sm text-muted-foreground" data-testid="m-txn-empty">No transactions yet</div>
+        <EmptyRow icon={ArrowUpRight} title="No transactions yet" subtitle="Payments you record will show up here." testid="m-txn-empty" />
       ) : (
         <div className="space-y-2.5" data-testid="m-txn-list">
           {txns.map((t) => (
@@ -146,7 +146,7 @@ function MOnboarding({ onboarding, onDismiss }) {
           <p className="font-display text-base font-bold text-foreground">Get your gym ready</p>
           <p className="text-xs text-muted-foreground">{done} of {steps.length} done</p>
         </div>
-        <button onClick={onDismiss} data-testid="m-onboarding-dismiss" aria-label="Dismiss" className="rounded-md p-1 text-muted-foreground">
+        <button onClick={onDismiss} data-testid="m-onboarding-dismiss" aria-label="Dismiss" className="-m-2 flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground active:bg-secondary">
           <X className="h-4 w-4" />
         </button>
       </div>

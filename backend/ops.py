@@ -261,22 +261,42 @@ async def create_staff(body: StaffBody, user: dict = Depends(require_manager)):
 
 @router.put("/staff/{staff_id}")
 async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(require_manager)):
+    existing = await db.staff.find_one({"id": staff_id, "organisation_id": user["organisation_id"]})
+    if not existing:
+        raise HTTPException(404, "Staff member not found")
     data = body.model_dump(exclude={"password"})
     data["role"] = body.role.lower()
+    data["name"] = body.name.strip()
     if data.get("permission") not in PERMISSIONS:
         data["permission"] = "view"
     if body.phone:
         data["phone"] = f"+91{normalize_phone(body.phone)}"
-    res = await db.staff.update_one(
-        {"id": staff_id, "organisation_id": user["organisation_id"]},
-        {"$set": {**data, "updated_at": now_utc()}},
-    )
-    if not res.matched_count:
-        raise HTTPException(404, "Staff member not found")
-    staff = await db.staff.find_one({"id": staff_id}, {"_id": 0})
-    if staff and staff.get("user_id"):
-        await db.users.update_one({"id": staff["user_id"]}, {"$set": {"permission": data["permission"], "finance_enabled": bool(data.get("enable_finance"))}})
-    return staff
+    email = (body.email or "").strip().lower() or None
+    data["email"] = email
+    if body.password and len(body.password) < 8:
+        raise HTTPException(422, "Password must be at least 8 characters")
+    login_id = existing.get("user_id")
+    if (login_id or body.password) and not email:
+        raise HTTPException(422, "Email is required for a staff login account")
+    if email and (login_id or body.password) and await db.users.find_one({"email": email, "id": {"$ne": login_id}}):
+        raise HTTPException(409, "A user with this email already exists")
+    login_fields = {"full_name": data["name"], "email": email, "phone": data["phone"], "role": data["role"],
+                    "permission": data["permission"], "finance_enabled": bool(data.get("enable_finance"))}
+    if login_id:
+        update = {"$set": login_fields}
+        if body.password:
+            update["$set"]["password_hash"] = hash_password(body.password)
+        if body.password or email != existing.get("email"):
+            update["$inc"] = {"token_version": 1}
+        await db.users.update_one({"id": login_id}, update)
+    elif body.password:
+        login_id = new_id()
+        await db.users.insert_one({**login_fields, "id": login_id, "organisation_id": user["organisation_id"], "staff_id": staff_id,
+                                   "password_hash": hash_password(body.password), "token_version": 0, "status": existing.get("status", "active"), "created_at": now_utc()})
+        data.update({"user_id": login_id, "has_login": True})
+    await db.staff.update_one({"id": staff_id}, {"$set": {**data, "updated_at": now_utc()}})
+    await audit(user["id"], "staff.updated", staff_id, {"email_changed": email != existing.get("email"), "password_set": bool(body.password)}, user["organisation_id"])
+    return await db.staff.find_one({"id": staff_id}, {"_id": 0})
 
 
 @router.post("/staff/{staff_id}/toggle")

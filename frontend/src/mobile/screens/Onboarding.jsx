@@ -23,7 +23,7 @@ export default function Onboarding() {
   return (
     <div className="flex min-h-screen flex-col bg-background px-6 pb-[calc(28px+env(safe-area-inset-bottom))] pt-[calc(28px+env(safe-area-inset-top))]" data-testid="m-onboarding">
       <div className="flex justify-end">
-        <button onClick={finish} className="text-sm font-semibold text-muted-foreground" data-testid="m-onboarding-skip">Skip</button>
+        <button onClick={finish} className="-mr-2 min-h-[44px] px-3 text-sm font-semibold text-muted-foreground" data-testid="m-onboarding-skip">Skip</button>
       </div>
       <div key={i} className="m-anim flex flex-1 flex-col items-center justify-center text-center">
         <div className="relative mb-10 flex h-52 w-52 items-center justify-center rounded-full bg-brand/10">
@@ -36,7 +36,7 @@ export default function Onboarding() {
       </div>
       <div className="mb-7 flex justify-center gap-2">
         {SLIDES.map((_, idx) => (
-          <span key={idx} className={`h-2 rounded-full transition-all ${idx === i ? "w-6 bg-brand" : "w-2 bg-border"}`} />
+          <button key={idx} onClick={() => setI(idx)} aria-label={`Slide ${idx + 1}`} className="flex h-6 items-center"><span className={`block h-2 rounded-full transition-[width,background-color] duration-300 ${idx === i ? "w-7 bg-brand" : "w-2 bg-border"}`} /></button>
         ))}
       </div>
       <MButton onClick={next} data-testid="m-onboarding-next">{i < SLIDES.length - 1 ? "Next" : "Get Started"}</MButton>

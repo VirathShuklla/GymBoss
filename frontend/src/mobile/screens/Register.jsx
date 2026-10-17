@@ -48,7 +48,7 @@ export default function Register() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background px-6 pb-[calc(28px+env(safe-area-inset-bottom))] pt-[calc(24px+env(safe-area-inset-top))]" data-testid="m-register">
-      <button onClick={() => (step === 0 ? navigate("/m/welcome") : setStep(step - 1))} className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground">
+      <button onClick={() => (step === 0 ? navigate("/m/welcome") : setStep(step - 1))} aria-label="Back" className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-foreground transition-transform active:scale-90">
         <ArrowLeft className="h-5 w-5" />
       </button>
 

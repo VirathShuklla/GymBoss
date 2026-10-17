@@ -31,7 +31,7 @@ from members import router as members_router
 from ops import router as ops_router
 from comms import router as comms_router
 from finance import router as finance_router
-from billing import router as billing_router
+from billing import router as billing_router, razorpay_request
 from admin import router as admin_router
 from attendance import router as attendance_router, adms_router
 from analytics import router as analytics_router, link_visitor
@@ -308,6 +308,49 @@ async def change_password(body: ChangePasswordBody, response: Response, user: di
     await db.password_reset_tokens.delete_many({"user_id": user["id"], "used": False})
     set_auth_cookies(response, updated)
     return {"message": "Password changed. Other devices have been signed out."}
+
+
+class DeleteAccountBody(BaseModel):
+    password: str = Field(min_length=1, max_length=100)
+    confirm: str
+
+
+@api.post("/auth/delete-account")
+async def delete_account(body: DeleteAccountBody, response: Response, user: dict = Depends(get_current_user)):
+    if body.confirm.strip() != "DELETE":
+        raise HTTPException(status_code=400, detail='Type DELETE to confirm.')
+    if user.get("role") == "super_admin":
+        raise HTTPException(status_code=403, detail="The platform admin account cannot be deleted.")
+    if (user.get("email") or "").lower() == os.environ.get("DEMO_OWNER_EMAIL", "").lower():
+        raise HTTPException(status_code=403, detail="The demo account cannot be deleted.")
+    full = await db.users.find_one({"id": user["id"]})
+    if not verify_password(body.password, full["password_hash"]):
+        raise HTTPException(status_code=400, detail="Your password is incorrect.")
+    org_id = user.get("organisation_id")
+    if user.get("role") == "owner" and org_id:
+        org = await db.organisations.find_one({"id": org_id}) or {}
+        for sub in await db.subscriptions.find({"organisation_id": org_id, "status": {"$in": ["active", "created", "halted"]}}).to_list(20):
+            try:
+                await razorpay_request("POST", f"/subscriptions/{sub['razorpay_subscription_id']}/cancel")
+            except Exception as e:
+                logger.error(f"Razorpay cancel on account deletion failed: {e}")
+        scope = {"$or": [{"organisation_id": org_id}, {"org_id": org_id}]}
+        for name in await db.list_collection_names():
+            if name not in ("organisations", "settings"):
+                await db[name].delete_many(scope)
+        await db.organisations.delete_one({"id": org_id})
+        await audit(user["id"], "organisation.deleted_by_owner", org_id, {"gym": org.get("name")})
+        msg = "Your account and all gym data have been permanently deleted."
+    else:
+        await db.users.delete_one({"id": user["id"]})
+        if user.get("staff_id"):
+            await db.staff.update_one({"id": user["staff_id"]}, {"$set": {"user_id": None, "has_login": False}})
+        await audit(user["id"], "user.deleted_self", user["id"], org_id=org_id)
+        msg = "Your login has been permanently deleted."
+    await db.password_reset_tokens.delete_many({"user_id": user["id"]})
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
+    return {"message": msg}
 
 
 # ---------------- Public config ----------------
