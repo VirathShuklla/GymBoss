@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Loader2, MailCheck } from "lucide-react";
 import api, { apiError } from "../../lib/api";
 import { AuthShell } from "../../components/AuthShell";
@@ -12,6 +12,7 @@ export default function ForgotPassword() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
+  const loginPath = new URLSearchParams(useLocation().search).get("from") === "m" ? "/m/login" : "/login";
 
   const submit = async (e) => {
     e.preventDefault();
@@ -35,7 +36,7 @@ export default function ForgotPassword() {
           <p className="mt-4 text-sm text-slate-600 dark:text-muted-foreground">
             If that email is registered, a reset link has been sent. The link expires in 1 hour and can be used once.
           </p>
-          <Link to="/login" className="mt-5 inline-block text-sm font-semibold text-brand hover:underline" data-testid="forgot-back-login">
+          <Link to={loginPath} className="mt-5 inline-block text-sm font-semibold text-brand hover:underline" data-testid="forgot-back-login">
             Back to Login
           </Link>
         </div>
@@ -51,7 +52,7 @@ export default function ForgotPassword() {
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Send Reset Link
           </Button>
           <p className="text-center text-sm">
-            <Link to="/login" className="font-medium text-brand hover:underline" data-testid="forgot-login-link">Back to sign in</Link>
+            <Link to={loginPath} className="font-medium text-brand hover:underline" data-testid="forgot-login-link">Back to sign in</Link>
           </p>
         </form>
       )}

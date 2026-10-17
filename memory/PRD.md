@@ -163,3 +163,15 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Sidebar modules other than Dashboard render milestone-gated placeholders
 - Password-reset email: EMERGENT_EMAIL_KEY is a platform placeholder; flow returns generic 200 (safe); real sending works once key is provisioned
 - Floating WhatsApp button has no number configured yet (super admin sets it in M5 settings)
+
+## Store-readiness pack + Password management (2026-06)
+- `/privacy` and `/terms` pages (BuildVVO Technologies Private Limited, buildvvotechnologies@gmail.com, India; DPDP Act, account-deletion-by-email section). Linked from footer, web/mobile register consent, mobile Profile.
+- In-app (store wrapper) mode: `lib/inApp.js` detects Capacitor, TWA referrer `android-app://`, or `?app=1` (persisted `gb-in-app`, run at boot in index.js). Razorpay pay buttons hidden on /m/profile and /app/subscription; `StoreBillingNote` shown instead. **Set the PWABuilder/TWA start URL to `/m?app=1`.**
+- `public/.well-known/assetlinks.json` placeholder (fill package_name + SHA-256 when Play Console app is created).
+- `POST /api/auth/change-password` (current pw check, 5 fails/15min → 429, token_version bump, current session re-issued, other devices signed out). UI: web Profile ChangePasswordCard, mobile Profile bottom sheet. Mobile login has "Forgot password?" (→ /forgot-password?from=m, back returns to /m/login).
+- WhatsApp float no longer overlaps sticky mobile CTA.
+- Tested: iteration_17 (backend 10/10, frontend flows pass; in-app boot flag bug fixed after).
+
+## Backlog
+- P1: shorter one-step signup; "Free WhatsApp demo" hero button; hide "Upgrade Now" CTAs in in-app mode
+- P2: Revenue & Profit view in Super Admin; Testimonials manager; in-app account deletion button

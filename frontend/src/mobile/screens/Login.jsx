@@ -51,7 +51,7 @@ export default function Login() {
           </div>
         </Field>
         <div className="-mt-2 text-right">
-          <Link to="/forgot-password" className="text-sm font-semibold text-brand" data-testid="m-login-forgot-link">Forgot password?</Link>
+          <Link to="/forgot-password?from=m" className="text-sm font-semibold text-brand" data-testid="m-login-forgot-link">Forgot password?</Link>
         </div>
         <MButton type="submit" loading={busy} data-testid="m-login-submit">Proceed</MButton>
       </form>

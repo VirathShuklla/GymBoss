@@ -1,0 +1,36 @@
+{
+  "summary": "Tested the store-readiness pack and password flows. Backend: 10/10 pytest pass (change-password 400/400/422/401/200, session rotation, old cookies and old refresh token get 401, old/new password login, 5 wrong attempts then 429, works on an expired-trial org, forgot-password gives the same generic 200 for registered and unregistered emails, sha256 token_hash stored, demo login sets httpOnly cookie, bcrypt $2b$, assetlinks.json 200 application/json). Web /app/profile Change Password card: empty, <8 chars, mismatch and wrong-current errors all render; success shows a toast, clears the fields, and the session survives a reload. Mobile: m-login-forgot-link goes to /forgot-password; m-change-password sheet shows the mismatch, wrong-password and success toasts and closes on success; m-privacy-link goes to /privacy and back works. /privacy and /terms render at 1920 and 390 with no horizontal overflow, the company name and mailto are correct, and the other-link, back link and footer links work. Register consent text is present on web step 3 and mobile step 3. At 390px the WhatsApp button (y 700-748) and sticky CTA (y 775-844) do not overlap. In-app mode works on /m/* and on direct /app/subscription?app=1 loads. One bug: ?app=1 on landing (/), /login or /privacy does NOT set localStorage gb-in-app.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "lib/inApp.js usage", "issue": "isInApp() is only called at module level inside lazily-loaded Subscription.jsx and mobile Profile.jsx (which MobileApp loads with it). Loading /?app=1, /login?app=1 or /privacy?app=1 on a fresh browser leaves localStorage gb-in-app = null. Reproduced: fresh /login?app=1, log in, SPA-navigate to /app/subscription -> subscribe-button shown, in-app-billing-note missing. If the TWA/Capacitor start_url is / or /login, the Razorpay pay buttons WILL show inside the store app (store policy risk).", "selector": "[data-testid=in-app-billing-note]", "priority": "HIGH"},
+      {"component": "Subscription.jsx / mobile Profile.jsx", "issue": "`const inApp = isInApp()` runs once when the module loads, so the value is stale until a full reload (e.g. after removing the flag, or if the flag is set after the chunk has loaded). Better to read it once at boot (index.js / App.js) and keep it in context, or call it inside the component.", "selector": "", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Register (web step 3 and mobile step 3)", "issues": ["The Terms/Privacy consent links open in the same tab, so the user leaves and loses the partly filled form. Use target=_blank or keep the form state."]},
+      {"screen": "Mobile login -> Forgot password", "issues": ["m-login-forgot-link opens the web /forgot-password page; after a reset, ResetPassword navigates to the web /login instead of /m/login, so a mobile/in-app user leaves the /m shell."]},
+      {"screen": "In-app mode", "issues": ["The sidebar 'Upgrade Now' (upgrade-now-button-*) and the plan price cards still show in in-app mode. They only lead to the note, but Apple 3.1.1 reviewers may flag purchase CTAs. Consider hiding or relabelling them in-app."]},
+      {"screen": "Legal pages", "issues": ["'Last updated: June 2026' is hardcoded. Confirm the date is intended."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter17_store_auth.py", "/app/test_reports/pytest/pytest_iter17.xml"],
+  "action_items": [
+    "HIGH: call isInApp() once at app boot (src/index.js or App.js, before routing) so ?app=1 on any route (/ , /login, /privacy, ...) persists gb-in-app. Also keep the value in a context or read it inside the components instead of a module-level const.",
+    "Open the register consent Terms/Privacy links in a new tab (web + mobile).",
+    "Optional: the mobile forgot/reset flow should return to /m/login; hide the 'Upgrade Now' CTAs in in-app mode."
+  ],
+  "critical_code_review_comments": [
+    "loadRazorpayScript() is duplicated in pages/app/Subscription.jsx and mobile/screens/Profile.jsx. Move it to lib/razorpay.js.",
+    "change_password stores the lockout in login_attempts with email='chpw:<id>'. This works but mixes namespaces; a separate collection or a type field would be cleaner.",
+    "Backend change-password logic is solid: it verifies the current password, rejects reusing the same password, bumps token_version, re-issues cookies, clears reset tokens, and locks out per user after 5 wrong attempts in 15 minutes."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter17_store_auth.py"],
+  "success_rate": {"backend": "100%", "frontend": "92% (in-app flag persistence fails on non-/m, non-subscription entry routes)"},
+  "test_credentials": "Demo owner demo@gymbossvvo.in / Demo@2026 (login only, unchanged). Throwaway users test_iter17*@testgym.in with password QaStart@2026; some were changed to QaNewPw@2026.",
+  "seed_data_creation": "Registered ~12 throwaway orgs/users with email prefix test_iter17 / test_iter17ui (@testgym.in). One org's trial was set to expired in Mongo for testing.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_iter17_store_auth.py (it registers its own users and uses pymongo via backend/.env for expiry/token checks). To retest the in-app fix: in a fresh browser open /?app=1 (or /login?app=1) and check localStorage gb-in-app === '1', then log in and SPA-navigate to /app/subscription and /m/profile; expect in-app-billing-note and no subscribe-button / m-pay-button.",
+  "rca of the issue": "In-app flag: inApp.js only writes localStorage when isInApp() runs. Its only callers are module-level consts in Subscription.jsx and mobile Profile.jsx, which are lazy-loaded (MobileApp loads Profile with it, so /m/* works). Entering on any other route with ?app=1 never runs isInApp(), and the query string is gone after SPA navigation. Fix: call isInApp() in src/index.js before render."
+}

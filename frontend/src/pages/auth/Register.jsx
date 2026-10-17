@@ -185,8 +185,8 @@ export default function Register() {
             </div>
             <p className="text-center text-xs text-slate-500 dark:text-muted-foreground" data-testid="register-legal-consent">
               By starting your trial you agree to our{" "}
-              <Link to="/terms" className="font-medium text-brand hover:underline">Terms</Link> and{" "}
-              <Link to="/privacy" className="font-medium text-brand hover:underline">Privacy Policy</Link>.
+              <Link to="/terms" target="_blank" className="font-medium text-brand hover:underline">Terms</Link> and{" "}
+              <Link to="/privacy" target="_blank" className="font-medium text-brand hover:underline">Privacy Policy</Link>.
             </p>
           </div>
         )}

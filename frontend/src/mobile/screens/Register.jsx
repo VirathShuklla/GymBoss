@@ -107,7 +107,7 @@ export default function Register() {
       </MButton>
       {step === 2 && (
         <p className="mt-3 text-center text-xs text-muted-foreground" data-testid="m-reg-legal-consent">
-          By continuing you agree to our <Link to="/terms" className="font-semibold text-brand">Terms</Link> and <Link to="/privacy" className="font-semibold text-brand">Privacy Policy</Link>.
+          By continuing you agree to our <Link to="/terms" target="_blank" className="font-semibold text-brand">Terms</Link> and <Link to="/privacy" target="_blank" className="font-semibold text-brand">Privacy Policy</Link>.
         </p>
       )}
       <p className="mt-5 text-center text-sm text-muted-foreground">
