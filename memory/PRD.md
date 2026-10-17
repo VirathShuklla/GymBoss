@@ -175,3 +175,10 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 ## Backlog
 - P1: shorter one-step signup; "Free WhatsApp demo" hero button; hide "Upgrade Now" CTAs in in-app mode
 - P2: Revenue & Profit view in Super Admin; Testimonials manager; in-app account deletion button
+
+## Account deletion + Staff login editing + Mobile polish (2026-06)
+- `POST /api/auth/delete-account` {password, confirm:"DELETE"}: the true owner (role owner, no staff_id, org.owner_id matches) permanently wipes the org and every org-scoped collection, and Razorpay subscriptions are cancelled. Staff delete only their own login. Demo and super admin are blocked (403). 5 wrong passwords in 15 min → 429. UI: web Profile DeleteAccountCard (dialog) and mobile Profile DeleteAccountSheet.
+- Staff edit (web + mobile): the owner can change a staff member's login email (uniqueness check, signs them out) and set a new password, or create a login for a staff member who has none. Only the owner can change roles, emails or passwords, and roles are validated (role elevation is blocked).
+- Mobile polish: refined primitives (buttons, sheets, inputs with focus rings, tabs/pills with 40px+ targets, skeleton rows, empty states), sticky Manage tabs that auto-scroll to the active tab, row press states, emoji removed, checklist hidden once complete, trial badge kept on one line, reduced-motion support. Tailwind opacity 8/12 added (fixes invisible avatar/tint backgrounds).
+- Demo trial auto-refreshes when ≤3 days left.
+- Tested: iteration_18/19 → backend 33/33, frontend 100%.

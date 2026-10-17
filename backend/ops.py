@@ -278,8 +278,8 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     if body.password and len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     login_id = existing.get("user_id")
-    if login_id and (body.password or email != existing.get("email")) and user.get("role") != "owner":
-        raise HTTPException(403, "Only the gym owner can change a staff member's login email or password")
+    if user.get("role") != "owner" and (body.password or data["role"] != existing.get("role") or (login_id and email != existing.get("email"))):
+        raise HTTPException(403, "Only the gym owner can change roles, login emails or passwords")
     if login_id == user["id"] and data["role"] != existing.get("role"):
         raise HTTPException(403, "You cannot change your own role")
     if (login_id or body.password) and not email:

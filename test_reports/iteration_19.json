@@ -1,0 +1,18 @@
+{
+  "summary": "Retested the iteration_18 fixes. Backend: 33/33 pytest pass (17 new tests in iter19 plus the iter18 suite, including the earlier failing security probe). PUT /api/staff with role owner/OWNER/super_admin/god -> 422 and the DB role is unchanged. Manager self role->owner is blocked. A staff member changing their own role -> 403. A manager or admin changing another login's password or email -> 403, and the target's original credentials still work. A manager editing non-credential fields -> 200. The owner changing an admin's email and password together -> 200: the old email is rejected and the new email works only with the new password. Delete-account: 5 wrong passwords -> 400 each, the 6th -> 429, and the correct password is also 429 during the lockout. A staff user whose DB role was forced to 'owner' only deletes their own login; the org survives. A true owner wipes the org and its users. Demo trial: trial_days_left=10. Web: the staff edit Type select shows 'Trainer' and 'Receptionist' correctly, and the options include Receptionist. Owner delete on /app/profile lands on '/' and /api/auth/me returns 401. Mobile (390x844, dark): the staff edit sheet is prefilled and saving shows the toast 'Account updated'. After closing the sheets, m-delete-account no longer has a white outline; only a soft danger/40 focus-visible ring appears after a keyboard Escape. Mobile delete -> /m/welcome, me 401.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "PUT /api/staff/{id}", "issue": "Hardening suggestion: a manager can still promote another staff member to 'admin' or demote an admin. A manager can also give a no-login staff member a new login with a password they choose (the owner-only check covers only existing logins). Low risk because admin and manager pass the same require_manager gate, but consider limiting role/login creation to the owner, or to roles at or below the caller's."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter19_staff_priv_delete_lock.py", "/app/backend/tests/test_iter18_delete_account_staff_email.py", "/app/test_reports/pytest/pytest_iter19.xml"],
+  "action_items": ["Optional: restrict role elevation / new-login creation in update_staff to the owner (see minor)"],
+  "critical_code_review_comments": [
+    "delete_account is_owner uses org.get('owner_id', user['id']), so legacy orgs without owner_id fall back to role+no staff_id. This is acceptable because staff users always have a staff_id."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter19_staff_priv_delete_lock.py"],
+  "success_rate": {"backend": "100% (33/33)", "frontend": "100%"},
+  "seed_data_creation": "Only throwaway tenants test_iter19_*@testgym.in. The two UI tenants (web, mob) were deleted through the UI. Demo data was not modified.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run pytest test_iter19_staff_priv_delete_lock.py and test_iter18_delete_account_staff_email.py. The lockout key is login_attempts identifier 'delacct:<user_id>'."
+}
