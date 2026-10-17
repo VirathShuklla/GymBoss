@@ -105,6 +105,11 @@ export default function Register() {
       >
         {step < 2 ? "Continue" : "Create my gym"}
       </MButton>
+      {step === 2 && (
+        <p className="mt-3 text-center text-xs text-muted-foreground" data-testid="m-reg-legal-consent">
+          By continuing you agree to our <Link to="/terms" className="font-semibold text-brand">Terms</Link> and <Link to="/privacy" className="font-semibold text-brand">Privacy Policy</Link>.
+        </p>
+      )}
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Already have an account?{" "}
         <Link to="/m/login" className="font-semibold text-brand">Log in</Link>

@@ -282,6 +282,34 @@ async def reset_password(body: ResetBody):
     return {"message": "Password updated. You can now log in."}
 
 
+class ChangePasswordBody(BaseModel):
+    current_password: str = Field(min_length=1, max_length=100)
+    new_password: str = Field(min_length=8, max_length=100)
+
+
+@api.post("/auth/change-password")
+async def change_password(body: ChangePasswordBody, response: Response, user: dict = Depends(get_current_user)):
+    lock_key = f"chpw:{user['id']}"
+    cutoff = now_utc() - timedelta(minutes=15)
+    if await db.login_attempts.count_documents({"identifier": lock_key, "created_at": {"$gt": cutoff}}) >= 5:
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
+    full = await db.users.find_one({"id": user["id"]})
+    if not verify_password(body.current_password, full["password_hash"]):
+        await db.login_attempts.insert_one({"identifier": lock_key, "email": f"chpw:{user['id']}", "created_at": now_utc()})
+        raise HTTPException(status_code=400, detail="Your current password is incorrect.")
+    if verify_password(body.new_password, full["password_hash"]):
+        raise HTTPException(status_code=400, detail="New password must be different from your current password.")
+    updated = await db.users.find_one_and_update(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(body.new_password)}, "$inc": {"token_version": 1}},
+        return_document=True,
+    )
+    await db.login_attempts.delete_many({"identifier": lock_key})
+    await db.password_reset_tokens.delete_many({"user_id": user["id"], "used": False})
+    set_auth_cookies(response, updated)
+    return {"message": "Password changed. Other devices have been signed out."}
+
+
 # ---------------- Public config ----------------
 
 @api.get("/public/config")

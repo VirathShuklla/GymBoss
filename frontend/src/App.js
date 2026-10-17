@@ -32,6 +32,7 @@ const ComingSoon = lazy(() => import("./pages/app/ComingSoon"));
 const MobileApp = lazy(() => import("./mobile/MobileApp"));
 const Attendance = lazy(() => import("./pages/app/Attendance"));
 const CheckIn = lazy(() => import("./pages/CheckIn"));
+const Legal = lazy(() => import("./pages/Legal"));
 
 installWhatsAppTracking();
 
@@ -85,6 +86,8 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/privacy" element={<Legal kind="privacy" />} />
+            <Route path="/terms" element={<Legal kind="terms" />} />
             <Route path="/superadmin" element={<SuperAdminRoute><SuperAdmin /></SuperAdminRoute>} />
             <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Navigate to="dashboard" replace />} />

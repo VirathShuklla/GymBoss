@@ -18,7 +18,7 @@ export function FloatingWhatsApp() {
       target={number ? "_blank" : undefined}
       rel="noopener noreferrer"
       data-testid="floating-whatsapp-button"
-      className="fixed bottom-24 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lift transition-transform hover:scale-105 sm:bottom-6 sm:right-6"
+      className="fixed bottom-[calc(96px+env(safe-area-inset-bottom))] right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lift transition-transform hover:scale-105 md:bottom-6 md:right-6 md:h-14 md:w-14"
       aria-label="Chat with us on WhatsApp"
     >
       <WhatsAppGlyph className="h-7 w-7" />

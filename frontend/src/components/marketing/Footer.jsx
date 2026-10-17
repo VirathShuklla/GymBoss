@@ -29,8 +29,8 @@ export function MarketingFooter() {
             <ul className="mt-4 space-y-2.5 text-sm">
               <li><span className="cursor-default">About BuildVVO</span></li>
               <li><a href="/#faq" className="transition-colors hover:text-white">Contact</a></li>
-              <li><span className="cursor-default">Privacy Policy</span></li>
-              <li><span className="cursor-default">Terms of Service</span></li>
+              <li><Link to="/privacy" className="transition-colors hover:text-white" data-testid="footer-privacy-link">Privacy Policy</Link></li>
+              <li><Link to="/terms" className="transition-colors hover:text-white" data-testid="footer-terms-link">Terms of Service</Link></li>
             </ul>
           </div>
           <div>

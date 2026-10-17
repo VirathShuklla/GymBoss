@@ -9,6 +9,10 @@ import { PageHeader, DataTable, StatusBadge, EmptyState } from "../../components
 import { Button } from "../../components/ui/button";
 import { PlanPicker, planPeriod } from "../../components/PlanPicker";
 import { track } from "../../lib/track";
+import { isInApp } from "../../lib/inApp";
+import { StoreBillingNote } from "../../components/StoreBillingNote";
+
+const inApp = isInApp();
 
 const INCLUDED = [
   "Unlimited members & staff",
@@ -189,6 +193,8 @@ export default function Subscription() {
               <div className="mt-6 flex items-center justify-center gap-2 rounded-lg border border-success/25 bg-success/8 py-3 text-sm font-semibold text-success" data-testid="subscribed-badge">
                 <Check className="h-4 w-4" strokeWidth={3} />You're subscribed
               </div>
+            ) : inApp ? (
+              <StoreBillingNote className="mt-6" />
             ) : data?.razorpay_configured ? (
               <Button className="mt-6 h-11 w-full rounded-xl bg-brand text-base font-semibold hover:bg-brand-hover" onClick={pay} disabled={busy} data-testid="subscribe-button">
                 {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Pay {inr(shown)}/{period}
@@ -207,7 +213,7 @@ export default function Subscription() {
                 ) : null}
               </div>
             )}
-            {needsPayment && data?.razorpay_configured && (
+            {needsPayment && !inApp && data?.razorpay_configured && (
               <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
                 Secure payment via Razorpay · UPI, cards & netbanking
               </p>

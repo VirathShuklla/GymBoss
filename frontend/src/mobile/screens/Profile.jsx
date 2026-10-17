@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck, Sun, Moon, Monitor, Check, Loader2 } from "lucide-react";
+import { useNavigate, Link } from "react-router-dom";
+import { LogOut, Crown, Building2, Phone, Mail, ChevronRight, ShieldCheck, Sun, Moon, Monitor, Check, Loader2, KeyRound, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -10,6 +10,11 @@ import api, { apiError } from "../../lib/api";
 import { MButton } from "../ui";
 import { PlanPicker, planPeriod } from "../../components/PlanPicker";
 import { track } from "../../lib/track";
+import { isInApp } from "../../lib/inApp";
+import { StoreBillingNote } from "../../components/StoreBillingNote";
+import { ChangePasswordSheet } from "../ChangePasswordSheet";
+
+const inApp = isInApp();
 
 function loadRazorpayScript() {
   return new Promise((resolve, reject) => {
@@ -34,6 +39,7 @@ export default function Profile() {
   const [busy, setBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [planId, setPlanId] = useState("monthly");
+  const [pwOpen, setPwOpen] = useState(false);
 
   const loadBilling = async () => {
     try {
@@ -149,6 +155,8 @@ export default function Profile() {
             {cancelBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Cancel auto-renewal
           </button>
         </div>
+      ) : needsPayment && inApp ? (
+        <StoreBillingNote className="mt-3" />
       ) : needsPayment && billing?.razorpay_configured ? (
         <div className="mt-3">
           {autodebitHalted && (
@@ -194,6 +202,15 @@ export default function Profile() {
       </div>
 
       <div className="mt-5 space-y-2.5">
+        <button onClick={() => setPwOpen(true)} data-testid="m-change-password"
+          className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground active:scale-[0.99]">
+          <KeyRound className="h-5 w-5 text-brand" /> Change Password
+          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+        </button>
+        <Link to="/privacy" data-testid="m-privacy-link" className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground">
+          <FileText className="h-5 w-5 text-muted-foreground" /> Privacy Policy & Terms
+          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+        </Link>
         {config?.whatsapp_number && (
           <a href={waLink(config.whatsapp_number, "Hi, I need help with GymBoss_VVO.")} target="_blank" rel="noopener noreferrer"
              className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground" data-testid="m-support-link">
@@ -207,6 +224,7 @@ export default function Profile() {
         </button>
       </div>
       <p className="mt-6 text-center text-xs text-muted-foreground/60">GymBoss_VVO · v1.0.0</p>
+      <ChangePasswordSheet open={pwOpen} onOpenChange={setPwOpen} />
     </div>
   );
 }
