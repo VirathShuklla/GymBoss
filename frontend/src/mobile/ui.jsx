@@ -83,7 +83,7 @@ export function Seg({ tabs, value, onChange }) {
           data-testid={`m-seg-${t.value}`}
           className={cn(
             "min-h-[40px] shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition-[background-color,color,transform] duration-200 active:scale-95",
-            value === t.value ? "bg-brand text-white shadow-md shadow-brand/30" : "bg-secondary text-muted-foreground"
+            value === t.value ? "bg-foreground text-background" : "bg-transparent text-muted-foreground border border-border"
           )}
         >
           {t.label}

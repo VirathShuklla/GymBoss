@@ -16,7 +16,7 @@ export default function MobileLayout() {
   const expired = ["expired", "payment_due"].includes(subscription?.status);
   return (
     <div className="min-h-screen bg-background" data-testid="m-app-shell">
-      <main className="mx-auto max-w-md px-5 pb-[calc(96px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))]">
+      <main className="mx-auto max-w-md px-5 pb-[calc(88px+env(safe-area-inset-bottom))] pt-[calc(18px+env(safe-area-inset-top))]">
         {expired && pathname !== "/m/profile" && <ExpiredBanner planPath="/m/profile" price={subscription?.plan_price_inr} status={subscription?.status} />}
         <Outlet />
       </main>
@@ -29,7 +29,7 @@ export default function MobileLayout() {
               data-testid={`m-nav-${n.label.toLowerCase()}`}
               className={({ isActive }) => `m-navitem ${isActive ? "m-navitem-active" : ""}`}
             >
-              <n.icon className="h-[22px] w-[22px]" strokeWidth={2.2} />
+              <n.icon className="h-[22px] w-[22px]" strokeWidth={1.9} />
               <span>{n.label}</span>
             </NavLink>
           ))}

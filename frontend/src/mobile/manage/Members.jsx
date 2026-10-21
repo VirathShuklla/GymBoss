@@ -188,11 +188,11 @@ export default function Members({ autoAdd }) {
       ) : shown.length === 0 ? (
         <EmptyRow icon={Users} title={q || chip !== "all" ? "No members found" : "No members yet"} subtitle={q || chip !== "all" ? "Try a different search or filter." : "Add your first member to get started."} testid="m-members-empty" />
       ) : (
-        <div className="space-y-2.5">
+        <div className="m-group">
           {shown.map((m) => (
             <button key={m.id} onClick={() => openMember(m)} data-testid={`m-member-${m.id}`}
-              className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 m-row text-left">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand/12 font-display text-sm font-bold text-brand">
+              className="m-group-row text-left">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary font-display text-xs font-bold text-foreground">
                 {m.full_name?.slice(0, 2).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">

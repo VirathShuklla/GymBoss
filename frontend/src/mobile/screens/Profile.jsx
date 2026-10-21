@@ -123,10 +123,10 @@ export default function Profile() {
 
   return (
     <div className="m-anim" data-testid="m-profile">
-      <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">Profile</h1>
+      <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Profile</h1>
 
-      <div className="mt-5 flex items-center gap-4 rounded-3xl border border-border bg-card p-5">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/12 font-display text-xl font-bold text-brand">
+      <div className="mt-5 flex items-center gap-4 px-1">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary font-display text-lg font-bold text-foreground">
           {user?.full_name?.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
         </div>
         <div className="min-w-0">
@@ -135,10 +135,10 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-sub-card">
+      <div className="m-hero mt-5 text-white" data-testid="m-sub-card">
         <div className="flex items-center gap-2">
-          <Crown className="h-4 w-4 opacity-90" />
-          <p className="text-xs font-bold uppercase tracking-wider opacity-90">GymBoss_VVO Pro</p>
+          <Crown className="h-4 w-4 text-white/70" />
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/60">GymBoss_VVO Pro</p>
         </div>
         {!inApp && <p className="mt-2 font-num text-3xl font-extrabold" data-testid="m-sub-price">{inr(shownPrice)}<span className="text-sm font-semibold opacity-80">/{shownPeriod}</span></p>}
         {isActive && activePlan && <p className="text-xs opacity-80">{activePlan.name} plan</p>}
@@ -184,45 +184,46 @@ export default function Profile() {
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-2.5">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Your Gym</p>
+      <GroupLabel>Your gym</GroupLabel>
+      <div className="m-group">
         <Row icon={Building2} label={organisation?.name} sub={organisation?.city} />
         <Row icon={Phone} label={user?.phone || "—"} />
         <Row icon={Mail} label={user?.email || "—"} />
       </div>
 
-      <div className="mt-5">
-        <p className="px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">Appearance</p>
-        <div className="mt-2 grid grid-cols-3 gap-2" data-testid="m-appearance">
-          {[{ v: "light", l: "Light", I: Sun }, { v: "dark", l: "Dark", I: Moon }, { v: "system", l: "System", I: Monitor }].map(({ v, l, I }) => (
-            <button key={v} onClick={() => setTheme(v)} data-testid={`m-theme-${v}`}
-              className={`flex flex-col items-center gap-1.5 rounded-2xl border py-3 text-xs font-semibold transition-colors ${theme === v ? "border-brand bg-brand/10 text-brand" : "border-border bg-card text-muted-foreground"}`}>
-              <I className="h-5 w-5" /> {l}
-            </button>
-          ))}
-        </div>
+      <GroupLabel>Appearance</GroupLabel>
+      <div className="m-group grid grid-cols-3 gap-1 p-1" data-testid="m-appearance">
+        {[{ v: "light", l: "Light", I: Sun }, { v: "dark", l: "Dark", I: Moon }, { v: "system", l: "System", I: Monitor }].map(({ v, l, I }) => (
+          <button key={v} onClick={() => setTheme(v)} data-testid={`m-theme-${v}`}
+            className={`flex min-h-[44px] items-center justify-center gap-1.5 rounded-2xl text-xs font-semibold transition-colors ${theme === v ? "bg-foreground text-background" : "text-muted-foreground"}`}>
+            <I className="h-4 w-4" /> {l}
+          </button>
+        ))}
       </div>
 
-      <div className="mt-5 space-y-2.5">
-        <button onClick={() => setPwOpen(true)} data-testid="m-change-password"
-          className="flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground active:scale-[0.99]">
-          <KeyRound className="h-5 w-5 text-brand" /> Change Password
-          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+      <GroupLabel>Account</GroupLabel>
+      <div className="m-group">
+        <button onClick={() => setPwOpen(true)} data-testid="m-change-password" className="m-group-row text-sm font-medium text-foreground">
+          <KeyRound className="h-[18px] w-[18px] text-muted-foreground" /> Change password
+          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/60" />
         </button>
-        <Link to="/privacy" data-testid="m-privacy-link" className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground">
-          <FileText className="h-5 w-5 text-muted-foreground" /> Privacy Policy & Terms
-          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+        <Link to="/privacy" data-testid="m-privacy-link" className="m-group-row text-sm font-medium text-foreground">
+          <FileText className="h-[18px] w-[18px] text-muted-foreground" /> Privacy policy & terms
+          <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/60" />
         </Link>
         {config?.whatsapp_number && (
           <a href={waLink(config.whatsapp_number, "Hi, I need help with GymBoss_VVO.")} target="_blank" rel="noopener noreferrer"
-             className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-sm font-semibold text-foreground" data-testid="m-support-link">
-            <ShieldCheck className="h-5 w-5 text-[#25D366]" /> Help & Support
-            <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+             className="m-group-row text-sm font-medium text-foreground" data-testid="m-support-link">
+            <ShieldCheck className="h-[18px] w-[18px] text-muted-foreground" /> Help & support
+            <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground/60" />
           </a>
         )}
+      </div>
+
+      <div className="mt-6 space-y-1">
         <button onClick={doLogout} data-testid="m-logout"
-          className="flex w-full items-center gap-3 rounded-2xl border border-danger/25 bg-danger/5 px-4 py-3.5 text-sm font-semibold text-danger active:scale-[0.99]">
-          <LogOut className="h-5 w-5" /> Logout
+          className="m-group flex w-full min-h-[52px] items-center justify-center gap-2 text-sm font-semibold text-danger active:bg-secondary">
+          <LogOut className="h-[18px] w-[18px]" /> Log out
         </button>
         <button onClick={() => setDelOpen(true)} data-testid="m-delete-account"
           className="flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl px-4 py-3 text-xs font-semibold text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-danger/40 active:text-danger">
@@ -236,12 +237,16 @@ export default function Profile() {
   );
 }
 
+function GroupLabel({ children }) {
+  return <p className="mb-2 mt-6 px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{children}</p>;
+}
+
 function Row({ icon: Icon, label, sub }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5">
-      <Icon className="h-5 w-5 text-muted-foreground" />
+    <div className="m-group-row">
+      <Icon className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-foreground">{label}</p>
+        <p className="truncate text-sm font-medium text-foreground">{label}</p>
         {sub && <p className="truncate text-xs text-muted-foreground">{sub}</p>}
       </div>
     </div>

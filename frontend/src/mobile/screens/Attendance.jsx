@@ -60,7 +60,7 @@ export default function Attendance() {
 
   return (
     <div className="m-anim" data-testid="m-attendance">
-      <h1 className="font-display text-2xl font-extrabold tracking-tight text-foreground">Attendance</h1>
+      <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Attendance</h1>
       <p className="text-sm text-muted-foreground">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
 
       <div className="mt-4 rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-att-hero">

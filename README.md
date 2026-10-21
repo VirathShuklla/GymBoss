@@ -1,44 +1,95 @@
 # GymBoss_VVO
 
-**The modern gym operating system** — a production-oriented, multi-tenant SaaS platform for gym owners, built by **BuildVVO Technologies Private Limited** (India-first).
+**The modern gym operating system.** A multi-tenant SaaS for gym owners, built by **BuildVVO Technologies Private Limited** (India).
 
-GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, memberships, payments, enquiries, staff, outlets, expenses, finance, reports, exports — plus the SaaS billing that powers the product itself. It ships as a marketing website, a full web dashboard, and a separate installable mobile PWA at `/m`, all sharing one backend.
+One backend and one database power:
+- the marketing website,
+- the web dashboard,
+- the mobile app (`/m`, also packaged as Android and iOS apps),
+- the billing portal,
+- the BuildVVO Super Admin console.
 
 | | |
 |---|---|
-| Public website | `/` — marketing landing page |
-| App | `/app/dashboard` (login required) |
+| Website | `/` (marketing landing page) |
+| Web app | `/app/dashboard` (login required) |
+| Mobile app | `/m` (PWA, and the Capacitor Android/iOS apps) |
+| Billing portal | `/billing` (intended for `payments.gymboss.in`) |
 | Super Admin | `/superadmin` (BuildVVO staff only) |
-| Trial | 10-day free trial, no credit card |
-| Price | Monthly / Quarterly / Yearly plans with optional offers (all set by super admin) |
+| Trial / price | 10-day free trial, no card · ₹999/month (Quarterly/Yearly set by Super Admin) |
 | Public check-in | `/checkin/{token}` (QR attendance page, no login) |
 
-### Login credentials
-
+### Login credentials (preview / demo data)
 | Account | Login ID | Password | Where |
 |---|---|---|---|
 | **Super Admin** (BuildVVO) | `GymBoss` | `GymBoss@2026` | `/login` → `/superadmin` |
-| **Demo gym owner** | `demo@gymbossvvo.in` | `Demo@2026` | `/login` → `/app/dashboard`, or `/m` (mobile) |
+| **Demo gym owner** | `demo@gymbossvvo.in` | `Demo@2026` | `/login` → `/app/dashboard`, or `/m` |
 
-> **Self-hosting, billing portal, Razorpay webhooks and Android/iOS builds:** see [DEPLOYMENT.md](DEPLOYMENT.md).
+> In production, set `SUPER_ADMIN_PASSWORD` to a strong password and `SEED_DEMO=false`.
 
 ---
 
 ## Table of Contents
-
-1. [Feature Overview](#feature-overview)
-2. [Tech Stack](#tech-stack)
-3. [Codebase Structure](#codebase-structure)
-4. [Data Model](#data-model)
-5. [Architecture: Tenancy, Auth, Permissions](#architecture-tenancy-auth-permissions)
-6. [Billing & Subscription](#billing--subscription)
-7. [Environment Variables](#environment-variables)
-8. [Running Locally](#running-locally)
-9. [Deployment](#deployment)
-10. [API Reference (summary)](#api-reference-summary)
+1. [Project Status: Done vs. To Do](#project-status-done-vs-to-do)
+2. [Feature Overview](#feature-overview)
+3. [Tech Stack & Codebase](#tech-stack)
+4. [API Reference](#api-reference-summary)
+5. [Step-by-step: Host the Website, API & Billing Portal](#step-by-step-host-the-website-api--billing-portal)
+6. [Step-by-step: Razorpay Setup](#step-by-step-razorpay-setup)
+7. [Step-by-step: Build the Android APK / AAB](#step-by-step-build-the-android-apk--aab)
+8. [Step-by-step: Publish on Google Play](#step-by-step-publish-on-google-play)
+9. [Step-by-step: Build & Publish on the Apple App Store](#step-by-step-build--publish-on-the-apple-app-store)
+10. [Store Payment Rules (why the apps don't sell)](#store-payment-rules-why-the-apps-dont-sell)
 11. [Testing](#testing)
-12. [Seeded Accounts](#seeded-accounts)
-13. [Roadmap / Backlog](#roadmap--backlog)
+12. [Go-Live Checklist](#go-live-checklist)
+
+---
+
+## Project Status: Done vs. To Do
+
+### ✅ Done (built and tested in the development preview)
+- Website, web dashboard, mobile app `/m`, Super Admin, all sharing one FastAPI backend and MongoDB.
+- Members, plans, payments, PDF receipts, attendance (QR + biometric ADMS + manual), enquiries, expenses, outlets, staff permissions, finance, reports and exports.
+- Auth:
+  - register, login and lockout;
+  - forgot, reset and change password;
+  - delete account;
+  - owner can change a staff member's login email.
+- 10-day trial, then read-only (data is never deleted).
+- Razorpay subscriptions with HMAC verification, webhooks, renewals, failed payments, cancellation, duplicate protection and daily reconciliation.
+- Billing portal with history and invoice PDFs.
+- Store-compliant app mode (no purchase UI in store builds) plus server-side blocking.
+- Privacy and Terms pages, in-app account deletion and an `assetlinks.json` placeholder.
+- Capacitor 7 Android Studio project (`frontend/android`) and Xcode project (`frontend/ios`), camera permissions, and a build script.
+- Self-hosting support:
+  - all URLs, keys, origins and domains come from env variables;
+  - S3-compatible storage and SMTP email;
+  - backend `Dockerfile`, index migration script and `.env.example` files.
+
+### ⏳ To do (by you; these can't be done inside the development environment)
+| # | Task | Where |
+|---|---|---|
+| 1 | Buy hosting, point DNS, enable HTTPS | [Hosting guide](#step-by-step-host-the-website-api--billing-portal) |
+| 2 | Create a production MongoDB (e.g. Atlas, Mumbai region) | Hosting guide, step 1 |
+| 3 | Create an S3/R2 bucket and SMTP mailbox | Hosting guide, step 2 |
+| 4 | Activate Razorpay **Live Mode** (KYC), add the webhook, enable UPI AutoPay | [Razorpay guide](#step-by-step-razorpay-setup) |
+| 5 | Build the APK/AAB on a PC with Android Studio | [Android guide](#step-by-step-build-the-android-apk--aab) |
+| 6 | Build the iOS app on a Mac with Xcode | [iOS guide](#step-by-step-build--publish-on-the-apple-app-store) |
+| 7 | Google Play Console ($25 one-time) and Apple Developer Program ($99/year) accounts | Store guides |
+| 8 | App icons, screenshots, store listing text, Data Safety / Privacy Nutrition forms | Store guides |
+| 9 | Remove the Emergent preview analytics `<script>` (`ap.emergent.sh`) from `frontend/public/index.html` | Go-live checklist |
+| 10 | Fill `frontend/public/.well-known/assetlinks.json` (only if you also ship a TWA/PWABuilder app) | Android guide |
+
+### ⚠️ Not verified in the development environment
+- APK/AAB/IPA compilation: there is no Android SDK, JDK or Xcode in the dev environment. The projects are generated and synced but have **not been compiled**.
+- A real Razorpay payment end-to-end, Live Mode and UPI AutoPay mandates. Renewals and failures were simulated with signed webhooks.
+- SMTP email, S3 storage, cross-subdomain login (`COOKIE_DOMAIN`), the `payments.gymboss.in` host redirect, and native-device camera scanning.
+- Biometric devices (need real hardware).
+
+### 🗺️ Roadmap (optional, later)
+- **Phase 2:** Google Play Billing + India *user choice billing* (lets Android users subscribe inside the app, with Razorpay as an alternative).
+- Apple In-App Purchase, only if Apple rejects the business-app exception.
+- One-step signup, Revenue & Profit dashboard, renewal reminders.
 
 ---
 
@@ -55,7 +106,9 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 - Login by **email, mobile number, or username** (super admin uses a username)
 - Forgot/reset password with single-use, sha256-hashed, 1-hour-expiry tokens; anti-enumeration generic responses
 - Brute-force lockout: 5 attempts per IP+identifier / 10 per identifier per 15 min (proxy-aware via `X-Forwarded-For`)
-- JWT auth: 30-min access + 7-day refresh tokens in `HttpOnly; Secure; SameSite=None` cookies, Bearer token supported for future mobile apps; `token_version` invalidates all sessions on password reset
+- JWT auth: 30-min access + 7-day refresh tokens in `HttpOnly; Secure; SameSite=None` cookies (shareable across subdomains via `COOKIE_DOMAIN`). Store apps get Bearer tokens instead. `token_version` invalidates all sessions on password reset/change
+- **Change password** (web Profile + mobile Profile; other devices are signed out) and **Forgot password** links on web and mobile login
+- **Delete my account** (web + mobile Profile, password + typing DELETE): an owner permanently erases the whole gym and cancels any Razorpay auto-renewal; a staff member removes only their own login (Play Store / App Store requirement)
 - Trial-expired paywall: data is never deleted; the app locks to Subscription / Support / Profile / Settings until payment
 
 ### 3. Dashboard
@@ -132,6 +185,7 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 - Staff form: Type (Staff/Trainer/Manager/Admin/Sales), outlet, **Permission (View / View & Edit / Full Access)**, **Enable Finance Page** toggle, +91 phone, email, optional login password
 - Permission enforced **backend-side**: `View` = read-only (403 on writes, write buttons hidden); finance pages (Finance/Reports/Export) hidden + 403 unless owner or finance-enabled
 - Disable/enable staff (blocks login + existing sessions), delete staff (removes login too)
+- The **owner** can change a staff member's **login email** and set a new password (web Staff page + mobile Manage → Staff). Only the owner can change roles, login emails or passwords
 
 ### 12. Finance, Reports & Exports
 - Finance: date ranges (today/week/month/year/custom), Revenue / Expenses / Net / Outstanding dues, collections-by-method, expenses-by-category, transaction table
@@ -155,7 +209,33 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 - Audit log viewer (registrations, deletions, freezes, payments, admin actions)
 
 ### 15. File Storage
-- Profile photos + attachments uploaded to Emergent object storage (`POST /api/uploads`), served back via authenticated, tenant-checked `GET /api/files/{id}`
+- Profile photos + attachments uploaded via `POST /api/uploads` and served back via authenticated, tenant-checked `GET /api/files/{id}`
+- Storage backend set by `STORAGE_BACKEND`: `s3` (AWS S3 / Cloudflare R2 / DigitalOcean Spaces / MinIO) for self-hosting, `emergent` in the preview
+
+---
+
+### 16. Billing Portal (`/billing`, intended for `payments.gymboss.in`)
+- A standalone page for gym owners and admins: subscription status, plan picker (Monthly ₹999 / Quarterly / Yearly), Razorpay auto-debit checkout, a clear renewal and cancellation notice, **Cancel auto-renewal**, payment history and **invoice PDF download**
+- Uses the same backend, login and entitlement as the app. When hosted on `REACT_APP_PORTAL_HOST`, the root opens straight into billing, and login redirects back (`/login?next=/billing`)
+- Staff without the owner or admin role see a "no permission" notice. The server enforces this too
+
+### 17. Store-App Mode (Google Play / App Store compliance)
+- Store builds (`REACT_APP_STORE_BUILD=true`, Capacitor, or a TWA opened with `?app=1` / `?src=play`) contain **no purchase UI**: no prices, Pay buttons, plan picker, upgrade CTAs, pricing pages or "pay on the website" wording
+- `/`, `/pricing`, `/billing` and `/app/subscription` redirect into `/m`. Trial and expired banners become neutral messages
+- Every request sends `X-Client-Platform: android_store|ios_store`, and the backend refuses to create Razorpay orders or subscriptions from store clients (403)
+- Existing subscribers just sign in; their entitlement comes from the shared database. Policy assessment: `memory/STORE_BILLING_COMPLIANCE.md`
+
+### 18. Razorpay Payment Synchronisation (`backend/billing_sync.py`)
+- Checkout responses and webhooks are HMAC-verified. Webhooks are **rejected unless `RAZORPAY_WEBHOOK_SECRET` is set**
+- **Duplicate protection**: each webhook event id is processed once, and each Razorpay payment id extends access **exactly once** (a ledger with a unique index). Checkout verify, `subscription.activated`, `subscription.charged` and reconciliation can all report the same payment safely
+- Renewals (`subscription.charged`) add a paid row with an invoice and extend access by the plan period
+- Failed payments (`subscription.pending`/`halted`, `payment.failed`) flag a billing issue, record a failed row and show a retry prompt. When the paid period ends unpaid, the gym becomes read-only and data is never deleted
+- Cancellation (portal, app or Razorpay): access continues to the end of the paid period. Paused, resumed and updated events are handled too
+- **Daily reconciliation** pulls subscription and order status from Razorpay and applies anything missed (`python -m scripts.reconcile`, or `POST /api/internal/billing/reconcile` with `X-Cron-Secret`)
+
+### 19. Legal & Compliance Pages
+- `/privacy` and `/terms` (BuildVVO Technologies Private Limited, India; account deletion section), linked from the footer, signup and mobile Profile
+- `public/.well-known/assetlinks.json` placeholder for Android app links (fill in your package name + SHA-256)
 
 ---
 
@@ -291,88 +371,6 @@ Key indexes: `users.email` (unique), `users.username` (unique), `(organisation_i
 
 ---
 
-## Environment Variables
-
-### `backend/.env`
-```bash
-MONGO_URL="mongodb://localhost:27017"     # required
-DB_NAME="test_database"                   # required
-FRONTEND_URL="https://<your-domain>"      # CORS origin + reset links
-JWT_SECRET="<64-hex>"                     # required
-EMERGENT_LLM_KEY="sk-emergent-..."        # object storage + email proxy auth
-EMAIL_FROM_NAME="GymBoss_VVO"
-SUPER_ADMIN_USERNAME="GymBoss"            # seeded on startup
-SUPER_ADMIN_PASSWORD="GymBoss@2026"       # seeded on startup — CHANGE IN PRODUCTION
-SUPER_ADMIN_EMAIL="you@company.com"
-DEMO_OWNER_EMAIL="demo@gymbossvvo.in"     # demo tenant (optional)
-DEMO_OWNER_PASSWORD="Demo@2026"
-RAZORPAY_KEY_ID=""                        # optional fallback (DB settings preferred)
-RAZORPAY_KEY_SECRET=""
-RAZORPAY_WEBHOOK_SECRET=""
-```
-
-### `frontend/.env`
-```bash
-REACT_APP_BACKEND_URL="https://<your-domain>"   # frontend calls `${REACT_APP_BACKEND_URL}/api`
-```
-
-> Never commit `.env`. Platform settings (price, Razorpay keys, support contact) can be changed at runtime via the Super Admin console without redeploying.
-
----
-
-## Running Locally
-
-Prerequisites: Python 3.11+, Node 18+, MongoDB, yarn.
-
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-uvicorn server:app --host 0.0.0.0 --port 8001 --reload
-
-# Frontend
-cd frontend
-yarn install
-yarn start          # http://localhost:3000
-```
-
-On first startup the backend automatically:
-- creates all indexes (including the unique member-code index)
-- seeds the platform settings doc
-- seeds the super admin (from `SUPER_ADMIN_*` env)
-- seeds the demo gym *Iron Paradise Fitness* (26 members, 2 outlets, plans, payments, attendance, enquiries, expenses, staff, batches)
-
-All backend routes are prefixed with `/api`. If you run behind a proxy, forward `/api/*` to port 8001 and everything else to the frontend.
-
----
-
-## Deployment
-
-### Emergent (recommended — this repo is ready)
-1. Push/keep the repo in the Emergent workspace; supervisor already manages `backend` (port 8001) and `frontend` (port 3000) with hot reload.
-2. Set production values in `backend/.env` (`FRONTEND_URL`, strong `JWT_SECRET`, change `SUPER_ADMIN_PASSWORD`).
-3. Ingress routes `/api/*` → backend, everything else → frontend automatically.
-4. Click **Deploy** in Emergent.
-
-### Manual (any Docker/VM host)
-```bash
-# Backend (example)
-cd backend && pip install -r requirements.txt
-uvicorn server:app --host 0.0.0.0 --port 8001
-
-# Frontend (static build behind nginx/caddy)
-cd frontend && yarn build
-# serve frontend/build, and reverse-proxy /api/* → http://127.0.0.1:8001
-```
-
-Production checklist:
-- [ ] Strong `JWT_SECRET`; rotated `SUPER_ADMIN_PASSWORD`
-- [ ] `FRONTEND_URL` = exact public origin (cookies + CORS depend on it; must be HTTPS)
-- [ ] Super Admin → Platform Settings: support WhatsApp/email, price, Razorpay keys
-- [ ] Razorpay dashboard webhook → `https://<domain>/api/webhooks/razorpay` (secret = webhook secret)
-- [ ] MongoDB with authentication + backups
-- [ ] (Optional) WhatsApp Business API credentials if bulk announcements are re-enabled
-
 ---
 
 ## API Reference (summary)
@@ -381,7 +379,7 @@ All under `/api`. Auth via httpOnly cookies or `Authorization: Bearer`.
 
 | Group | Endpoints |
 |---|---|
-| Auth | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `POST /auth/refresh` · `GET /auth/me` · `POST /auth/forgot-password` · `POST /auth/reset-password` |
+| Auth | `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `POST /auth/refresh` · `GET /auth/me` · `POST /auth/forgot-password` · `POST /auth/reset-password` · `POST /auth/change-password` · `POST /auth/delete-account` |
 | Public | `GET /public/config` |
 | Dashboard | `GET /dashboard/summary` · `GET /dashboard/recent-transactions` · `GET|PUT /onboarding` |
 | Members | `GET|POST /members` · `GET /members/next-code` · `GET|PUT|DELETE /members/{id}` · `POST /members/{id}/freeze|unfreeze|renew` |
@@ -393,44 +391,243 @@ All under `/api`. Auth via httpOnly cookies or `Authorization: Bearer`.
 | Misc | `GET /batches` · `POST /uploads` · `GET /files/{id}` |
 | Operations | `GET|POST|PUT /enquiries(/{id})` · `POST /enquiries/{id}/follow-ups` · `GET|POST|PUT|DELETE /expenses(/{id})` · `GET|POST|PUT /outlets(/{id})` · `POST /outlets/{id}/toggle` · `GET|POST|PUT|DELETE /staff(/{id})` · `POST /staff/{id}/toggle` · `PUT /gym/profile` · `PUT /profile` |
 | Finance | `GET /finance/summary` · `GET /finance/transactions` · `GET /reports/*` (revenue-trend, member-growth, outstanding-dues, membership-expiry, enquiry-conversion) · `GET /export/{dataset}` |
-| Billing | `GET /subscription` (includes `plans`) · `POST /subscription/create-order {plan_id}` · `POST /subscription/verify` · `POST /subscription/autodebit/start {plan_id}` · `POST /subscription/autodebit/verify|cancel` · `POST /webhooks/razorpay` |
+| Billing | `GET /subscription` (includes `plans`) · `POST /subscription/create-order {plan_id}` · `POST /subscription/verify` · `POST /subscription/autodebit/start {plan_id}` · `POST /subscription/autodebit/verify|cancel` · `GET /subscription/payments/{id}/invoice.pdf` · `POST /webhooks/razorpay` · `POST /internal/billing/reconcile` (X-Cron-Secret) · `POST /admin/billing/reconcile` |
 | Super Admin | `GET /admin/overview` · `GET /admin/analytics` · `GET /admin/gyms(/{id})` · `POST /admin/gyms/{id}/toggle` · `GET|PUT /admin/settings` · `GET /admin/churn-export` · `GET /admin/audit-logs` |
 
 Interactive docs: `http://localhost:8001/docs` (FastAPI Swagger UI).
 
 ---
+---
 
-## Testing
+## Step-by-step: Host the Website, API & Billing Portal
 
+**Recommended setup for India** (~₹1,500–3,000/month to start):
+- one VPS (DigitalOcean/Hetzner/AWS Lightsail, 2 vCPU / 4 GB, Bangalore or Mumbai region) running the API with Nginx;
+- MongoDB Atlas (M10 in Mumbai, or M0 free to start);
+- Cloudflare R2 or AWS S3 for uploads;
+- Zoho Mail or Amazon SES for email.
+
+### Step 1 — Database
+1. Create a MongoDB Atlas cluster. Create a database user and allow your server's IP.
+2. Copy the connection string (`mongodb+srv://...`). This is your `MONGO_URL`. Choose `DB_NAME=gymboss_prod`.
+3. *(Optional)* move the preview data: `mongodump` the preview DB, then `mongorestore` into production (see `DEPLOYMENT.md` §6).
+
+### Step 2 — File storage & email
+1. Create a bucket (e.g. Cloudflare R2 `gymboss-uploads`) and an access key. Set `STORAGE_BACKEND=s3`, plus `S3_BUCKET`, `S3_ENDPOINT_URL` (R2/Spaces only), `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`.
+2. Create a mailbox such as `no-reply@gymboss.in`. Set `EMAIL_PROVIDER=smtp`, plus `SMTP_HOST`, `SMTP_PORT=587`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM`.
+
+### Step 3 — Server & backend
 ```bash
-cd backend
-python tests/cleanup_test_data.py
-python -m pytest tests/ -q -p no:randomly -n 0   # 163 tests
-python tests/cleanup_test_data.py
+# on the VPS (Ubuntu 22.04+)
+sudo apt update && sudo apt install -y python3.11 python3.11-venv nginx git certbot python3-certbot-nginx
+git clone <your-repo> /srv/gymboss && cd /srv/gymboss/backend
+python3.11 -m venv .venv && source .venv/bin/activate
+grep -v '^emergentintegrations' requirements.txt > req.txt && pip install -r req.txt
+cp .env.example .env && nano .env          # fill in every value
+python -m scripts.migrate                  # creates MongoDB indexes
+```
+Run the API as a service. Create `/etc/systemd/system/gymboss.service`:
+```ini
+[Unit]
+Description=GymBoss API
+After=network.target
+[Service]
+WorkingDirectory=/srv/gymboss/backend
+ExecStart=/srv/gymboss/backend/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 2 --proxy-headers
+Restart=always
+[Install]
+WantedBy=multi-user.target
+```
+Then run `sudo systemctl enable --now gymboss`. *(Alternative: `docker build -t gymboss-api backend/ && docker run -d --env-file backend/.env -p 8001:8001 gymboss-api`.)*
+
+### Step 4 — Frontend (website + web app + `/m`) and billing portal
+Build on your laptop or on the server (Node 20 + Yarn):
+```bash
+cd frontend && yarn install
+# Main site
+REACT_APP_BACKEND_URL=https://gymboss.in yarn build && cp -r build /var/www/gymboss
+# Billing portal (same code, opens straight into /billing)
+REACT_APP_BACKEND_URL=https://gymboss.in REACT_APP_PORTAL_HOST=payments.gymboss.in \
+REACT_APP_APP_URL=https://gymboss.in/app yarn build && cp -r build /var/www/gymboss-portal
 ```
 
-Covers: auth (register/login/lockout/reset/refresh), tenant isolation (cross-org 404s), member math (payable/due/status), batches, next-code, plans, payments, attendance, enquiries, expenses, outlets, staff permissions (view-only 403, finance guard), admin settings (partial saves, price validation), subscription states, exports.
+### Step 5 — Nginx, DNS & HTTPS
+1. **DNS** (at your domain registrar or Cloudflare): add `A` records for `gymboss.in`, `www` and `payments`, all pointing to the VPS IP.
+2. **Nginx** `/etc/nginx/sites-available/gymboss`:
+```nginx
+server {
+  server_name gymboss.in www.gymboss.in;
+  root /var/www/gymboss;
+  client_max_body_size 12m;
+  location /api/    { proxy_pass http://127.0.0.1:8001; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; }
+  location /iclock/ { proxy_pass http://127.0.0.1:8001; }   # biometric devices
+  location /        { try_files $uri /index.html; }
+}
+server {
+  server_name payments.gymboss.in;
+  root /var/www/gymboss-portal;
+  location /api/ { proxy_pass http://127.0.0.1:8001; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; }
+  location /     { try_files $uri /index.html; }
+}
+```
+3. Enable the site, then add HTTPS: `sudo ln -s /etc/nginx/sites-available/gymboss /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx && sudo certbot --nginx -d gymboss.in -d www.gymboss.in -d payments.gymboss.in`.
+4. In `backend/.env` set:
+   - `FRONTEND_URL=https://gymboss.in`
+   - `PORTAL_URL=https://payments.gymboss.in`
+   - `COOKIE_DOMAIN=.gymboss.in` (one login across both)
+   - `CORS_ORIGINS=https://www.gymboss.in,capacitor://localhost,https://localhost` (the last two are for the store apps)
 
-Frontend flows are verified with Playwright end-to-end suites (landing, 3-step registration, 3-step member modal, drawer actions, permission-restricted staff UX, super admin console).
+   Then restart: `sudo systemctl restart gymboss`.
+5. Check: `https://gymboss.in` loads, `https://gymboss.in/api/public/config` returns JSON, and you can log in at `https://payments.gymboss.in`.
+
+### Step 6 — Daily reconciliation cron
+```bash
+crontab -e
+15 3 * * * cd /srv/gymboss/backend && .venv/bin/python -m scripts.reconcile >> /var/log/gymboss-reconcile.log 2>&1
+```
+Backups: enable Atlas daily backups (or run `mongodump` nightly).
 
 ---
 
-## Seeded Accounts
-
-| Account | Identifier | Password | Purpose |
-|---|---|---|---|
-| Demo gym owner | `demo@gymbossvvo.in` | `Demo@2026` | Iron Paradise Fitness — rich demo data |
-| BuildVVO super admin | `GymBoss` | `GymBoss@2026` | `/superadmin` console |
-
-> Demo data is isolated to the demo tenant — never mixed into newly registered gyms.
+## Step-by-step: Razorpay Setup
+1. **Activate your account:** dashboard.razorpay.com → complete KYC (PAN, GST optional, bank account) to unlock **Live Mode**.
+2. **Enable Subscriptions** (Products → Subscriptions). Ask Razorpay support to enable **UPI AutoPay / recurring payments** on your account.
+3. **API keys:** Settings → API Keys → generate Live keys. Put them in `backend/.env` (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`), or in Super Admin → Platform Settings (saving new keys automatically clears old cached plans).
+4. **Webhook:** Settings → Webhooks → *Add New*:
+   - URL: `https://gymboss.in/api/webhooks/razorpay`
+   - Secret: a long random string. Set the same value as `RAZORPAY_WEBHOOK_SECRET`. Without it, webhooks are rejected.
+   - Events: `subscription.authenticated`, `subscription.activated`, `subscription.charged`, `subscription.pending`, `subscription.halted`, `subscription.paused`, `subscription.resumed`, `subscription.cancelled`, `subscription.completed`, `subscription.updated`, `payment.captured`, `payment.failed`
+5. **Prices:** Super Admin → Platform Settings → Subscription Plans (Monthly ₹999 by default). The matching Razorpay plans are created automatically.
+6. **Test:** in Test Mode, pay with card `4111 1111 1111 1111` (any future expiry, any CVV), then check Super Admin and the billing portal history. Switch to Live keys only after this works.
 
 ---
 
-## Roadmap / Backlog
+## Step-by-step: Build the Android APK / AAB
+You need a Windows, macOS or Linux PC with **Android Studio** (it includes the Android SDK and JDK 17), **Node 20** and **Yarn**.
 
-- **P0 (needs credentials)**: live Razorpay keys (Super Admin → Platform Settings)
-- **P1**: CSV member import, official WhatsApp Business API (if bulk announcements return), granular per-module permission matrix
-- **P2**: Android/iOS apps on this same backend, Mongo aggregation pipelines for dashboard/finance at scale, app-store badges when live
+1. **Get the code** onto your PC (GitHub "Save to GitHub", or download the code).
+2. **Set the app identity** (once, before the first upload; it can't change later). Edit `frontend/capacitor.config.json`:
+   - `appId` (e.g. `in.gymboss.app`)
+   - `appName` (e.g. `GymBoss`)
+3. **Build the store bundle and sync the Android project:**
+   ```bash
+   cd frontend
+   yarn install
+   REACT_APP_BACKEND_URL=https://gymboss.in ./scripts/build-mobile.sh
+   ```
+   This builds the React app in store mode (no purchase UI), bundles it, and runs `npx cap sync`. On Windows, run the commands from the script manually:
+   ```powershell
+   $env:REACT_APP_STORE_BUILD="true"; $env:REACT_APP_BACKEND_URL="https://gymboss.in"; yarn build; npx cap sync
+   ```
+4. **App icon and splash:** put a 1024×1024 `icon.png` (and optionally `splash.png`) in `frontend/resources/`, then run `npx @capacitor/assets generate --android --ios`.
+5. **Open in Android Studio:** `npx cap open android` (or File → Open → `frontend/android`). Wait for Gradle sync to finish.
+6. **Test APK (install on your phone):** Build → Build Bundle(s)/APK(s) → **Build APK(s)**. Or from a terminal: `cd frontend/android && ./gradlew assembleDebug`. The file is at `android/app/build/outputs/apk/debug/app-debug.apk`. Send it to your phone and install it (allow "install unknown apps").
+7. **Release AAB (for Play Store):**
+   1. Build → **Generate Signed Bundle / APK** → Android App Bundle.
+   2. Create a new keystore (`gymboss-release.jks`). **Back it up and remember the passwords**: losing it means you can't update the app (unless you use Play App Signing, which is recommended).
+   3. Choose *release*. The output is `android/app/release/app-release.aab`.
+8. **Versioning:** before each new upload, increase `versionCode` (1, 2, 3…) and `versionName` (`1.0.1`…) in `android/app/build.gradle`.
+9. Every time you change the web code, run step 3 again, then rebuild.
+
+> **Alternative (quick test APK without Android Studio):** host the site, then use **PWABuilder.com** → enter `https://gymboss.in/m?src=play` → Package for Android. It produces a signed APK/AAB (TWA). If you go this way, fill `frontend/public/.well-known/assetlinks.json` with the package name and SHA-256 fingerprint that PWABuilder shows. The Capacitor build above is the recommended route.
+
+---
+
+## Step-by-step: Publish on Google Play
+1. **Account:** play.google.com/console → pay the one-time **$25** fee. Choose an *Organisation* account for BuildVVO Technologies Pvt Ltd (needs a D-U-N-S number) or a personal account. New personal accounts must run a **closed test with at least 12 testers for 14 days** before production.
+2. **Create the app:** name *GymBoss*, default language English (India), App, Free.
+3. **Store listing:**
+   - short description (80 characters) and full description;
+   - app icon 512×512, feature graphic 1024×500;
+   - at least 2 phone screenshots.
+4. **App content** (left menu → Policy → App content):
+   - Privacy policy URL: `https://gymboss.in/privacy`
+   - App access: *All or some functionality is restricted*. Give reviewers the demo login (`demo@gymbossvvo.in` / `Demo@2026`), or a dedicated reviewer account.
+   - Ads: No ads.
+   - Data safety:
+     - Collected: name, email, phone (account), photos (member photos), app activity.
+     - Encrypted in transit: Yes. Users can request deletion: Yes (in-app *Delete my account*).
+     - Not shared with third parties for advertising.
+   - Account deletion URL: `https://gymboss.in/privacy` (it explains in-app deletion and email requests).
+   - Target audience: 18+. Content rating questionnaire: Business/productivity.
+   - Financial features: none (the app doesn't sell anything).
+5. **Payments:** the store build has **no in-app purchase UI** (consumption-only), so you don't set up Play Billing products. Don't mention prices or "subscribe on our website" in the app or its listing.
+6. **Release:**
+   1. Testing → Internal testing → create a release.
+   2. Upload `app-release.aab` and accept **Play App Signing**.
+   3. Add testers' emails and roll out.
+   4. Install from the opt-in link and check login, members, attendance (camera) and profile.
+7. **Production:** Production → Create release → reuse the AAB → submit for review (usually 1–7 days).
+8. **Updates:** bump `versionCode`, rebuild the AAB, upload a new release.
+
+---
+
+## Step-by-step: Build & Publish on the Apple App Store
+You need a **Mac** (macOS 14+) with **Xcode 16+**, **CocoaPods** (`sudo gem install cocoapods`), Node 20 and Yarn, plus an **Apple Developer Program** membership ($99/year; enrol as an Organisation with a D-U-N-S number for BuildVVO).
+
+1. **Build and sync:**
+   ```bash
+   cd frontend && yarn install
+   REACT_APP_BACKEND_URL=https://gymboss.in ./scripts/build-mobile.sh
+   cd ios/App && pod install && open App.xcworkspace
+   ```
+2. **In Xcode** (App target → *Signing & Capabilities*):
+   - select your Team;
+   - set the Bundle Identifier (same as `appId`, e.g. `in.gymboss.app`);
+   - set Version (`1.0.0`) and Build (`1`).
+3. **Icons:** use `npx @capacitor/assets generate --ios` (see the Android step 4), or drag a 1024×1024 icon into *Assets → AppIcon*.
+4. **Test on an iPhone:** connect it, select it as the run target and press ▶. Check that login, the camera (QR attendance) and file uploads work.
+5. **App Store Connect** (appstoreconnect.apple.com) → My Apps → **+ New App**:
+   - name *GymBoss*, primary language English (India);
+   - the bundle ID from step 2;
+   - SKU `gymboss-ios`.
+6. **Archive and upload:** in Xcode select *Any iOS Device (arm64)* → Product → **Archive** → Distribute App → App Store Connect → Upload.
+7. **TestFlight:** once processed (~15 min), add internal testers and install via the TestFlight app.
+8. **App information:**
+   - Category: Business.
+   - Privacy Policy URL: `https://gymboss.in/privacy`.
+   - App Privacy questionnaire: same data types as Google's Data Safety, not used for tracking.
+   - Age rating: 4+.
+   - Screenshots: 6.7" and 6.5" iPhone, and iPad if you support it.
+9. **App Review notes** (paste this):
+   > GymBoss_VVO is business-management software that BuildVVO Technologies sells to gym businesses for use by their owners and staff (multi-user organisation accounts with owner + staff logins). There is no purchase UI, pricing or external payment link in the app. Organisations that already have a subscription simply sign in (Guidelines 3.1.3(c) Enterprise Services / 3.1.3(b) Multiplatform Services). Accounts can be deleted in-app under Profile → Delete my account (5.1.1(v)). Demo login: demo@gymbossvvo.in / Demo@2026.
+10. **Submit for Review** (usually 1–3 days). If Apple asks for In-App Purchase, reply explaining the B2B model above. Only if they still refuse, plan StoreKit IAP (Roadmap Phase 3).
+
+---
+
+## Store Payment Rules (why the apps don't sell)
+| | Google Play (India) | Apple App Store (India) |
+|---|---|---|
+| Rule | Digital subscriptions bought in the app must use Play Billing ("business productivity software" is named). The "gym memberships" exemption covers a gym's own members, not our SaaS fee | Digital subscriptions bought in the app must use IAP. No external purchase links in India |
+| What we do | **Consumption-only app**: no prices, buy buttons or steering. Users subscribe on the website/portal and sign in on the app | Same. Relies on 3.1.3(c)/(b): business users access subscriptions bought outside the app |
+| Enforced by | `REACT_APP_STORE_BUILD`, `PlatformGate`, neutral banners, backend 403 on purchase endpoints from `X-Client-Platform: android_store/ios_store` | same |
+| Optional later | India *user choice billing* (Play Billing + Razorpay side by side, ~11% fee) | IAP via StoreKit 2 (only if required) |
+
+Full assessment with official policy links: `memory/STORE_BILLING_COMPLIANCE.md`.
+
+---
+
+## Testing
+```bash
+cd backend
+python -m pytest tests/ -q -n 0      # run against a running API (reads REACT_APP_BACKEND_URL from frontend/.env)
+```
+- **Backend:** 152 automated tests pass. They cover auth, tenant isolation, members, plans, payments, attendance, staff permissions, account deletion, trial read-only, billing sync and store-client blocking.
+- **Frontend:** Playwright end-to-end runs pass for the web app, mobile app, billing portal and store mode.
+
+What was actually run, and what couldn't be verified: `memory/TEST_LOG.md`.
+
+---
+
+## Go-Live Checklist
+- [ ] `backend/.env` is filled in from `.env.example`: strong `JWT_SECRET`, `SEED_DEMO=false` and a strong `SUPER_ADMIN_PASSWORD`.
+- [ ] `python -m scripts.migrate` has been run against the production DB.
+- [ ] HTTPS works on `gymboss.in`, `www` and `payments`, and `COOKIE_DOMAIN=.gymboss.in` is set.
+- [ ] The `ap.emergent.sh` analytics `<script>` is removed from `frontend/public/index.html`.
+- [ ] Razorpay Live keys are set, the webhook (with secret) is added, a test payment shows in history, and the reconcile cron is installed.
+- [ ] S3 bucket and SMTP are configured. Test a member photo upload and a forgot-password email.
+- [ ] Mobile apps are rebuilt with `REACT_APP_BACKEND_URL=https://gymboss.in` and `CORS_ORIGINS` includes `capacitor://localhost,https://localhost`.
+- [ ] Database backups are enabled.
 
 ---
 

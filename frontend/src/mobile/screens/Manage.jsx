@@ -40,7 +40,7 @@ export default function Manage() {
 
   return (
     <div data-testid="m-manage">
-      <h1 className="mb-4 font-display text-2xl font-extrabold tracking-tight text-foreground">Manage</h1>
+      <h1 className="mb-4 font-display text-[26px] font-bold tracking-tight text-foreground">Manage</h1>
       <div className="sticky top-0 z-20 -mx-5 bg-background/90 px-5 pb-2 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
         <Seg tabs={TABS} value={tab} onChange={setTab} />
       </div>
