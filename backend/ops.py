@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, require_write, audit, hash_password, normalize_phone
+from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, require_full, require_write, audit, hash_password, normalize_phone
 
 router = APIRouter(tags=["operations"])
 
@@ -134,7 +134,7 @@ async def update_expense(expense_id: str, body: ExpenseBody, user: dict = Depend
 
 
 @router.delete("/expenses/{expense_id}")
-async def delete_expense(expense_id: str, user: dict = Depends(require_write)):
+async def delete_expense(expense_id: str, user: dict = Depends(require_full)):
     res = await db.expenses.delete_one({"id": expense_id, "organisation_id": user["organisation_id"]})
     if not res.deleted_count:
         raise HTTPException(404, "Expense not found")
@@ -208,6 +208,16 @@ STAFF_ROLES = {"admin", "manager", "receptionist", "trainer", "sales", "staff"}
 PERMISSIONS = {"view", "manage", "full"}
 
 
+def guard_staff_target(user: dict, staff: dict | None):
+    """Nobody disables/deletes their own record; only owner/admin may act on admins."""
+    if not staff:
+        return
+    if staff.get("user_id") and staff["user_id"] == user["id"]:
+        raise HTTPException(403, "You can't disable or delete your own account here")
+    if staff.get("role") == "admin" and user.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only the owner or an admin can change an admin account")
+
+
 @router.get("/staff")
 async def list_staff(user: dict = Depends(get_org_user)):
     hide = {"_id": 0} if (user.get("role") in ("owner", "admin") or user.get("finance_enabled")) else {"_id": 0, "salary": 0}
@@ -268,6 +278,9 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     if not existing:
         raise HTTPException(404, "Staff member not found")
     data = body.model_dump(exclude={"password"})
+    can_salary = user.get("role") in ("owner", "admin") or user.get("finance_enabled")
+    if not can_salary or "salary" not in body.model_fields_set:
+        data.pop("salary", None)
     data["role"] = body.role.lower()
     if data["role"] not in STAFF_ROLES:
         raise HTTPException(422, "Invalid role")
@@ -281,6 +294,7 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     if body.password and len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     login_id = existing.get("user_id")
+    guard_staff_target(user, existing) if existing.get("role") == "admin" else None
     if user.get("role") not in ("owner", "admin") and (data["permission"] != existing.get("permission", "view")
                                                        or bool(data.get("enable_finance")) != bool(existing.get("enable_finance"))):
         raise HTTPException(403, "Only the owner or an admin can change permissions or finance access")
@@ -314,6 +328,7 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
 @router.post("/staff/{staff_id}/toggle")
 async def toggle_staff(staff_id: str, user: dict = Depends(require_manager)):
     staff = await db.staff.find_one({"id": staff_id, "organisation_id": user["organisation_id"]})
+    guard_staff_target(user, staff)
     if not staff:
         raise HTTPException(404, "Staff member not found")
     new_status = "disabled" if staff.get("status") == "active" else "active"
@@ -327,6 +342,7 @@ async def toggle_staff(staff_id: str, user: dict = Depends(require_manager)):
 @router.delete("/staff/{staff_id}")
 async def delete_staff(staff_id: str, user: dict = Depends(require_manager)):
     staff = await db.staff.find_one({"id": staff_id, "organisation_id": user["organisation_id"]})
+    guard_staff_target(user, staff)
     if not staff:
         raise HTTPException(404, "Staff member not found")
     await db.staff.delete_one({"id": staff_id})

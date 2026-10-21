@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from deps import db, now_utc, new_id, today_ist, get_org_user, require_write, member_status, normalize_phone, audit, IST
+from deps import db, now_utc, new_id, today_ist, get_org_user, require_write, require_full, member_status, normalize_phone, audit, IST
 
 router = APIRouter(tags=["attendance"])
 adms_router = APIRouter(tags=["adms"])
@@ -272,7 +272,7 @@ async def update_device(device_id: str, body: DeviceUpdate, user: dict = Depends
 
 
 @router.delete("/attendance/devices/{device_id}")
-async def delete_device(device_id: str, user: dict = Depends(require_write)):
+async def delete_device(device_id: str, user: dict = Depends(require_full)):
     res = await db.biometric_devices.delete_one({"id": device_id, "organisation_id": user["organisation_id"]})
     if not res.deleted_count:
         raise HTTPException(404, "Device not found")
@@ -409,6 +409,10 @@ async def adms_devicecmd(request: Request, SN: str = ""):
     for line in body.splitlines():
         kv = dict(p.split("=", 1) for p in line.strip().split("&") if "=" in p)
         if kv.get("ID", "").isdigit():
-            status = "done" if kv.get("Return", "-1") in ("0", "") else "failed"
-            await db.device_commands.update_one({"device_id": d["id"], "seq": int(kv["ID"])}, {"$set": {"status": status, "acked_at": now_utc(), "return": kv.get("Return")}})
+            ok = kv.get("Return", "-1") in ("0", "")
+            cmd = await db.device_commands.find_one({"device_id": d["id"], "seq": int(kv["ID"])})
+            if cmd:
+                tries = cmd.get("attempts", 0) + 1
+                status = "done" if ok else ("queued" if tries < 3 else "failed")
+                await db.device_commands.update_one({"id": cmd["id"]}, {"$set": {"status": status, "acked_at": now_utc(), "return": kv.get("Return"), "attempts": tries}})
     return "OK"

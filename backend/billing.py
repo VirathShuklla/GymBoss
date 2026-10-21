@@ -129,7 +129,10 @@ async def verify_payment(body: VerifyBody, user: dict = Depends(get_org_user)):
     rec = await db.subscription_payments.find_one({"order_id": body.razorpay_order_id, "organisation_id": user["organisation_id"]})
     if not rec:
         raise HTTPException(404, "Order not found")
-    pay, _ = await razorpay_request("GET", f"/payments/{body.razorpay_payment_id}")
+    try:
+        pay, _ = await razorpay_request("GET", f"/payments/{body.razorpay_payment_id}")
+    except HTTPException:
+        raise HTTPException(400, "Payment could not be verified with Razorpay")
     if not payment_matches(pay, rec):
         raise HTTPException(400, "Payment does not match this order")
     await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], plan_id=rec.get("plan_id"), order_id=body.razorpay_order_id)

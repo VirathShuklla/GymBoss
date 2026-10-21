@@ -1,0 +1,53 @@
+{
+  "summary": "Round-1 security/accounting audit retest. New suite tests/test_iter22_security_ledger.py has 28 tests (24 pass, 4 fail = real bugs). Regression suites run alongside it: test_milestones, iter15, iter19 all pass. iter20 now passes 23/23 after I updated one outdated test payload (payment.captured needed amount/currency because of the new payment_matches rule). Verified working: billing verify (bad signature 400, unknown order 404, real Razorpay GET /payments call seen in logs, fake payment gives 503 and is not activated); webhook (missing/invalid signature 400, amount mismatch returns 'mismatch' and is not applied, duplicate event id returns 'duplicate', same payment_id with a new event id does not extend twice); payment_due org gets 402 on POST /plans while subscription/auth still work; view/manage/full permission matrix for staff/outlets/gym profile/member delete/payment reverse; salary hidden for non-finance users; finance endpoints gated; identifier >254 gives 422; refresh for a disabled user gives 403; shared-phone login gives 409 (says to use email); CSRF guard blocks an evil Origin or Referer and allows our own origin or no origin; bcrypt $2b$ hashes; httpOnly cookies; forgot-password gives the same response either way and stores only a sha256 token_hash; reset clears the lockout. Ledger: 500 paid of 1000 shows due 500 Partially Paid; renew with 1000 paid keeps due 500; paying 800 gives due 0 and credit 300; next renewal uses the credit (due 700); editing a payment recalculates; reversal is soft plus a negative entry; second reverse 404; editing a reversed payment 409; validation 422s; 5 parallel payments all land. Month-end expiry dates correct. Future freeze not active; overlapping freeze 409; unfreeze restores expiry. Manual check-in: expired/frozen 403, duplicate 409. QR staff without login can check in by phone; disabled staff 403. ADMS: allowed_ips blocks punches; C:<seq>: commands re-sent after 5 min until acked; ack stops resends; a late upload of yesterday's punches pairs within yesterday. Frontend: web drawer renew (due kept 500, receipt shown) and record payment (due cleared) work; mobile add member, renew and payment work; session survives reload; deleting the access cookie recovers via /auth/refresh.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/staff/{id}", "issue": "A manager without finance access who edits any staff member wipes their salary to null. GET /api/staff hides salary from them, but update_staff uses body.model_dump(), which writes salary=None. Reproduced: salary 12345 became None.", "priority": "HIGH"},
+      {"endpoint": "POST /api/staff/{id}/toggle, DELETE /api/staff/{id}", "issue": "A manager with 'full' permission can disable or delete an ADMIN staff member and their login (toggle returned 200). There is no role-hierarchy check, and no guard against acting on yourself.", "priority": "HIGH"},
+      {"endpoint": "deps.client_ip (login lockout, forgot-password, ADMS allowed_ips)", "issue": "TRUSTED_PROXIES is not set, so client_ip returns the ingress pod IP (10.208.133.66/.69 seen in login_attempts and password_reset_requests). Effects: (a) the 5-failure per-IP lock is shared by all users of a pod and rotates between pods, so it does not fire reliably (only the 10-per-email cap holds); (b) the forgot-password cap of 15 per IP per 15 min is effectively global, so after 15 requests from anyone, every reset email silently stops (DoS); (c) device allowed_ips can never match a real device IP, so turning it on blocks real devices.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/members/{id}/freeze", "issue": "Adding a future, non-overlapping freeze while a current freeze is active overwrites frozen_from/frozen_until. The member then shows 'active' and can check in during the current freeze (reproduced)."},
+      {"endpoint": "DELETE /api/expenses/{id} (also DELETE /api/plans/{id} and DELETE /api/attendance/devices/{id} by code review)", "issue": "These use require_write, so 'manage' users can delete. The matrix says delete needs 'full'. Expense delete by a manage user returned 200."},
+      {"endpoint": "POST /api/subscription/verify", "issue": "A Razorpay 400 for an unknown payment id comes back as 503 'Payment gateway error' instead of 400. It is safe (not activated), just ambiguous."},
+      {"endpoint": "POST /api/internal/billing/reconcile", "issue": "Polls every 'created' subscription_payments record forever (17 stale ones in the DB). It is slow and returned a Cloudflare 502 once during the run. Age out orders older than about 24h."},
+      {"endpoint": "POST /api/auth/login", "issue": "The shared-phone 409 is returned before the password check and records no attempt, which leaks that a phone has multiple accounts. Low risk."},
+      {"endpoint": "POST /iclock/devicecmd", "issue": "Commands with Return!=0 are marked 'failed' and never retried."},
+      {"endpoint": "deps.derive_subscription", "issue": "subscription_ends_at is not parsed when stored as a string (trial_ends_at is). Robustness only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Mobile Members renew/add sheets", "issue": "The renew sheet does not preselect the member's current plan, so the Renew button stays disabled until a plan is tapped (web preselects it). Add Member also shows the toast 'Please select a membership plan' when only one plan exists.", "selector": "[data-testid='m-renew-save']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Overpayment credit", "issue": "credit_balance is never shown in the web or mobile UI (no references in frontend/src). After an overpayment the drawer and list just hide the due, so staff can't see the ₹300/₹100 credit the user asked to keep.", "affected_selectors": ["[data-testid='drawer-due-amount']", "[data-testid^='m-member-']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter22_security_ledger.py", "/app/backend/tests/test_iter20_billing_sync.py", "/app/test_reports/pytest/iter22.xml"],
+  "action_items": [
+    "update_staff: don't overwrite salary unless the caller is owner/admin/finance and salary was actually sent (model_dump(exclude_unset=True), drop salary for non-finance users)",
+    "toggle_staff/delete_staff: block non-owner/admin from acting on admin staff, and block acting on your own record",
+    "Set TRUSTED_PROXIES (e.g. '*' or the ingress CIDR) in backend/.env so client_ip uses X-Forwarded-For; recheck the login lockout, the forgot-password IP cap and ADMS allowed_ips",
+    "Freeze: work out frozen status from freeze_history (any non-cancelled entry covering today), or don't let a future freeze overwrite an active one",
+    "Make DELETE expenses/plans/devices require_full, to match the permission matrix",
+    "Show credit_balance in the web member drawer/list and the mobile member row/actions",
+    "Mobile renew sheet: preselect the current plan_id",
+    "Billing reconcile: expire stale 'created' orders"
+  ],
+  "critical_code_review_comments": [
+    "seed_super_admin OK: no default credentials, needs env vars and a 10+ char password, never resets an existing password. seed_demo still has a dead default 'Demo@2026' in os.environ.get (guarded earlier, but remove it).",
+    "member_ledger.recompute counts reversed originals plus negative reversals (net zero), which is correct. _payments_total has no status filter; keep that invariant documented.",
+    "csrf_origin_guard is skipped whenever any Authorization header is present, even though cookies are still accepted. Browsers need CORS preflight for that header, so this is not exploitable now, but get_current_user should prefer Bearer when the header is present.",
+    "Members/ops files: members.py is 722 lines and server.py 993; split them."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter22_security_ledger.py", "/app/backend/tests/test_iter20_billing_sync.py (payment.captured payload now includes amount/currency to match the new payment_matches rule)"],
+  "success_rate": {"backend": "86% (24/28 new tests; regression suites pass)", "frontend": "90% (web + mobile payment/renewal and session flows work; credit not displayed)"},
+  "test_credentials": "Used /app/memory/test_credentials.md. All tests used throwaway registered orgs (test_iter22_*@example.com); the demo org was not touched.",
+  "seed_data_creation": "Throwaway orgs are created per test module and cleaned up. The UI test org 9c593619... was cleaned. About 17 stale 'created' subscription_payments from earlier iterations remain.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && pytest tests/test_iter22_security_ledger.py -n 0. Its 4 failures are the 4 bugs above (salary wipe, manager toggling admin, manage deleting expense, future freeze clearing the current freeze). The 'TestPlaybook' lockout test can flake because of the IP-keyed lock (TRUSTED_PROXIES). Webhook and Razorpay secrets are read from db.settings 'platform' first (the DB has its own webhook secret), falling back to env.",
+  "rca of the issue": "Salary wipe: StaffBody.salary defaults to None, update_staff does $set of model_dump(), and the frontend never gets the salary to send back. Admin toggle: require_manager only checks perm level, with no target-role check. IP issue: deps.client_ip only trusts XFF when TRUSTED_PROXIES is set, and it isn't, so request.client.host is the k8s ingress pod. Freeze: freeze_member always $sets frozen_from/frozen_until to the new entry, and member_status only reads those two fields."
+}

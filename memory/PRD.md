@@ -208,3 +208,35 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Behaviour: scroll-to-top on navigation; Home shortcuts deep-link to member filter chips (?chip=due|expiring|active).
 - README.md rewritten as a full step-by-step guide: Done/To-do status, features (incl. billing portal, store mode, billing sync), hosting (VPS + Nginx + DNS + HTTPS + cron), Razorpay setup, Android APK/AAB build, Google Play publishing, iOS build and App Store publishing, store payment rules, go-live checklist.
 - Tested: iteration_21 (frontend 95%; the scroll-position bug and consistency nits fixed afterwards).
+
+## Security & accounting hardening — Round 1 (2026-06)
+- Billing: /subscription/verify fetches the Razorpay payment and requires matching order, amount, currency and a captured/authorized status (payment_matches); webhook payment.captured is checked the same way. Webhook secret is mandatory, and the ledger keeps access extension exactly-once.
+- Mongo client is tz_aware (UTC) → fixes naive/aware comparisons.
+- Super admin seed: explicit env credentials only (no defaults, min 10 chars), never resets an existing password. Demo seed needs DEMO_OWNER_EMAIL/PASSWORD + SEED_DEMO=true.
+- Permission matrix (deps.perm_level):
+  - owner/admin = full; "full" = create/edit + delete/reverse + staff/outlets/settings; "manage" = create/edit; "view" = read.
+  - require_manager needs full; require_full guards member delete and payment reversal.
+  - Only owner/admin change permission/finance; only the owner changes role/login email/password.
+  - Finance = owner/admin/finance_enabled, with the frontend aligned.
+  - Salary is hidden from users without finance access.
+- Write restriction covers expired, payment_due, cancelled and none.
+- Auth:
+  - api.js refreshes on /auth/me 401;
+  - refresh rejects disabled users;
+  - login input lengths bounded;
+  - phone login with a duplicated number returns 409 (use email);
+  - X-Forwarded-For only trusted via TRUSTED_PROXIES;
+  - CSRF Origin/Referer guard for cookie-authenticated writes.
+- Member accounting (member_ledger.py):
+  - invoice per membership cycle (member_invoices); payments allocated FIFO; overpayment kept as credit_balance; dues carry over across renewals;
+  - balances recomputed from invoices+payments with optimistic concurrency (ledger_rev + touch);
+  - reversals never delete (status reversed + negative compensating entry, reason/actor/time); edit history kept;
+  - money fields validated (≥0, finite, discount ≤ gross), plans must be active membership plans, methods validated, outlet ownership checked, payment_date honoured;
+  - one-time versioned migration (db.migrations) creates opening invoices for existing members.
+- Dates & freezes: month/year math clamps to the real month end; freezes store frozen_from (future freezes don't apply early), overlaps rejected, and unfreeze gives back unused extension days.
+- Attendance:
+  - one eligibility rule (assert_member_eligible) for manual, QR and biometric;
+  - the punch engine uses the event's own IST day and exact-timestamp dedupe;
+  - QR staff check-in uses the staff record + status (owner fallback);
+  - biometric devices take an optional allowed_ips allowlist; deletion commands are queued in device_commands until the device acknowledges them via /iclock/devicecmd (re-sent after 5 min).
+- Round 2 (pending): reports via aggregation + accounting-date policy, typed report params, upload content sniffing + streaming limits, lockfile/pins/health checks, portable isolated tests.

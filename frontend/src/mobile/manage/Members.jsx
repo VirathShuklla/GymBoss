@@ -41,7 +41,7 @@ export default function Members({ autoAdd }) {
     api.get(`/members?limit=100${search && search.trim() ? `&search=${encodeURIComponent(search.trim())}` : ""}`).then(({ data }) => setItems(data.items)).catch(() => setItems([]));
   useEffect(() => {
     load("");
-    api.get("/plans?type=membership").then(({ data }) => setPlans(data)).catch(() => {});
+    api.get("/plans?type=membership").then(({ data }) => { setPlans(data); if (data.length === 1) setF((p) => ({ ...p, plan_id: p.plan_id || data[0].id })); }).catch(() => {});
   }, []);
   useEffect(() => {
     const t = setTimeout(() => load(q), 350);
@@ -78,7 +78,7 @@ export default function Members({ autoAdd }) {
     setActive(m);
     setDetail(null);
     setRemSel(null);
-    setRf({ plan_id: "", discount: "", amount_paid: "", payment_method: "Cash" });
+    setRf({ plan_id: m.plan_id || "", discount: "", amount_paid: "", payment_method: "Cash" });
     setPf({ amount: String(m.due_amount || ""), method: "Cash" });
     setView("menu");
     api.get(`/members/${m.id}`).then(({ data }) => setDetail(data)).catch(() => {});
@@ -204,6 +204,7 @@ export default function Members({ autoAdd }) {
               <div className="flex flex-col items-end gap-1">
                 <StatusChip status={m.status} />
                 {m.due_amount > 0 && <span className="font-num text-[11px] font-bold text-danger">Due {inr(m.due_amount)}</span>}
+                {!(m.due_amount > 0) && m.credit_balance > 0 && <span className="font-num text-[11px] font-bold text-success" data-testid={`m-member-credit-${m.id}`}>Credit {inr(m.credit_balance)}</span>}
               </div>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
@@ -243,6 +244,7 @@ export default function Members({ autoAdd }) {
               <div className="text-right">
                 <p className="text-[11px] text-muted-foreground">Expires {formatDate(cur.membership_expiry)}</p>
                 {cur.due_amount > 0 && <p className="font-num text-xs font-bold text-danger">Due {inr(cur.due_amount)}</p>}
+                {!(cur.due_amount > 0) && cur.credit_balance > 0 && <p className="font-num text-xs font-bold text-success" data-testid="m-action-credit">Credit {inr(cur.credit_balance)} (used on next renewal)</p>}
               </div>
             </div>
             <ActionRow icon={RefreshCw} tile="bg-brand/12 text-brand" title="Renew Membership" desc="Extend with a plan" onClick={() => setView("renew")} testid="m-action-renew" />

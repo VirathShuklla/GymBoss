@@ -68,7 +68,7 @@ async def update_plan(plan_id: str, body: PlanBody, user: dict = Depends(require
 
 
 @router.delete("/plans/{plan_id}")
-async def delete_plan(plan_id: str, user: dict = Depends(require_write)):
+async def delete_plan(plan_id: str, user: dict = Depends(require_full)):
     res = await db.plans.update_one(
         {"id": plan_id, "organisation_id": user["organisation_id"]},
         {"$set": {"status": "archived", "updated_at": now_utc()}},

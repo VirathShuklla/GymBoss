@@ -286,6 +286,10 @@ def member_status(m: dict, today: date | None = None) -> str:
         frozen_from = date.fromisoformat(frozen_from[:10])
     if frozen_until and frozen_until >= today and (not frozen_from or frozen_from <= today):
         return "frozen"
+    t = today.isoformat()
+    for h in m.get("freeze_history") or []:
+        if not h.get("cancelled") and h.get("freeze_from", "9999") <= t <= (h.get("ended_on") or h.get("freeze_until", "")):
+            return "frozen"
     expiry = m.get("membership_expiry")
     if isinstance(expiry, str):
         expiry = date.fromisoformat(expiry[:10])

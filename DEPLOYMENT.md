@@ -43,7 +43,8 @@ Run it under systemd, supervisor or Docker. Put Nginx/Caddy in front for HTTPS.
 | `STORAGE_BACKEND` | `s3` (any S3-compatible store: AWS S3, Cloudflare R2, DigitalOcean Spaces, self-hosted MinIO) or `emergent` (preview only) |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | AWS S3 / Cloudflare R2 / DigitalOcean Spaces (set `S3_ENDPOINT_URL` for non-AWS) |
 | `EMAIL_PROVIDER` + `SMTP_HOST/PORT/USER/PASSWORD/FROM`, `EMAIL_FROM_NAME` | Password-reset email via any SMTP (Zoho, SES, Gmail Workspace) |
-| `SUPER_ADMIN_USERNAME/PASSWORD/EMAIL` | Seeded BuildVVO super admin. **Change the password** |
+| `SUPER_ADMIN_USERNAME/PASSWORD/EMAIL` | Creates the BuildVVO super admin once (required, no defaults, password ≥10 chars; never reset on restart) |
+| `TRUSTED_PROXIES` | Comma-separated IPs of your reverse proxies (e.g. `127.0.0.1`), so client IPs from X-Forwarded-For are trusted only from them |
 | `SEED_DEMO` | `false` in production, so the demo gym isn't created |
 
 ## 2. Frontend (website, web app, `/m`, billing portal)

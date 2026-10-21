@@ -191,6 +191,7 @@ async def reconcile(razorpay_request) -> dict:
                 await record_autodebit_payment(local, inv["payment_id"], inv.get("amount_paid") or inv.get("amount"), "autodebit_renewal")
                 stats["payments_applied"] += 0 if before else 1
     now = now_utc()
+    await db.subscription_payments.update_many({"status": "created", "created_at": {"$lt": now - timedelta(days=3)}}, {"$set": {"status": "expired"}})
     async for rec in db.subscription_payments.find({"status": "created", "order_id": {"$regex": "^order_"},
                                                     "created_at": {"$gt": now - timedelta(days=3), "$lt": now - timedelta(minutes=10)}}):
         stats["orders_checked"] += 1

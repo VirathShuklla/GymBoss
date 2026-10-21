@@ -165,7 +165,7 @@ class TestOrderFlow:
         o = r.json()
         assert o["order_id"].startswith("order_") and o["amount"] == 99900
         pay = f"pay_TEST{uuid.uuid4().hex[:10]}"
-        ev = {"event": "payment.captured", "payload": {"payment": {"entity": {"id": pay, "order_id": o["order_id"], "status": "captured"}}}}
+        ev = {"event": "payment.captured", "payload": {"payment": {"entity": {"id": pay, "order_id": o["order_id"], "amount": 99900, "currency": "INR", "status": "captured"}}}}
         assert send(ev, f"evt_{uuid.uuid4().hex}").json()["status"] == "processed"
         e1 = ends(org_id)
         assert org_sub(org_id)["status"] == "active"

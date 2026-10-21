@@ -213,6 +213,12 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                       <span className="font-num font-bold text-danger" data-testid="drawer-due-amount">{inr(m.due_amount)}</span>
                     </div>
                   )}
+                  {!(m.due_amount > 0) && m.credit_balance > 0 && (
+                    <div className="mt-3 flex items-center justify-between rounded-lg bg-success/10 px-3 py-2 text-xs">
+                      <span className="font-medium text-success">Credit (used on next renewal)</span>
+                      <span className="font-num font-bold text-success" data-testid="drawer-credit-amount">{inr(m.credit_balance)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
