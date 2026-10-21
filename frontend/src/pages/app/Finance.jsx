@@ -34,16 +34,19 @@ export default function Finance() {
 
   const loadMore = async () => {
     const page = txMeta.page + 1;
-    const { data } = await api.get("/finance/transactions", { params: { ...txParams(), page } });
-    setTransactions((t) => [...(t || []), ...data.items]);
-    setTxMeta({ total: data.total, page });
+    try {
+      const { data } = await api.get("/finance/transactions", { params: { ...txParams(), page } });
+      setTransactions((t) => [...(t || []), ...data.items]);
+      setTxMeta({ total: data.total, page });
+    } catch (e) { toast.error(apiError(e, "Couldn't load more transactions")); }
   };
 
   useEffect(() => {
     const params = txParams();
     if (range === "custom" && !custom.from) return;
-    api.get("/finance/summary", { params }).then(({ data }) => setSummary(data)).catch((e) => toast.error(apiError(e, "Couldn't load finance summary")));
-    api.get("/finance/transactions", { params }).then(({ data }) => { setTransactions(data.items); setTxMeta({ total: data.total, page: 1 }); }).catch(() => setTransactions([]));
+    api.get("/finance/summary", { params }).then(({ data }) => setSummary(data)).catch((e) => { setSummary(null); toast.error(apiError(e, "Couldn't load finance summary")); });
+    api.get("/finance/transactions", { params }).then(({ data }) => { setTransactions(data.items); setTxMeta({ total: data.total, page: 1 }); })
+      .catch(() => { setTransactions([]); setTxMeta({ total: 0, page: 1 }); });
   }, [range, custom.from, custom.to, outletId]);
 
   const cards = [
@@ -59,7 +62,7 @@ export default function Finance() {
     { key: "type", label: "Type", render: (t) => <StatusBadge status={t.type} /> },
     { key: "plan_name", label: "Description", render: (t) => t.plan_name || "—" },
     { key: "method", label: "Method" },
-    { key: "amount", label: "Amount", align: "right", render: (t) => <span className="font-num font-bold text-success">{inr(t.amount)}</span> },
+    { key: "amount", label: "Amount", align: "right", render: (t) => <span className={`font-num font-bold ${t.amount < 0 ? "text-danger" : "text-success"}`}>{t.amount < 0 ? `-${inr(Math.abs(t.amount))}` : inr(t.amount)}</span> },
   ];
 
   return (

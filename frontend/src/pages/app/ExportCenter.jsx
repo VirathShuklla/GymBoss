@@ -2,11 +2,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Download, Users, IndianRupee, ClipboardCheck, Receipt, UserPlus, UserCog, Layers } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
-import { PageHeader } from "../../components/app/ui";
+import { PageHeader, DateField } from "../../components/app/ui";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
-import { Input } from "../../components/ui/input";
 import { downloadExport } from "../../lib/files";
-import { apiError } from "../../lib/api";
+import { blobError } from "../../lib/files";
 
 const DATED = ["payments", "expenses"];
 
@@ -34,14 +33,14 @@ export default function ExportCenter() {
         date_from: DATED.includes(dataset) ? range.from || undefined : undefined,
         date_to: DATED.includes(dataset) ? range.to || undefined : undefined,
       });
-    } catch (e) { toast.error(apiError(e, "Export failed")); } finally { setBusy(null); }
+    } catch (e) { toast.error(await blobError(e, "Export failed")); } finally { setBusy(null); }
   };
 
   return (
     <div data-testid="export-center-page">
       <PageHeader title="Export Center" subtitle="Download your gym data as CSV files. Payment and expense dates are transaction dates (IST)." testid="export-header">
-        <Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} className="h-9 w-40" aria-label="From date" data-testid="export-date-from" />
-        <Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} className="h-9 w-40" aria-label="To date" data-testid="export-date-to" />
+        <div className="w-40"><DateField value={range.from} onChange={(v) => setRange({ ...range, from: v })} testid="export-date-from" placeholder="From" /></div>
+        <div className="w-40"><DateField value={range.to} onChange={(v) => setRange({ ...range, to: v })} testid="export-date-to" placeholder="To" /></div>
         {outlets.length > 1 && (
           <Select value={outletId} onValueChange={setOutletId}>
             <SelectTrigger className="h-9 w-44" data-testid="export-outlet"><SelectValue /></SelectTrigger>

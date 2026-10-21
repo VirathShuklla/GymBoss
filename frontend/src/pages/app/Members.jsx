@@ -3,7 +3,7 @@ import { useLocation, useSearchParams } from "react-router-dom";
 import { Plus, Users, Download, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
-import { downloadExport } from "../../lib/files";
+import { downloadExport, blobError } from "../../lib/files";
 import { inr, formatDate, formatPhone } from "../../lib/format";
 import { waMe } from "../../lib/whatsapp";
 import { useAuth } from "../../contexts/AuthContext";
@@ -140,7 +140,7 @@ export default function Members() {
   return (
     <div data-testid="members-page">
       <PageHeader title="Members" subtitle="Manage your gym members and memberships." testid="members-header">
-        <Button variant="outline" onClick={() => downloadExport("members").catch((e) => toast.error(apiError(e, "Export failed")))} data-testid="members-export">
+        <Button variant="outline" onClick={() => downloadExport("members").catch(async (e) => toast.error(await blobError(e, "Export failed")))} data-testid="members-export">
           <Download className="mr-1.5 h-4 w-4" />Export
         </Button>
         {!readOnly && (

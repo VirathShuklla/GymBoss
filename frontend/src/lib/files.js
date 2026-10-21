@@ -1,6 +1,6 @@
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-import api from "./api";
+import api, { apiError } from "./api";
 import { isNative } from "./inApp";
 
 const toBase64 = (blob) => new Promise((resolve, reject) => {
@@ -55,5 +55,15 @@ export async function shareReceiptPdf(paymentId, receiptNo, text) {
 // CSV exports go through the authenticated API client (works with cookies on web and Bearer tokens in apps).
 export async function downloadExport(dataset, params = {}) {
   const res = await api.get(`/export/${dataset}`, { params, responseType: "blob" });
-  await downloadBlob(res.data, `gymboss_${dataset}_${new Date().toISOString().slice(0, 10)}.csv`);
+  const istDay = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  await downloadBlob(res.data, `gymboss_${dataset}_${istDay}.csv`);
+}
+
+// Blob responses hide the server's JSON error; read it back so the real message is shown.
+export async function blobError(err, fallback) {
+  const data = err?.response?.data;
+  if (data instanceof Blob) {
+    try { return apiError({ response: { data: JSON.parse(await data.text()) } }, fallback); } catch (e) { return fallback; }
+  }
+  return apiError(err, fallback);
 }

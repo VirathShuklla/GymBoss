@@ -1,0 +1,48 @@
+{
+  "summary": "Round 2 testing. Backend: wrote in-process suite backend/tests/test_iter27_round2.py (isolated DB gymboss_r2_tests, dropped at end): 12 tests, 10 pass, 2 fail. Every report total is exact against 6,200 payments, 2,600 expenses and 700 due members: finance/summary (custom + year) revenue/expenses/by_method/by_type/expense_by_category/transaction_count, revenue-trend, outstanding-dues, expenses month totals, and CSV exports that contain all rows and filter on transaction dates. Also passing: IST day/month boundaries (18:45Z Aug 31 counts in Sep; legacy rows backfilled to the IST day), back-dated payments, dashboard today_collection, reversals (original kept with its date, negative entry dated today IST), backfill rerun is idempotent, 22 typed-param cases return 422, upload sniffing and limits (413 for >5MB and for a large Content-Length), legacy unsafe file served as octet-stream attachment with CSP sandbox, tenant isolation 403, password change rotating native tokens (old refresh token 401), subscription purchase snapshot, legacy fallback, autodebit snapshot, and /api/health. FAILED (critical): pagination is unstable when rows share the same sort keys, so pages contain duplicates and miss rows. /api/finance/transactions: 224 duplicates in 6,200 rows. /api/payments: 238 rows missing. /api/expenses: 82 rows missing. Regression: iter25 had 5 failures, all caused by outdated tests (apply_payment(plan_id=) was renamed to purchase=, and the test expected 1 migration but there are now 2). After I updated the tests it passes 20/20. iter26 passes 6/6. HTTP suites iter22 and iter23 pass 42/42 on preview. Frontend (web, demo login): Finance loads totals and the table. 'Load more' went from 50 to 60 rows with no duplicates (60 TEST_ rows seeded, then removed). Custom range in the wrong order shows an error toast with no crash. Reports dues shows 'across 9 members'. Export Center date inputs send date_from/date_to and download CSV through the API with no popup, and the rows respect the range. Members export works. The member drawer's Record Payment and Renew both work. An interrupted payment (route aborted) kept its key in localStorage 'gb-idem'; the retry reused the same Idempotency-Key and the key was removed after success. Mobile /m Finance and the Home today's collection show correct data. All TEST_ data was cleaned up.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/finance/transactions, GET /api/payments, GET /api/expenses", "issue": "Sorting by (payment_date, created_at) or (date, created_at) has no unique tiebreaker. Rows with equal keys come back in a different order on each page (skip/limit), so pages contain duplicates and miss rows. Seen with 6,200 payments: finance/transactions returned 224 duplicates; /payments collected 5,962 unique of 6,200; /expenses collected 2,518 unique of 2,600. Ties happen in practice with bulk imports or several payments written in one transaction with the same ts. Fix: append ('id', -1) to the sorts in finance.py:80, members.py:657, ops.py:115 (and any other skip-paginated list). Optionally add a matching compound index.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/export/{dataset}", "issue": "date_to < date_from is not validated (returns a header-only CSV instead of 422 like finance/summary). CSV cells are not escaped against formula injection (values starting with =,+,-,@)."},
+      {"endpoint": "POST /api/uploads", "issue": "int(content-length) is unguarded. A non-numeric header would raise a 500 if it got past the server (uvicorn normally rejects it first)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Finance custom range (invalid order)", "issue": "After the 422 toast, the KPI cards keep the previous range's figures, and the table shows 'Showing 0 of 12' with a 'Load more' link still visible (txMeta.total is stale). Clicking it triggers another 422, and loadMore has no catch (unhandled rejection). Clear the summary/txMeta on error and wrap loadMore in try/catch.", "selector": "[data-testid=finance-transactions-more]", "priority": "MEDIUM"},
+      {"component": "Finance transactions Amount column", "issue": "Negative reversal entries are rendered green (text-success) like income.", "selector": "finance-transactions-table", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Export download errors", "issue": "downloadExport uses responseType blob, so apiError gets a Blob and the server's 422 detail is never shown (always the generic 'Export failed'). Parse the blob text on error.", "affected_selectors": ["export-download-*", "members-export"]},
+      {"flow": "Export filename", "issue": "The filename date uses new Date().toISOString() (UTC). Between 18:30 and 24:00 UTC it is the previous IST day, which contradicts the 'IST everywhere' requirement and differs from the server's Content-Disposition name.", "affected_selectors": ["export-download-payments"]},
+      {"flow": "Toast copy", "issue": "Raw backend messages such as 'date_to must be on or after date_from' are shown to users. Use friendlier wording ('End date must be on or after start date').", "affected_selectors": ["finance-to"]}
+    ],
+    "design_issues": [
+      {"screen": "Export Center", "issues": ["export-date-from/export-date-to use the native browser <input type=date> (mm/dd/yyyy), while Finance uses the app's shadcn DateField calendar. Use DateField for consistency and so the display format matches the en-IN locale."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter27_round2.py", "/app/backend/tests/test_iter25_txn_recovery.py", "/app/test_reports/pytest/iter27_round2.xml"],
+  "action_items": [
+    "HIGH: add a unique tiebreaker ('id') to the sorts of all skip/limit paginated lists (finance/transactions, /payments, /expenses, and check members/enquiries/attendance lists). Re-run tests/test_iter27_round2.py (finance_transactions_pagination_stable and payments_and_expenses_list_pagination_stable should pass).",
+    "Finance page: reset stale KPIs/txMeta when the range request fails, and add error handling to loadMore.",
+    "Export: validate date_to >= date_from (422). Surface blob error details in downloadExport. Use the IST date in the client filename.",
+    "Export Center: replace the native date inputs with DateField.",
+    "frontend/yarn.lock is present but untracked in git. Commit it, as the requirement asks for a committed lockfile."
+  ],
+  "critical_code_review_comments": [
+    "Pagination with skip and a non-unique sort key is non-deterministic in MongoDB. Always end with a unique field.",
+    "resolve_purchase legacy fallback takes months from the current plan definition (only the amount comes from the record). This is acceptable but should be documented.",
+    "apply_payment fallback (purchase=None) resolves the current price of the org's current plan. Callers should always pass a snapshot. All current callers do.",
+    "The mobile Finance page shows only the latest 50 transactions with a count and no load more. This is acceptable but differs from web."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter27_round2.py (new)", "/app/backend/tests/test_iter25_txn_recovery.py (updated outdated calls: apply_payment plan_id= -> purchase=None; migrations count == len(server.MIGRATIONS))"],
+  "success_rate": {"backend": "10/12 new in-process tests (83%). Regression: iter25 20/20 after test update, iter26 6/6, iter22+23 42/42", "frontend": "95% (all requested flows work; 1 medium state bug)"},
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (identifier) from /app/memory/test_credentials.md, works on web and /m",
+  "seed_data_creation": "Temporarily inserted 60 TEST_r2 payments into the demo org and created the 'TEST_R2 Idem Member' via API. All of it (payments, invoices, member) was deleted afterwards. The in-process suite uses gymboss_r2_tests, which is dropped at the end.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the in-process suites separately with -n 0: tests/test_iter27_round2.py, tests/test_iter25_txn_recovery.py, tests/test_iter26_idem_fp_purge.py. The iter27 bulk fixture uses identical created_at values on purpose to expose sort ties. The Export Center route is /app/export-center. Reports dues is under the 'Outstanding Dues' tab. Mobile finance is /m -> Manage -> m-seg-finance. The system date is Oct 2026 and the IST date flips at 18:30 UTC.",
+  "rca of the issue": "Pagination duplicates. Repro: insert more than 200 payments with the same payment_date and created_at, then page through /api/finance/transactions with limit=200, and some ids repeat. Cause: the MongoDB sort order among equal keys is unspecified and can change between queries, so skip/limit windows overlap. Mitigation: sort [('payment_date',-1),('created_at',-1),('id',-1)] (and the equivalent for expenses), plus an optional index on (organisation_id, payment_date, created_at, id)."
+}

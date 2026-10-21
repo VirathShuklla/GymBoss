@@ -229,7 +229,7 @@ def test_concurrent_migration_workers():
         await db.migrations.delete_many({})
         res = await asyncio.gather(server.run_migrations(), server.run_migrations(), return_exceptions=True)
         assert not [r for r in res if isinstance(r, Exception)], res
-        assert await db.migrations.count_documents({}) == 1
+        assert await db.migrations.count_documents({}) == len(server.MIGRATIONS)
     run(go())
 
 
@@ -253,13 +253,13 @@ def test_apply_payment_faults_rollback():
         for cp in ("subscription.after_ledger", "subscription.after_grant", "subscription.after_payment_row"):
             deps.FAULTS.add(cp)
             with pytest.raises(RuntimeError):
-                await billing_sync.apply_payment(org_id, "pay_F1", plan_id="monthly", order_id=order)
+                await billing_sync.apply_payment(org_id, "pay_F1", purchase=None, order_id=order)
             assert await sub_end(org_id) is None, cp
             assert await db.subscription_ledger.count_documents({"payment_id": "pay_F1"}) == 0, cp
             assert (await db.subscription_payments.find_one({"order_id": order}))["status"] == "created", cp
-        ends = await billing_sync.apply_payment(org_id, "pay_F1", plan_id="monthly", order_id=order)
+        ends = await billing_sync.apply_payment(org_id, "pay_F1", purchase=None, order_id=order)
         assert ends is not None
-        assert await billing_sync.apply_payment(org_id, "pay_F1", plan_id="monthly", order_id=order) is None
+        assert await billing_sync.apply_payment(org_id, "pay_F1", purchase=None, order_id=order) is None
         assert await db.subscription_ledger.count_documents({"payment_id": "pay_F1"}) == 1
         assert (await db.subscription_payments.find_one({"order_id": order}))["status"] == "paid"
         got = await sub_end(org_id)
@@ -270,13 +270,13 @@ def test_apply_payment_faults_rollback():
 def test_apply_payment_concurrency():
     async def go():
         org_id = await bare_org()
-        res = await asyncio.gather(*[billing_sync.apply_payment(org_id, "pay_SAME", plan_id="monthly") for _ in range(5)], return_exceptions=True)
+        res = await asyncio.gather(*[billing_sync.apply_payment(org_id, "pay_SAME", purchase=None) for _ in range(5)], return_exceptions=True)
         assert not [r for r in res if isinstance(r, Exception)], res
         assert len([r for r in res if r]) == 1, res
         e1 = await sub_end(org_id)
         assert abs((e1 - deps.now_utc()) - timedelta(days=30)) < timedelta(minutes=5)
-        res = await asyncio.gather(billing_sync.apply_payment(org_id, "pay_A", plan_id="monthly"),
-                                   billing_sync.apply_payment(org_id, "pay_B", plan_id="monthly"), return_exceptions=True)
+        res = await asyncio.gather(billing_sync.apply_payment(org_id, "pay_A", purchase=None),
+                                   billing_sync.apply_payment(org_id, "pay_B", purchase=None), return_exceptions=True)
         assert all(r and not isinstance(r, Exception) for r in res), res
         e2 = await sub_end(org_id)
         assert abs((e2 - e1) - timedelta(days=60)) < timedelta(seconds=5), (e1, e2)
@@ -291,11 +291,11 @@ def test_apply_payment_side_effect_failures(monkeypatch):
 
     async def go():
         org_id = await bare_org()
-        ends = await billing_sync.apply_payment(org_id, "pay_SE", plan_id="monthly")
+        ends = await billing_sync.apply_payment(org_id, "pay_SE", purchase=None)
         assert ends is not None
         assert await db.subscription_ledger.count_documents({"payment_id": "pay_SE"}) == 1
         assert await sub_end(org_id) == ends or abs(await sub_end(org_id) - ends) < timedelta(seconds=1)
-        assert await billing_sync.apply_payment(org_id, "pay_SE", plan_id="monthly") is None
+        assert await billing_sync.apply_payment(org_id, "pay_SE", purchase=None) is None
         assert abs(await sub_end(org_id) - ends) < timedelta(seconds=1)
     run(go())
 

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="12" time="8.320" timestamp="2026-10-21T17:45:16.352118+00:00" hostname="agent-env-64f3f082-576e-49f8-be0e-bae55610f17f"><testcase classname="tests.test_iter27_round2" name="test_finance_summary_exact_beyond_caps" time="1.088" /><testcase classname="tests.test_iter27_round2" name="test_finance_transactions_pagination_stable" time="1.027"><failure message="AssertionError: 224 duplicate rows across pages (unstable sort: ties on payment_date+created_at, no unique tiebreaker)&#10;assert 224 == 0">tests/test_iter27_round2.py:165: in test_finance_transactions_pagination_stable
+    run(go())
+tests/test_iter27_round2.py:33: in run
+    return LOOP.run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+tests/test_iter27_round2.py:163: in go
+    assert dup == 0, f"{dup} duplicate rows across pages (unstable sort: ties on payment_date+created_at, no unique tiebreaker)"
+E   AssertionError: 224 duplicate rows across pages (unstable sort: ties on payment_date+created_at, no unique tiebreaker)
+E   assert 224 == 0</failure></testcase><testcase classname="tests.test_iter27_round2" name="test_revenue_trend_and_dues_and_expenses_exact" time="0.113" /><testcase classname="tests.test_iter27_round2" name="test_exports_all_rows_and_date_filters" time="0.118" /><testcase classname="tests.test_iter27_round2" name="test_ist_month_boundaries_and_backdated_and_dashboard" time="0.395" /><testcase classname="tests.test_iter27_round2" name="test_legacy_backfill_idempotent" time="0.038" /><testcase classname="tests.test_iter27_round2" name="test_typed_params_422" time="0.300" /><testcase classname="tests.test_iter27_round2" name="test_uploads_sniffing_limits_and_serving" time="0.616" /><testcase classname="tests.test_iter27_round2" name="test_change_password_native_tokens_rotate" time="2.058" /><testcase classname="tests.test_iter27_round2" name="test_subscription_purchase_snapshot" time="0.814" /><testcase classname="tests.test_iter27_round2" name="test_health" time="0.002" /><testcase classname="tests.test_iter27_round2" name="test_payments_and_expenses_list_pagination_stable" time="1.165"><failure message="AssertionError: {'/api/payments': (6200, 5962, 6200), '/api/expenses': (2600, 2518, 2600)}&#10;assert False&#10; +  where False = all(&lt;generator object test_payments_and_expenses_list_pagination_stable.&lt;locals&gt;.go.&lt;locals&gt;.&lt;genexpr&gt; at 0xf87813cdfc40&gt;)">tests/test_iter27_round2.py:545: in test_payments_and_expenses_list_pagination_stable
+    run(go())
+tests/test_iter27_round2.py:33: in run
+    return LOOP.run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+tests/test_iter27_round2.py:544: in go
+    assert all(a == u == n for a, u, n in res.values()), res
+E   AssertionError: {'/api/payments': (6200, 5962, 6200), '/api/expenses': (2600, 2518, 2600)}
+E   assert False
+E    +  where False = all(&lt;generator object test_payments_and_expenses_list_pagination_stable.&lt;locals&gt;.go.&lt;locals&gt;.&lt;genexpr&gt; at 0xf87813cdfc40&gt;)</failure></testcase></testsuite></testsuites>

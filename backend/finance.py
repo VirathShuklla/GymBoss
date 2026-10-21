@@ -31,7 +31,7 @@ def range_days(range_name: str, date_from: Optional[str], date_to: Optional[str]
         if not start_d:
             raise HTTPException(422, "date_from is required for a custom range")
     if end_d < start_d:
-        raise HTTPException(422, "date_to must be on or after date_from")
+        raise HTTPException(422, "End date must be on or after start date")
     if (end_d - start_d).days > 3700:
         raise HTTPException(422, "Date range is too long (max 10 years)")
     return start_d.isoformat(), end_d.isoformat()
@@ -77,7 +77,7 @@ async def finance_transactions(range: str = "month", date_from: Optional[str] = 
     start, end = range_days(range, date_from, date_to)
     q = {**_scope(user["organisation_id"], outlet_id), "payment_date": {"$gte": start, "$lte": end}}
     amount, total = await _sum_count("payments", q)
-    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1), ("id", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     return {"items": items, "total": total, "amount_total": amount, "page": page, "limit": limit}
 
 
@@ -181,6 +181,15 @@ EXPORTS = {
 }
 
 
+def _cell(v):
+    """CSV cell; text starting with = + - @ is prefixed with ' so spreadsheets don't run it as a formula."""
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
 @router.get("/export/{dataset}")
 async def export_dataset(dataset: str, outlet_id: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None,
                          user: dict = Depends(require_finance_access)):
@@ -191,6 +200,8 @@ async def export_dataset(dataset: str, outlet_id: Optional[str] = None, date_fro
     if dataset == "members":
         q["deleted_at"] = None
     d_from, d_to = parse_day(date_from, "date_from"), parse_day(date_to, "date_to")
+    if d_from and d_to and d_to < d_from:
+        raise HTTPException(422, "End date must be on or after start date")
     if date_field and (d_from or d_to):
         q[date_field] = {**({"$gte": d_from.isoformat()} if d_from else {}), **({"$lte": d_to.isoformat()} if d_to else {})}
     sort = [(date_field, 1)] if date_field else [("_id", 1)]
@@ -200,7 +211,7 @@ async def export_dataset(dataset: str, outlet_id: Optional[str] = None, date_fro
         writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         async for r in db[collection].find(q, {"_id": 0, **{f: 1 for f in fields}}).sort(sort):
-            writer.writerow({k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in r.items()})
+            writer.writerow({k: _cell(v) for k, v in r.items()})
             if buf.tell() > 64_000:
                 yield buf.getvalue()
                 buf.seek(0)

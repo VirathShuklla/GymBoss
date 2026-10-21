@@ -112,7 +112,7 @@ async def list_expenses(month: Optional[int] = None, year: Optional[int] = None,
             raise HTTPException(422, "Provide a valid month (1-12) and year together")
         q["date"] = {"$regex": f"^{year}-{month:02d}-"}
     rows = await db.expenses.aggregate([{"$match": q}, {"$group": {"_id": None, "t": {"$sum": "$amount"}, "n": {"$sum": 1}}}]).to_list(1)
-    items = await db.expenses.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    items = await db.expenses.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1), ("id", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     return {"items": items, "total_amount": round(rows[0]["t"], 2) if rows else 0, "total": rows[0]["n"] if rows else 0, "page": page, "limit": limit}
 
 

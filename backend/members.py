@@ -654,7 +654,7 @@ async def list_payments(
         rx = {"$regex": re.escape(search.strip()), "$options": "i"}
         q["$or"] = [{"member_name": rx}, {"receipt_no": rx}]
     total = await db.payments.count_documents(q)
-    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1), ("id", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     return {"items": items, "total": total, "page": page, "limit": limit}
 
 
@@ -770,7 +770,10 @@ def sniff_type(data: bytes) -> str | None:
 
 async def read_limited_body(request: Request, limit: int) -> None:
     """Stream the request body and abort as soon as it exceeds the limit (never buffers an oversized upload)."""
-    if int(request.headers.get("content-length") or 0) > limit:
+    declared = request.headers.get("content-length") or "0"
+    if not declared.isdigit():
+        raise HTTPException(400, "Invalid Content-Length")
+    if int(declared) > limit:
         raise HTTPException(413, "File too large (max 5 MB)")
     body = bytearray()
     async for chunk in request.stream():
