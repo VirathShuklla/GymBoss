@@ -1,11 +1,11 @@
 """Idempotent Razorpay → entitlement sync: payment ledger, webhook handling and daily reconciliation."""
 import logging
-from datetime import timedelta
+from datetime import timedelta, timezone
 
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from deps import db, now_utc, new_id, audit, get_pricing_plan, get_plan_price
+from deps import db, now_utc, new_id, audit, get_pricing_plan, get_plan_price, run_txn, checkpoint, best_effort
 from analytics import track
 
 logger = logging.getLogger(__name__)
@@ -15,70 +15,117 @@ SUB_STATUS = {
     "halted": "halted", "paused": "paused", "cancelled": "cancelled", "completed": "completed", "expired": "cancelled",
 }
 OPEN_SUB_STATUSES = ["created", "authenticated", "active", "pending", "halted", "paused"]
+BILLABLE_SUB_STATUSES = OPEN_SUB_STATUSES + ["abandoned"]
+REMOTE_ENDED = ("cancelled", "completed", "expired")
+EVENT_LEASE = timedelta(minutes=5)
 
 
 async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", plan_id: str | None = None,
-                        order_id: str | None = None):
-    """Extend access exactly once per Razorpay payment_id. Returns new end date, or None if already applied."""
+                        order_id: str | None = None, payment_row: dict | None = None):
+    """Extend access exactly once per Razorpay payment_id, atomically with its ledger entry and payment row.
+    Returns the new end date, or None if already applied."""
     if not payment_id:
         return None
+
+    async def txn(s):
+        if payment_row:
+            await db.subscription_payments.update_one(
+                {"payment_id": payment_id, "organisation_id": org_id}, {"$setOnInsert": payment_row}, upsert=True, session=s)
+        if await db.subscription_ledger.find_one({"payment_id": payment_id}, session=s):
+            return None
+        org = await db.organisations.find_one({"id": org_id}, session=s)
+        if not org:
+            return None
+        now = now_utc()
+        await db.subscription_ledger.insert_one({"payment_id": payment_id, "organisation_id": org_id, "order_id": order_id,
+                                                 "status": "applied", "created_at": now}, session=s)
+        await checkpoint("subscription.after_ledger")
+        sub = org.get("subscription", {})
+        plan = await get_pricing_plan(plan_id or sub.get("plan"))
+        base = sub.get("subscription_ends_at")
+        if base is not None and base.tzinfo is None:
+            base = base.replace(tzinfo=timezone.utc)
+        ends = (base if base and base > now else now) + timedelta(days=30 * plan["months"])
+        await db.organisations.update_one({"id": org_id}, {"$set": {
+            "subscription.status": "active",
+            "subscription.subscription_started_at": sub.get("subscription_started_at") or now,
+            "subscription.subscription_ends_at": ends,
+            "subscription.plan": plan["id"],
+            "subscription.plan_months": plan["months"],
+            "subscription.amount": plan["effective_price"],
+            "subscription.billing_issue": False,
+        }}, session=s)
+        await checkpoint("subscription.after_grant")
+        if order_id:
+            await db.subscription_payments.update_one(
+                {"organisation_id": org_id, "order_id": order_id, "status": {"$ne": "paid"}},
+                {"$set": {"status": "paid", "payment_id": payment_id, "paid_at": now}}, session=s,
+            )
+        await checkpoint("subscription.after_payment_row")
+        return ends, plan
+
     try:
-        await db.subscription_ledger.insert_one({"payment_id": payment_id, "organisation_id": org_id, "order_id": order_id, "created_at": now_utc()})
+        res = await run_txn(txn)
     except DuplicateKeyError:
         return None
-    try:
-        return await _extend_access(org_id, payment_id, actor, plan_id, order_id)
-    except Exception:
-        await db.subscription_ledger.delete_one({"payment_id": payment_id})
-        raise
-
-
-async def _extend_access(org_id: str, payment_id: str, actor: str, plan_id: str | None, order_id: str | None):
-    now = now_utc()
-    org = await db.organisations.find_one({"id": org_id})
-    if not org:
-        await db.subscription_ledger.delete_one({"payment_id": payment_id})
+    if not res:
         return None
-    sub = org.get("subscription", {})
-    plan = await get_pricing_plan(plan_id or sub.get("plan"))
-    base = sub.get("subscription_ends_at")
-    if base is not None and base.tzinfo is None:
-        from datetime import timezone
-        base = base.replace(tzinfo=timezone.utc)
-    start = base if base and base > now else now
-    ends = start + timedelta(days=30 * plan["months"])
-    await db.organisations.update_one({"id": org_id}, {"$set": {
-        "subscription.status": "active",
-        "subscription.subscription_started_at": sub.get("subscription_started_at") or now,
-        "subscription.subscription_ends_at": ends,
-        "subscription.plan": plan["id"],
-        "subscription.plan_months": plan["months"],
-        "subscription.amount": plan["effective_price"],
-        "subscription.billing_issue": False,
-    }})
-    if order_id:
-        await db.subscription_payments.update_one(
-            {"organisation_id": org_id, "order_id": order_id, "status": {"$ne": "paid"}},
-            {"$set": {"status": "paid", "payment_id": payment_id, "paid_at": now}},
-        )
-    await audit(actor, "subscription.activated", org_id, {"payment_id": payment_id, "ends": ends.isoformat()}, org_id)
-    await track("payment_successful", org_id, props={"payment_id": payment_id, "plan": plan["id"], "amount": plan["effective_price"]})
-    await track("subscription_started", org_id, props={"plan": plan["id"]}, once=True)
+    ends, plan = res
+    await best_effort(audit(actor, "subscription.activated", org_id, {"payment_id": payment_id, "ends": ends.isoformat()}, org_id))
+    await best_effort(track("payment_successful", org_id, props={"payment_id": payment_id, "plan": plan["id"], "amount": plan["effective_price"]}))
+    await best_effort(track("subscription_started", org_id, props={"plan": plan["id"]}, once=True))
     return ends
 
 
 async def record_autodebit_payment(local: dict, payment_id: str, amount_paise: int | None, kind: str):
-    """Upsert a paid autodebit payment row (verify + webhook may both report the same payment)."""
+    """Paid autodebit payment row + access grant in one transaction (verify + webhook may both report it)."""
     ts = now_utc()
     amount = round(amount_paise / 100) if amount_paise else (local.get("amount") or await get_plan_price())
-    await db.subscription_payments.update_one(
-        {"payment_id": payment_id, "organisation_id": local["organisation_id"]},
-        {"$setOnInsert": {"id": new_id(), "organisation_id": local["organisation_id"], "order_id": local["razorpay_subscription_id"],
-                          "payment_id": payment_id, "amount": amount, "currency": "INR", "status": "paid", "kind": kind,
-                          "plan_id": local.get("plan_key"), "created_at": ts, "paid_at": ts}},
-        upsert=True,
-    )
-    await apply_payment(local["organisation_id"], payment_id, plan_id=local.get("plan_key"))
+    row = {"id": new_id(), "organisation_id": local["organisation_id"], "order_id": local["razorpay_subscription_id"],
+           "payment_id": payment_id, "amount": amount, "currency": "INR", "status": "paid", "kind": kind,
+           "plan_id": local.get("plan_key"), "created_at": ts, "paid_at": ts}
+    await apply_payment(local["organisation_id"], payment_id, plan_id=local.get("plan_key"), payment_row=row)
+
+
+async def cancel_remote_subscription(razorpay_request, sub: dict, reason: str) -> bool:
+    """Cancel at Razorpay with a durable op record. True only once Razorpay confirms it can no longer bill."""
+    rzp_id, org_id = sub["razorpay_subscription_id"], sub["organisation_id"]
+    op_id = f"cancel_subscription:{rzp_id}"
+    now = now_utc()
+    await db.razorpay_ops.update_one({"id": op_id}, {"$setOnInsert": {
+        "id": op_id, "kind": "cancel_subscription", "organisation_id": org_id, "target": rzp_id, "local_id": sub["id"],
+        "reason": reason, "status": "pending", "attempts": 0, "created_at": now}}, upsert=True)
+    remote_status, error = None, None
+    try:
+        data, _ = await razorpay_request("POST", f"/subscriptions/{rzp_id}/cancel")
+        remote_status = data.get("status")
+    except HTTPException as e:
+        error = f"cancel failed: {e.detail}"
+    if remote_status not in REMOTE_ENDED:
+        try:
+            data, _ = await razorpay_request("GET", f"/subscriptions/{rzp_id}")
+            remote_status = data.get("status")
+        except HTTPException as e:
+            error = f"{error or ''} status check failed: {e.detail}".strip()
+    confirmed = remote_status in REMOTE_ENDED
+    await db.razorpay_ops.update_one({"id": op_id}, {
+        "$set": {"status": "succeeded" if confirmed else "failed", "remote_status": remote_status,
+                 "last_error": None if confirmed else (error or f"Razorpay status is {remote_status}"), "last_attempt_at": now},
+        "$inc": {"attempts": 1}})
+    if confirmed:
+        await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "cancelled", "cancelled_at": now}})
+    else:
+        logger.error("Razorpay cancellation of %s not confirmed: %s", rzp_id, error or remote_status)
+    return confirmed
+
+
+async def retry_pending_cancellations(razorpay_request) -> int:
+    done = 0
+    async for op in db.razorpay_ops.find({"kind": "cancel_subscription", "status": {"$in": ["pending", "failed"]}}):
+        sub = await db.subscriptions.find_one({"id": op["local_id"]}) or {
+            "id": op["local_id"], "razorpay_subscription_id": op["target"], "organisation_id": op["organisation_id"]}
+        done += 1 if await cancel_remote_subscription(razorpay_request, sub, op.get("reason") or "retry") else 0
+    return done
 
 
 async def _set_sub_status(local: dict, status: str, extra: dict | None = None):
@@ -148,25 +195,38 @@ async def handle_payment_event(event_name: str, event: dict) -> str:
     return "processed"
 
 
-async def claim_event(event_id: str, event_name: str) -> bool:
-    """False if this webhook event was already processed (Razorpay retries / duplicate deliveries)."""
+async def claim_event(event_id: str, event_name: str) -> str:
+    """'new' = process it; 'duplicate' = already done; 'busy' = another worker holds a fresh lease.
+    A crashed or failed claim is re-claimable, so a webhook is never silently skipped."""
     if not event_id:
-        return True
+        return "new"
+    now = now_utc()
     try:
-        await db.webhook_events.insert_one({"event_id": event_id, "event": event_name, "received_at": now_utc()})
-        return True
+        await db.webhook_events.insert_one({"event_id": event_id, "event": event_name, "status": "processing",
+                                            "claimed_at": now, "attempts": 1, "received_at": now})
+        return "new"
     except DuplicateKeyError:
-        return False
+        pass
+    reclaimed = await db.webhook_events.find_one_and_update(
+        {"event_id": event_id, "$or": [{"status": "failed"}, {"status": "processing", "claimed_at": {"$lt": now - EVENT_LEASE}}]},
+        {"$set": {"status": "processing", "claimed_at": now}, "$inc": {"attempts": 1}},
+    )
+    if reclaimed:
+        return "new"
+    existing = await db.webhook_events.find_one({"event_id": event_id}) or {}
+    return "busy" if existing.get("status") == "processing" else "duplicate"
 
 
-async def release_event(event_id: str):
+async def finish_event(event_id: str, ok: bool, error: str | None = None):
     if event_id:
-        await db.webhook_events.delete_one({"event_id": event_id})
+        await db.webhook_events.update_one({"event_id": event_id}, {"$set": {
+            "status": "done" if ok else "failed", "finished_at": now_utc(), "last_error": error}})
 
 
 async def reconcile(razorpay_request) -> dict:
     """Pull truth from Razorpay for open subscriptions and recent unpaid orders. Safe to run repeatedly."""
-    stats = {"subscriptions_checked": 0, "status_updates": 0, "payments_applied": 0, "orders_checked": 0, "errors": 0}
+    stats = {"subscriptions_checked": 0, "status_updates": 0, "payments_applied": 0, "orders_checked": 0, "errors": 0,
+             "cancellations_confirmed": await retry_pending_cancellations(razorpay_request)}
     async for local in db.subscriptions.find({"status": {"$in": OPEN_SUB_STATUSES}}):
         stats["subscriptions_checked"] += 1
         sid = local["razorpay_subscription_id"]

@@ -13,10 +13,23 @@ from deps import (
     db, now_utc, today_ist, new_id, get_org_user, require_write, get_current_user, audit,
     add_duration, member_status, days_left, member_public,
     next_receipt_no, next_member_code, normalize_phone, put_object, get_object, require_full,
+    run_txn, checkpoint, best_effort, idem_key, idem_lookup, idem_save,
 )
-from member_ledger import validate_method, membership_plan, cycle_payable, create_invoice, recompute, touch
+from member_ledger import validate_method, membership_plan, cycle_payable, create_invoice, recompute
+from pymongo.errors import DuplicateKeyError
 
 router = APIRouter(tags=["members"])
+
+
+async def commit(org_id: str, key: str | None, scope: str, fn, conflict_msg: str):
+    """Run a financial transaction. Returns (result, prior_idempotency_doc_or_None)."""
+    try:
+        return await run_txn(fn), None
+    except DuplicateKeyError:
+        prior = await idem_lookup(org_id, key, scope)
+        if prior:
+            return None, prior
+        raise HTTPException(409, conflict_msg)
 
 
 # ---------------- Plans & Catalogue ----------------
@@ -107,8 +120,12 @@ class MemberBody(BaseModel):
     outlet_id: Optional[str] = None
 
 
-async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None = None) -> dict:
+async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None = None, key: str | None = None) -> dict:
     org_id = user["organisation_id"]
+    scope = "member.create"
+    prior = await idem_lookup(org_id, key, scope)
+    if prior:
+        return member_public(await db.members.find_one({"id": prior["ref"]}))
     plan = await membership_plan(org_id, body.plan_id)
     validate_method(body.payment_method)
     phone = normalize_phone(body.phone)
@@ -131,13 +148,54 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
     payment_status = "Paid" if due == 0 else ("Partially Paid" if body.amount_paid > 0 else "Due")
     ts = now_utc()
     org_name = (user.get("org_doc") or {}).get("name", "Gym")
-    member = {
-        "id": new_id(),
+    member_id = new_id()
+
+    async def txn(s):
+        member = await _new_member_doc(s, member_id, org_id, org_name, outlet_id, body, plan, start, expiry, price, payable, payment_status, due, ts)
+        await db.members.insert_one(member, session=s)
+        await checkpoint("member.create.after_member")
+        await create_invoice(s, org_id, member_id, "admission", plan, payable, start.isoformat(), expiry.isoformat(), user["id"])
+        await checkpoint("member.create.after_invoice")
+        if body.batch:
+            await db.batches.update_one(
+                {"organisation_id": org_id, "name": body.batch.strip()},
+                {"$setOnInsert": {"id": new_id(), "organisation_id": org_id, "name": body.batch.strip(), "created_at": ts}},
+                upsert=True, session=s,
+            )
+        onboarding = {"onboarding.member": True}
+        if body.amount_paid > 0:
+            await db.payments.insert_one({
+                "id": new_id(), "organisation_id": org_id, "outlet_id": outlet_id, "member_id": member_id,
+                "member_name": member["full_name"], "type": "admission", "plan_name": plan["name"],
+                "amount": body.amount_paid, "discount": body.discount, "admission_amount": body.admission_amount,
+                "payment_date": (body.payment_date or today_ist()).isoformat(), "method": body.payment_method,
+                "receipt_no": await next_receipt_no(org_id, s), "status": "active", "created_at": ts, "created_by": user["id"],
+            }, session=s)
+            await checkpoint("member.create.after_payment")
+            onboarding["onboarding.payment"] = True
+        await db.organisations.update_one({"id": org_id}, {"$set": onboarding}, session=s)
+        if enquiry_id:
+            await db.enquiries.update_one({"id": enquiry_id, "organisation_id": org_id}, {"$set": {"status": "Converted", "converted_member_id": member_id}}, session=s)
+        await idem_save(s, org_id, key, scope, member_id)
+        member.update(await recompute(s, org_id, member_id))
+        return member
+
+    member, prior = await commit(org_id, key, scope, txn, "A member with this code already exists. Please retry.")
+    if prior:
+        return member_public(await db.members.find_one({"id": prior["ref"]}))
+    await best_effort(audit(user["id"], "member.created", member_id, {"name": member["full_name"]}, org_id))
+    await best_effort(after_change(org_id, user["id"]))
+    return member_public(member)
+
+
+async def _new_member_doc(s, member_id, org_id, org_name, outlet_id, body, plan, start, expiry, price, payable, payment_status, due, ts) -> dict:
+    return {
+        "id": member_id,
         "organisation_id": org_id,
         "outlet_id": outlet_id,
-        "member_code": await next_member_code(org_id, org_name),
+        "member_code": await next_member_code(org_id, org_name, s),
         "full_name": body.full_name.strip(),
-        "phone": f"+91{phone}",
+        "phone": f"+91{normalize_phone(body.phone)}",
         "email": (body.email or "").strip().lower() or None,
         "gender": body.gender,
         "dob": body.dob,
@@ -170,45 +228,11 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
         "created_at": ts,
         "deleted_at": None,
     }
-    await db.members.insert_one(member)
-    await create_invoice(org_id, member["id"], "admission", plan, payable, start.isoformat(), expiry.isoformat(), user["id"])
-    if body.batch:
-        await db.batches.update_one(
-            {"organisation_id": org_id, "name": body.batch.strip()},
-            {"$setOnInsert": {"id": new_id(), "organisation_id": org_id, "name": body.batch.strip(), "created_at": ts}},
-            upsert=True,
-        )
-    if body.amount_paid > 0:
-        await db.payments.insert_one({
-            "id": new_id(),
-            "organisation_id": org_id,
-            "outlet_id": outlet_id,
-            "member_id": member["id"],
-            "member_name": member["full_name"],
-            "type": "admission",
-            "plan_name": plan["name"],
-            "amount": body.amount_paid,
-            "discount": body.discount,
-            "admission_amount": body.admission_amount,
-            "payment_date": (body.payment_date or today_ist()).isoformat(),
-            "method": body.payment_method,
-            "receipt_no": await next_receipt_no(org_id),
-            "created_at": ts,
-            "created_by": user["id"],
-        })
-        await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}})
-    await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.member": True}})
-    member.update(await recompute(org_id, member["id"]))
-    if enquiry_id:
-        await db.enquiries.update_one({"id": enquiry_id, "organisation_id": org_id}, {"$set": {"status": "Converted", "converted_member_id": member["id"]}})
-    await audit(user["id"], "member.created", member["id"], {"name": member["full_name"]}, org_id)
-    await after_change(org_id, user["id"])
-    return member_public(member)
 
 
 @router.post("/members")
-async def create_member(body: MemberBody, enquiry_id: Optional[str] = None, user: dict = Depends(require_write)):
-    return await create_membership(user, body, enquiry_id)
+async def create_member(body: MemberBody, request: Request, enquiry_id: Optional[str] = None, user: dict = Depends(require_write)):
+    return await create_membership(user, body, enquiry_id, idem_key(request))
 
 
 @router.get("/members/next-code")
@@ -405,41 +429,52 @@ class RenewBody(BaseModel):
 
 
 @router.post("/members/{member_id}/renew")
-async def renew_member(member_id: str, body: RenewBody, user: dict = Depends(require_write)):
+async def renew_member(member_id: str, body: RenewBody, request: Request, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
-    m = await db.members.find_one({"id": member_id, "organisation_id": org_id, "deleted_at": None})
-    if not m:
-        raise HTTPException(404, "Member not found")
+    key, scope = idem_key(request), f"member.renew:{member_id}"
+    if await idem_lookup(org_id, key, scope):
+        return member_public(await db.members.find_one({"id": member_id, "organisation_id": org_id}))
     plan = await membership_plan(org_id, body.plan_id)
     validate_method(body.payment_method)
-    today = today_ist()
-    expiry = date.fromisoformat(str(m["membership_expiry"])[:10])
-    start = max(today, expiry)
-    new_expiry = add_duration(start, plan.get("duration_type") or "months", plan.get("duration") or 1)
     price = plan.get("price", 0)
     payable = cycle_payable(price, 0, body.discount)
-    ts = now_utc()
-    await touch(member_id)
-    await db.members.update_one({"id": member_id}, {"$set": {
-        "plan_id": plan["id"], "plan_name": plan["name"], "plan_price": price,
-        "membership_start": start.isoformat(), "membership_expiry": new_expiry.isoformat(),
-        "discount": body.discount, "admission_amount": 0,
-        "payable": payable, "frozen_from": None, "frozen_until": None, "updated_at": ts,
-    }})
-    await create_invoice(org_id, member_id, "renewal", plan, payable, start.isoformat(), new_expiry.isoformat(), user["id"])
-    if body.amount_paid > 0:
-        await db.payments.insert_one({
-            "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
-            "member_id": member_id, "member_name": m["full_name"], "type": "renewal",
-            "plan_name": plan["name"], "amount": body.amount_paid, "discount": body.discount,
-            "method": body.payment_method, "receipt_no": await next_receipt_no(org_id),
-            "payment_date": today.isoformat(), "created_at": ts, "created_by": user["id"],
-        })
-    await recompute(org_id, member_id)
-    await audit(user["id"], "member.renewed", member_id, {"plan": plan["name"]}, org_id)
-    await after_change(org_id, user["id"])
-    updated = await db.members.find_one({"id": member_id})
-    return member_public(updated)
+
+    async def txn(s):
+        m = await db.members.find_one({"id": member_id, "organisation_id": org_id, "deleted_at": None}, session=s)
+        if not m:
+            raise HTTPException(404, "Member not found")
+        today = today_ist()
+        start = max(today, date.fromisoformat(str(m["membership_expiry"])[:10]))
+        new_expiry = add_duration(start, plan.get("duration_type") or "months", plan.get("duration") or 1)
+        ts = now_utc()
+        res = await db.members.update_one({"id": member_id, "membership_expiry": m["membership_expiry"]}, {"$set": {
+            "plan_id": plan["id"], "plan_name": plan["name"], "plan_price": price,
+            "membership_start": start.isoformat(), "membership_expiry": new_expiry.isoformat(),
+            "discount": body.discount, "admission_amount": 0,
+            "payable": payable, "frozen_from": None, "frozen_until": None, "updated_at": ts,
+        }, "$inc": {"ledger_rev": 1}}, session=s)
+        if not res.modified_count:
+            raise HTTPException(409, "This member was renewed at the same time. Please refresh and retry.")
+        await checkpoint("renew.after_member")
+        await create_invoice(s, org_id, member_id, "renewal", plan, payable, start.isoformat(), new_expiry.isoformat(), user["id"])
+        await checkpoint("renew.after_invoice")
+        if body.amount_paid > 0:
+            await db.payments.insert_one({
+                "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
+                "member_id": member_id, "member_name": m["full_name"], "type": "renewal",
+                "plan_name": plan["name"], "amount": body.amount_paid, "discount": body.discount,
+                "method": body.payment_method, "receipt_no": await next_receipt_no(org_id, s), "status": "active",
+                "payment_date": today.isoformat(), "created_at": ts, "created_by": user["id"],
+            }, session=s)
+            await checkpoint("renew.after_payment")
+        await idem_save(s, org_id, key, scope, member_id)
+        await recompute(s, org_id, member_id)
+
+    _, prior = await commit(org_id, key, scope, txn, "This membership cycle already has an invoice. Please refresh.")
+    if not prior:
+        await best_effort(audit(user["id"], "member.renewed", member_id, {"plan": plan["name"]}, org_id))
+        await best_effort(after_change(org_id, user["id"]))
+    return member_public(await db.members.find_one({"id": member_id}))
 
 
 # ---------------- Payments ----------------
@@ -452,33 +487,48 @@ class PaymentBody(BaseModel):
     payment_date: Optional[date] = None
 
 
+async def _payment_response(payment_id: str) -> dict:
+    p = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    m = await db.members.find_one({"id": p["member_id"]}, {"due_amount": 1, "credit_balance": 1})
+    p["member_due_remaining"] = (m or {}).get("due_amount", 0)
+    p["member_credit"] = (m or {}).get("credit_balance", 0)
+    return p
+
+
 @router.post("/payments")
-async def record_payment(body: PaymentBody, user: dict = Depends(require_write)):
+async def record_payment(body: PaymentBody, request: Request, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
     validate_method(body.method)
-    m = await db.members.find_one({"id": body.member_id, "organisation_id": org_id, "deleted_at": None})
-    if not m:
-        raise HTTPException(404, "Member not found")
-    ts = now_utc()
-    await touch(m["id"])
-    payment = {
-        "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
-        "member_id": m["id"], "member_name": m["full_name"], "type": "due",
-        "plan_name": m.get("plan_name"), "amount": body.amount, "method": body.method,
-        "notes": body.notes, "receipt_no": await next_receipt_no(org_id),
-        "payment_date": (body.payment_date or today_ist()).isoformat(), "status": "active",
-        "created_at": ts, "created_by": user["id"],
-    }
-    await db.payments.insert_one(payment)
-    bal = await recompute(org_id, m["id"])
-    new_due = bal["due_amount"]
-    await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}})
-    await audit(user["id"], "payment.recorded", payment["id"], {"amount": body.amount, "member": m["full_name"]}, org_id)
-    await after_change(org_id, user["id"])
-    payment.pop("_id", None)
-    payment["member_due_remaining"] = new_due
-    payment["member_credit"] = bal["credit_balance"]
-    return payment
+    key, scope = idem_key(request), "payment.record"
+    prior = await idem_lookup(org_id, key, scope)
+    if prior:
+        return await _payment_response(prior["ref"])
+    payment_id = new_id()
+
+    async def txn(s):
+        m = await db.members.find_one({"id": body.member_id, "organisation_id": org_id, "deleted_at": None}, session=s)
+        if not m:
+            raise HTTPException(404, "Member not found")
+        await db.payments.insert_one({
+            "id": payment_id, "organisation_id": org_id, "outlet_id": m["outlet_id"],
+            "member_id": m["id"], "member_name": m["full_name"], "type": "due",
+            "plan_name": m.get("plan_name"), "amount": body.amount, "method": body.method,
+            "notes": body.notes, "receipt_no": await next_receipt_no(org_id, s),
+            "payment_date": (body.payment_date or today_ist()).isoformat(), "status": "active",
+            "created_at": now_utc(), "created_by": user["id"],
+        }, session=s)
+        await checkpoint("payment.record.after_payment")
+        await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}}, session=s)
+        await idem_save(s, org_id, key, scope, payment_id)
+        await recompute(s, org_id, m["id"])
+        return m
+
+    m, prior = await commit(org_id, key, scope, txn, "This payment was already recorded.")
+    if prior:
+        return await _payment_response(prior["ref"])
+    await best_effort(audit(user["id"], "payment.recorded", payment_id, {"amount": body.amount, "member": m["full_name"]}, org_id))
+    await best_effort(after_change(org_id, user["id"]))
+    return await _payment_response(payment_id)
 
 
 class PaymentEditBody(BaseModel):
@@ -496,48 +546,79 @@ async def edit_payment(payment_id: str, body: PaymentEditBody, user: dict = Depe
     org_id = user["organisation_id"]
     if body.method is not None:
         validate_method(body.method)
-    p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
-    if not p:
-        raise HTTPException(404, "Payment not found")
-    if p.get("status") == "reversed" or p.get("type") == "reversal":
-        raise HTTPException(409, "Reversed payments can't be edited")
-    old_amount = p.get("amount", 0)
-    set_fields = {"amount": body.amount, "updated_at": now_utc(), "edited_by": user["id"]}
-    if body.method is not None:
-        set_fields["method"] = body.method
-    if body.notes is not None:
-        set_fields["notes"] = body.notes
-    await touch(p["member_id"])
-    await db.payments.update_one({"id": payment_id, "organisation_id": org_id}, {"$set": set_fields, "$push": {"edit_history": {"from": old_amount, "to": body.amount, "by": user["id"], "at": now_utc()}}})
-    bal = await recompute(org_id, p["member_id"])
-    await audit(user["id"], "payment.edited", payment_id, {"from": old_amount, "to": body.amount}, org_id)
-    updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
-    updated["member_due_remaining"] = bal["due_amount"]
-    return updated
+
+    async def txn(s):
+        p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id}, session=s)
+        if not p:
+            raise HTTPException(404, "Payment not found")
+        if p.get("status") == "reversed" or p.get("type") == "reversal":
+            raise HTTPException(409, "Reversed payments can't be edited")
+        set_fields = {"amount": body.amount, "updated_at": now_utc(), "edited_by": user["id"]}
+        if body.method is not None:
+            set_fields["method"] = body.method
+        if body.notes is not None:
+            set_fields["notes"] = body.notes
+        res = await db.payments.update_one(
+            {"id": payment_id, "organisation_id": org_id, "status": {"$ne": "reversed"}},
+            {"$set": set_fields, "$push": {"edit_history": {"from": p.get("amount", 0), "to": body.amount, "by": user["id"], "at": now_utc()}}},
+            session=s,
+        )
+        if not res.modified_count:
+            raise HTTPException(409, "Reversed payments can't be edited")
+        await checkpoint("payment.edit.after_payment")
+        await recompute(s, org_id, p["member_id"])
+        return p
+
+    p = await run_txn(txn)
+    await best_effort(audit(user["id"], "payment.edited", payment_id, {"from": p.get("amount", 0), "to": body.amount}, org_id))
+    return await _payment_response(payment_id)
 
 
 @router.delete("/payments/{payment_id}")
-async def reverse_payment(payment_id: str, body: ReverseBody | None = None, user: dict = Depends(require_full)):
-    """Never deletes: marks the original reversed and adds a compensating negative entry."""
+async def reverse_payment(payment_id: str, request: Request, body: ReverseBody | None = None, user: dict = Depends(require_full)):
+    """Never deletes: atomically adds a compensating negative entry and marks the original reversed."""
     org_id = user["organisation_id"]
-    ts = now_utc()
-    p = await db.payments.find_one_and_update(
-        {"id": payment_id, "organisation_id": org_id, "status": {"$ne": "reversed"}, "type": {"$ne": "reversal"}},
-        {"$set": {"status": "reversed", "reversed_at": ts, "reversed_by": user["id"], "reversal_reason": (body.reason if body else None)}},
-    )
-    if not p:
-        raise HTTPException(404, "Payment not found or already reversed")
-    await touch(p["member_id"])
-    await db.payments.insert_one({
-        "id": new_id(), "organisation_id": org_id, "outlet_id": p.get("outlet_id"), "member_id": p["member_id"],
-        "member_name": p.get("member_name"), "type": "reversal", "reversal_of": payment_id, "plan_name": p.get("plan_name"),
-        "amount": -abs(p.get("amount", 0)), "method": p.get("method"), "notes": (body.reason if body else None),
-        "receipt_no": f"REV-{p.get('receipt_no') or payment_id[:8]}", "payment_date": today_ist().isoformat(),
-        "status": "active", "created_at": ts, "created_by": user["id"],
-    })
-    bal = await recompute(org_id, p["member_id"])
-    await audit(user["id"], "payment.reversed", payment_id, {"amount": p.get("amount", 0), "member": p.get("member_name")}, org_id)
-    return {"message": "Payment reversed", "member_due_remaining": bal["due_amount"]}
+    key, scope = idem_key(request), f"payment.reverse:{payment_id}"
+    reason = body.reason if body else None
+
+    async def due_of(member_id: str) -> float:
+        m = await db.members.find_one({"id": member_id}, {"due_amount": 1})
+        return (m or {}).get("due_amount", 0)
+
+    if await idem_lookup(org_id, key, scope):
+        p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
+        return {"message": "Payment reversed", "member_due_remaining": await due_of(p["member_id"])}
+
+    async def txn(s):
+        ts = now_utc()
+        p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id, "type": {"$ne": "reversal"}}, session=s)
+        if not p or p.get("status") == "reversed":
+            raise HTTPException(404, "Payment not found or already reversed")
+        await db.payments.insert_one({
+            "id": new_id(), "organisation_id": org_id, "outlet_id": p.get("outlet_id"), "member_id": p["member_id"],
+            "member_name": p.get("member_name"), "type": "reversal", "reversal_of": payment_id, "plan_name": p.get("plan_name"),
+            "amount": -abs(p.get("amount", 0)), "method": p.get("method"), "notes": reason,
+            "receipt_no": f"REV-{p.get('receipt_no') or payment_id[:8]}", "payment_date": today_ist().isoformat(),
+            "status": "active", "created_at": ts, "created_by": user["id"],
+        }, session=s)
+        await checkpoint("payment.reverse.after_negative_entry")
+        res = await db.payments.update_one(
+            {"id": payment_id, "status": {"$ne": "reversed"}},
+            {"$set": {"status": "reversed", "reversed_at": ts, "reversed_by": user["id"], "reversal_reason": reason}}, session=s,
+        )
+        if not res.modified_count:
+            raise HTTPException(404, "Payment not found or already reversed")
+        await checkpoint("payment.reverse.after_mark_original")
+        await idem_save(s, org_id, key, scope, payment_id)
+        await recompute(s, org_id, p["member_id"])
+        return p
+
+    p, prior = await commit(org_id, key, scope, txn, "Payment not found or already reversed")
+    if prior:
+        p = await db.payments.find_one({"id": payment_id})
+    else:
+        await best_effort(audit(user["id"], "payment.reversed", payment_id, {"amount": p.get("amount", 0), "member": p.get("member_name")}, org_id))
+    return {"message": "Payment reversed", "member_due_remaining": await due_of(p["member_id"])}
 
 
 @router.get("/payments")

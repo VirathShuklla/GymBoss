@@ -8,7 +8,7 @@ Components (one backend, one database, one login system, one entitlement record 
 | Website + web app + `/m` mobile web | `frontend/` (React, CRA + craco) | `https://gymboss.in` |
 | Billing portal | same `frontend/` build, route `/billing` | `https://payments.gymboss.in` (same build, `REACT_APP_PORTAL_HOST`) |
 | API | `backend/` (FastAPI, Python 3.11) | `https://gymboss.in/api` (reverse proxy) or `https://api.gymboss.in` |
-| Database | MongoDB 6+/7 (Atlas or self-managed) | private network |
+| Database | MongoDB 6+/7 **replica set** (Atlas, or self-managed with `--replSet`) | private network |
 | Android app | `frontend/android/` (Capacitor 7, Android Studio) | Google Play |
 | iOS app | `frontend/ios/` (Capacitor 7, Xcode) | Apple App Store |
 
@@ -25,6 +25,8 @@ python -m scripts.migrate   # creates all MongoDB indexes (idempotent)
 uvicorn server:app --host 0.0.0.0 --port 8001 --workers 2
 ```
 Run it under systemd, supervisor or Docker. Put Nginx/Caddy in front for HTTPS.
+
+**MongoDB must be a replica set.** Payments, renewals, reversals and subscription grants use multi-document transactions, and the API refuses to start on a standalone `mongod`. Atlas clusters already qualify. For self-managed MongoDB, start `mongod --replSet rs0`, then run once: `mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"<host>:27017"}]})'`. A single-member replica set is enough.
 
 **Important:** `pip install -r requirements.txt` includes `emergentintegrations`, served from Emergent's private index. The self-hosted code doesn't use it. Remove that line, or install with `--extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/`.
 

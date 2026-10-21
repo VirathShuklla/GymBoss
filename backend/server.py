@@ -367,14 +367,14 @@ async def delete_account(body: DeleteAccountBody, response: Response, user: dict
     is_owner = (user.get("role") == "owner" and not user.get("staff_id") and org
                 and org.get("owner_id", user["id"]) == user["id"])
     if is_owner:
-        for sub in await db.subscriptions.find({"organisation_id": org_id, "status": {"$in": ["active", "created", "halted"]}}).to_list(20):
-            try:
-                await razorpay_request("POST", f"/subscriptions/{sub['razorpay_subscription_id']}/cancel")
-            except Exception as e:
-                logger.error(f"Razorpay cancel on account deletion failed: {e}")
+        from billing_sync import cancel_remote_subscription, BILLABLE_SUB_STATUSES
+        subs = await db.subscriptions.find({"organisation_id": org_id, "status": {"$in": BILLABLE_SUB_STATUSES}}).to_list(None)
+        unconfirmed = [s for s in subs if not await cancel_remote_subscription(razorpay_request, s, "account_deletion")]
+        if unconfirmed:
+            raise HTTPException(status_code=409, detail="We couldn't confirm that your Razorpay auto-debit is cancelled, so nothing was deleted. Please try again in a few minutes or contact support.")
         scope = {"$or": [{"organisation_id": org_id}, {"org_id": org_id}]}
         for name in await db.list_collection_names():
-            if name not in ("organisations", "settings"):
+            if name not in ("organisations", "settings", "razorpay_ops"):
                 await db[name].delete_many(scope)
         await db.organisations.delete_one({"id": org_id})
         await audit(user["id"], "organisation.deleted_by_owner", org_id, {"gym": org.get("name")})
@@ -862,6 +862,15 @@ async def ensure_indexes():
     await db.subscription_payments.create_index("payment_id", sparse=True)
     await db.subscription_payments.create_index("order_id")
     await db.member_invoices.create_index([("organisation_id", 1), ("member_id", 1), ("created_at", 1)])
+    await db.member_invoices.create_index("member_id", name="uniq_opening_invoice", unique=True, partialFilterExpression={"kind": "opening"})
+    await db.member_invoices.create_index([("member_id", 1), ("cycle_key", 1)], name="uniq_member_cycle", unique=True,
+                                          partialFilterExpression={"cycle_key": {"$type": "string"}})
+    await db.payments.create_index("reversal_of", name="uniq_reversal", unique=True, partialFilterExpression={"reversal_of": {"$type": "string"}})
+    await db.idempotency_keys.create_index([("organisation_id", 1), ("key", 1)], unique=True)
+    await db.idempotency_keys.create_index("created_at", expireAfterSeconds=60 * 60 * 24 * 7)
+    await db.razorpay_ops.create_index("id", unique=True)
+    await db.razorpay_ops.create_index([("kind", 1), ("status", 1)])
+    await db.migrations.create_index("id", unique=True)
     await db.payments.create_index([("organisation_id", 1), ("member_id", 1)])
     await db.device_commands.create_index([("device_id", 1), ("pin", 1), ("expiry", 1)], unique=True, sparse=True)
     await db.device_commands.create_index([("device_id", 1), ("seq", 1)])
@@ -878,12 +887,19 @@ async def run_migrations():
             continue
         mod, fn = target.rsplit(".", 1)
         await getattr(importlib.import_module(mod), fn)()
-        await db.migrations.insert_one({"id": mid, "applied_at": now_utc()})
+        await db.migrations.update_one({"id": mid}, {"$setOnInsert": {"id": mid, "applied_at": now_utc()}}, upsert=True)
         logger.info("Applied migration %s", mid)
+
+
+async def require_transactions():
+    hello = await db.command("hello")
+    if not hello.get("setName") and hello.get("msg") != "isdbgrid":
+        raise RuntimeError("MongoDB must run as a replica set (or sharded cluster): financial writes use transactions. See DEPLOYMENT.md.")
 
 
 @app.on_event("startup")
 async def startup():
+    await require_transactions()
     await ensure_indexes()
     await run_migrations()
     demo_org = await db.organisations.find_one({"is_demo": True})

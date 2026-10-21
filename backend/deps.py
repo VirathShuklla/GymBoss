@@ -15,6 +15,8 @@ import jwt
 import httpx
 from fastapi import HTTPException, Request, Response, Depends
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.read_concern import ReadConcern
+from pymongo.write_concern import WriteConcern
 
 logger = logging.getLogger(__name__)
 
@@ -274,6 +276,51 @@ async def audit(actor: str, action: str, target: str = "", meta: dict | None = N
     })
 
 
+FAULTS: set[str] = set()
+
+
+async def checkpoint(name: str):
+    """Test-only fault injection: tests add a name to FAULTS to crash once at that point."""
+    if name in FAULTS:
+        FAULTS.discard(name)
+        raise RuntimeError(f"Injected fault at {name}")
+
+
+async def run_txn(fn):
+    """Run `await fn(session)` in a MongoDB transaction (retried on transient conflicts)."""
+    async with await client.start_session() as s:
+        return await s.with_transaction(fn, read_concern=ReadConcern("snapshot"), write_concern=WriteConcern("majority"))
+
+
+async def best_effort(coro):
+    """Side effects (audit/analytics) after a commit must never undo or repeat the committed work."""
+    try:
+        await coro
+    except Exception as e:
+        logger.error("Post-commit side effect failed: %s", e)
+
+
+def idem_key(request: Request) -> str | None:
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if len(key) > 100:
+        raise HTTPException(422, "Idempotency-Key is too long")
+    return key or None
+
+
+async def idem_lookup(org_id: str, key: str | None, scope: str) -> dict | None:
+    if not key:
+        return None
+    doc = await db.idempotency_keys.find_one({"organisation_id": org_id, "key": key})
+    if doc and doc["scope"] != scope:
+        raise HTTPException(422, "This Idempotency-Key was already used for a different action")
+    return doc
+
+
+async def idem_save(s, org_id: str, key: str | None, scope: str, ref: str):
+    if key:
+        await db.idempotency_keys.insert_one({"organisation_id": org_id, "key": key, "scope": scope, "ref": ref, "created_at": now_utc()}, session=s)
+
+
 def add_duration(start: date, dtype: str, duration: int) -> date:
     if dtype == "days":
         return start + timedelta(days=duration)
@@ -331,8 +378,8 @@ def member_public(m: dict) -> dict:
     return m
 
 
-async def next_receipt_no(org_id: str) -> str:
-    doc = await db.counters.find_one_and_update({"_id": f"receipt:{org_id}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
+async def next_receipt_no(org_id: str, session=None) -> str:
+    doc = await db.counters.find_one_and_update({"_id": f"receipt:{org_id}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True, session=session)
     return f"RCPT-{doc['seq']}"
 
 
@@ -444,7 +491,7 @@ async def get_object(path: str) -> tuple:
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
-async def next_member_code(org_id: str, org_name: str) -> str:
+async def next_member_code(org_id: str, org_name: str, session=None) -> str:
     prefix = "".join(w[0] for w in (org_name or "GB").split())[:3].upper() or "GB"
-    doc = await db.counters.find_one_and_update({"_id": f"member:{org_id}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
+    doc = await db.counters.find_one_and_update({"_id": f"member:{org_id}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True, session=session)
     return f"{prefix}-{1000 + doc['seq']}"

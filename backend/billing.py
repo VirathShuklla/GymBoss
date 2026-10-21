@@ -12,9 +12,10 @@ from pydantic import BaseModel
 
 from typing import Optional
 
-from deps import db, now_utc, new_id, get_org_user, require_super_admin, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans
+from deps import db, now_utc, new_id, get_org_user, require_super_admin, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans, best_effort
 from analytics import track
-from billing_sync import release_event, apply_payment, record_autodebit_payment, claim_event, handle_subscription_event, handle_payment_event, reconcile
+from billing_sync import (apply_payment, record_autodebit_payment, claim_event, finish_event, handle_subscription_event,
+                          handle_payment_event, reconcile, cancel_remote_subscription, OPEN_SUB_STATUSES)
 
 logger = logging.getLogger(__name__)
 
@@ -155,17 +156,24 @@ async def razorpay_webhook(request: Request):
     import json
     event = json.loads(payload)
     event_name = event.get("event", "")
-    if not await claim_event(request.headers.get("X-Razorpay-Event-Id", ""), event_name):
+    event_id = request.headers.get("X-Razorpay-Event-Id", "")
+    claim = await claim_event(event_id, event_name)
+    if claim == "duplicate":
         return {"status": "duplicate"}
+    if claim == "busy":
+        raise HTTPException(409, "Event is already being processed")
     try:
         if event_name.startswith("subscription."):
-            return {"status": await handle_subscription_event(event_name, event)}
-        if event_name.startswith("payment."):
-            return {"status": await handle_payment_event(event_name, event)}
-        return {"status": "ignored"}
-    except Exception:
-        await release_event(request.headers.get("X-Razorpay-Event-Id", ""))
+            status = await handle_subscription_event(event_name, event)
+        elif event_name.startswith("payment."):
+            status = await handle_payment_event(event_name, event)
+        else:
+            status = "ignored"
+    except Exception as e:
+        await finish_event(event_id, False, str(e)[:300])
         raise
+    await finish_event(event_id, True)
+    return {"status": status}
 
 
 # ---------------- Auto-debit subscriptions (UPI Autopay / card recurring) ----------------
@@ -249,7 +257,7 @@ async def autodebit_verify(body: AutodebitVerifyBody, user: dict = Depends(get_o
     await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "active", "activated_at": ts, "last_charged_at": ts}})
     price = sub.get("amount") or await get_plan_price()
     await record_autodebit_payment(sub, body.razorpay_payment_id, None, "autodebit")
-    await audit(user["id"], "subscription.autodebit_activated", user["organisation_id"], {"rzp_subscription": body.razorpay_subscription_id}, user["organisation_id"])
+    await best_effort(audit(user["id"], "subscription.autodebit_activated", user["organisation_id"], {"rzp_subscription": body.razorpay_subscription_id}, user["organisation_id"]))
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     return {"message": "Auto-debit activated", "subscription": derive_subscription(org, price)}
 
@@ -258,12 +266,12 @@ async def autodebit_verify(body: AutodebitVerifyBody, user: dict = Depends(get_o
 async def autodebit_cancel(user: dict = Depends(get_org_user)):
     require_billing_role(user)
     org_id = user["organisation_id"]
-    sub = await db.subscriptions.find_one({"organisation_id": org_id, "status": {"$in": ["active", "created", "authenticated", "pending", "halted", "paused"]}})
+    sub = await db.subscriptions.find_one({"organisation_id": org_id, "status": {"$in": OPEN_SUB_STATUSES}})
     if not sub:
         raise HTTPException(404, "No active auto-debit subscription found")
-    await razorpay_request("POST", f"/subscriptions/{sub['razorpay_subscription_id']}/cancel")
-    await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "cancelled", "cancelled_at": now_utc()}})
-    await audit(user["id"], "subscription.autodebit_cancelled", org_id, {"rzp_subscription": sub["razorpay_subscription_id"]}, org_id)
+    if not await cancel_remote_subscription(razorpay_request, sub, "owner_cancelled"):
+        raise HTTPException(503, "We couldn't confirm the cancellation with Razorpay. Please try again in a few minutes.")
+    await best_effort(audit(user["id"], "subscription.autodebit_cancelled", org_id, {"rzp_subscription": sub["razorpay_subscription_id"]}, org_id))
     return {"message": "Auto-debit cancelled. Your access continues until the end of the paid period."}
 
 
