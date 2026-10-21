@@ -191,7 +191,7 @@ def build_monthly_report_pdf(s: dict, meta: dict) -> bytes:
         c.drawString(x + 3 * mm, y - 3 * mm, label.upper())
         c.setFillColor(col)
         c.setFont("Helvetica-Bold", 12)
-        c.drawString(x + 3 * mm, y - 11 * mm, _inr(val))
+        c.drawString(x + 3 * mm, y - 11 * mm, _inr(val) if val >= 0 else f"- {_inr(abs(val))}")
     y -= 26 * mm
     c.setFillColor(MUTED)
     c.setFont("Helvetica", 8)

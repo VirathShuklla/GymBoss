@@ -5,6 +5,7 @@ import api from "../../lib/api";
 import { inr } from "../../lib/format";
 import { ListSkeleton } from "../ui";
 import { MonthlyReportButton } from "../../components/app/MonthlyReportButton";
+import { useAuth } from "../../contexts/AuthContext";
 
 const more = async (path, prev, setter, extra = {}) => {
   const page = (prev?.page || 0) + 1;
@@ -17,20 +18,33 @@ export default function Reports() {
   const [dues, setDues] = useState(null);
   const [expiry, setExpiry] = useState(null);
   const [conv, setConv] = useState(null);
+  const { outlets } = useAuth();
+  const [outlet, setOutlet] = useState(() => localStorage.getItem("gb-outlet") || "all");
+  const oid = outlet === "all" || !outlets.some((o) => o.id === outlet) ? undefined : outlet;
+  const pickOutlet = (v) => { setOutlet(v); localStorage.setItem("gb-outlet", v); };
+  const moreO = (path, prev, setter, extra = {}) => more(path, prev, setter, { ...extra, outlet_id: oid });
 
   useEffect(() => {
-    api.get("/reports/revenue-trend?months=6").then(({ data }) => setTrend(data.points)).catch(() => setTrend([]));
-    more("/reports/outstanding-dues", null, setDues).catch(() => setDues({ items: [], total: 0, count: 0 }));
-    more("/reports/membership-expiry", null, setExpiry, { days: 30 }).catch(() => setExpiry({ items: [], count: 0 }));
-    api.get("/reports/enquiry-conversion").then(({ data }) => setConv(data)).catch(() => setConv(null));
-  }, []);
+    const q = oid ? `&outlet_id=${oid}` : "";
+    setDues(null); setExpiry(null);
+    api.get(`/reports/revenue-trend?months=6${q}`).then(({ data }) => setTrend(data.points)).catch(() => setTrend([]));
+    moreO("/reports/outstanding-dues", null, setDues).catch(() => setDues({ items: [], total: 0, count: 0 }));
+    moreO("/reports/membership-expiry", null, setExpiry, { days: 30 }).catch(() => setExpiry({ items: [], count: 0 }));
+    api.get(`/reports/enquiry-conversion?${q.slice(1)}`).then(({ data }) => setConv(data)).catch(() => setConv(null));
+  }, [oid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const maxRev = trend ? Math.max(...trend.map((x) => x.revenue), 1) : 1;
 
   return (
     <div data-testid="m-reports" className="space-y-6">
       <Section title="Monthly finance report">
-        <MonthlyReportButton testid="m-monthly-report" compact />
+        {outlets.length > 1 && (
+          <select value={oid || "all"} onChange={(e) => pickOutlet(e.target.value)} className="mb-2 h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-foreground" aria-label="Outlet" data-testid="m-reports-outlet">
+            <option value="all">All outlets</option>
+            {outlets.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
+        <MonthlyReportButton testid="m-monthly-report" outletId={oid} compact />
       </Section>
       <Section title="Revenue Trend (6 months)">
         {!trend ? <ListSkeleton rows={3} /> : (
@@ -56,7 +70,7 @@ export default function Reports() {
             {dues.items.map((m) => (
               <Row key={m.id} a={m.full_name} b={m.member_code} c={inr(m.due_amount)} cls="text-danger" />
             ))}
-            <More data={dues} onMore={() => more("/reports/outstanding-dues", dues, setDues)} testid="m-dues-more" />
+            <More data={dues} onMore={() => moreO("/reports/outstanding-dues", dues, setDues)} testid="m-dues-more" />
           </div>
         )}
       </Section>
@@ -67,7 +81,7 @@ export default function Reports() {
             {expiry.items.map((m) => (
               <Row key={m.id} a={m.full_name} b={m.plan_name} c={`${m.days_left}d`} cls={m.days_left <= 7 ? "text-warning" : "text-foreground"} />
             ))}
-            <More data={expiry} onMore={() => more("/reports/membership-expiry", expiry, setExpiry, { days: 30 })} testid="m-expiry-more" />
+            <More data={expiry} onMore={() => moreO("/reports/membership-expiry", expiry, setExpiry, { days: 30 })} testid="m-expiry-more" />
           </div>
         )}
       </Section>

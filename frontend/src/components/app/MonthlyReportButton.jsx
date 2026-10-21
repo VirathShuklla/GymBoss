@@ -5,6 +5,13 @@ import api from "../../lib/api";
 import { downloadBlob, blobError } from "../../lib/files";
 
 const istMonth = () => new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 7);
+const recentMonths = () => {
+  const [y, m] = istMonth().split("-").map(Number);
+  return Array.from({ length: 24 }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    return { value: d.toISOString().slice(0, 7), label: d.toLocaleDateString("en-IN", { month: "short", year: "numeric", timeZone: "UTC" }) };
+  });
+};
 
 // One-tap monthly finance PDF (collections, expenses, net, dues) on transaction dates (IST).
 export function MonthlyReportButton({ outletId, testid = "monthly-report", compact = false }) {
@@ -19,8 +26,10 @@ export function MonthlyReportButton({ outletId, testid = "monthly-report", compa
   };
   return (
     <div className={`flex items-center gap-2 ${compact ? "w-full" : ""}`} data-testid={testid}>
-      <input type="month" value={month} max={istMonth()} onChange={(e) => setMonth(e.target.value || istMonth())}
-             className="h-9 rounded-lg border border-border bg-card px-2.5 text-sm text-foreground" aria-label="Report month" data-testid={`${testid}-month`} />
+      <select value={month} onChange={(e) => setMonth(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-card px-2.5 text-sm text-foreground" aria-label="Report month" data-testid={`${testid}-month`}>
+        {recentMonths().map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
       <button onClick={run} disabled={busy} data-testid={`${testid}-download`}
               className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60 ${compact ? "flex-1" : ""}`}>
         <FileDown className="h-4 w-4" />{busy ? "Preparing…" : "Monthly PDF"}

@@ -64,7 +64,10 @@ One backend and one database power:
 - Self-hosting support:
   - all URLs, keys, origins and domains come from env variables;
   - S3-compatible storage and SMTP email;
-  - backend `Dockerfile`, index migration script and `.env.example` files.
+  - backend `Dockerfile` (with `HEALTHCHECK`), index migration script, `.env.example` files, `GET /api/health`, committed `frontend/yarn.lock`.
+- Money safety (Round 1): MongoDB **transactions** for every related financial write (member create, renew, payment, edit, reversal, subscription grant, opening-balance migration), Idempotency-Keys with body fingerprints, durable Razorpay cancellation records, account deletion blocked until Razorpay confirms cancellation, resumable tenant purge.
+- Reports & files (Round 2): all finance totals computed in the database on the **transaction date (IST)**, paginated lists, streamed CSV exports with date ranges, immutable subscription purchase snapshots, validated uploads, secure native token storage, native PDF/CSV sharing.
+- Monthly Finance PDF, report pagination (web + mobile), outlet-filtered reports, shared freeze rules on the dashboard, native-authenticated photos/attachments, reconciled retry keys (Round 3).
 
 ### ⏳ To do (by you; these can't be done inside the development environment)
 | # | Task | Where |
@@ -85,6 +88,7 @@ One backend and one database power:
 - A real Razorpay payment end-to-end, Live Mode and UPI AutoPay mandates. Renewals and failures were simulated with signed webhooks.
 - SMTP email, S3 storage, cross-subdomain login (`COOKIE_DOMAIN`), the `payments.gymboss.in` host redirect, and native-device camera scanning.
 - Biometric devices (need real hardware).
+- Native-only behaviour in the Android/iOS builds: secure token storage, native share/save sheet for PDFs/CSVs, and photo/attachment loading through Bearer auth. These were built and the web build was tested, but they need a device test after `npx cap sync`.
 
 ### 🗺️ Roadmap (optional, later)
 - **Phase 2:** Google Play Billing + India *user choice billing* (lets Android users subscribe inside the app, with Razorpay as an alternative).
@@ -188,14 +192,18 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 - The **owner** can change a staff member's **login email** and set a new password (web Staff page + mobile Manage → Staff). Only the owner can change roles, login emails or passwords
 
 ### 12. Finance, Reports & Exports
-- Finance: date ranges (today/week/month/year/custom), Revenue / Expenses / Net / Outstanding dues, collections-by-method, expenses-by-category, transaction table
-- Reports: revenue trend (6-month chart), member growth, outstanding dues, membership expiry (30 days), enquiry conversion (status + source)
-- Export Center: CSV download for members, payments, attendance, expenses, enquiries, staff, plans — outlet-scoped
+- Every payment and expense is counted on its **transaction date** (the date entered, Indian time). Older records without one use the IST day they were created. Reversals count on their own day and the original entry is kept
+- Finance: date ranges (today/week/month/year/custom), Revenue / Expenses / Net / Outstanding dues, collections-by-method, expenses-by-category, paginated transaction table ("Load more"). Totals are computed in MongoDB with no row limits
+- Reports: revenue trend, member growth, outstanding dues and 30-day expiry (both paginated with "Load more" on web and mobile), enquiry conversion. All reports follow the selected outlet
+- **Monthly Finance PDF** (`GET /api/reports/monthly.pdf?month=YYYY-MM&outlet_id=`): one tap on Reports (web and mobile) for collections by method and type, expenses by category, net and outstanding dues
+- Export Center: streamed CSV for members, payments, attendance, expenses, enquiries, staff, plans; outlet-scoped; payments/expenses filter by transaction-date range; formula-injection safe
+- Invalid dates or ranges return a clear 422 message
 
 ### 13. SaaS Subscription (Gym → BuildVVO)
 - Trial (10 days) → active → payment_due/expired states, all backend-derived (never client-side)
 - Plans: **Monthly (1 month), Quarterly (3 months), Yearly (12 months)**. The gym owner picks one on the web Subscription page or in mobile Profile, and access is extended by 30 × months days
 - Razorpay auto-debit subscription (one Razorpay plan per app plan, recreated automatically when the price changes) → checkout → HMAC signature verification; webhook endpoint for charged/halted/cancelled/captured/failed
+- Each order/subscription stores an immutable **purchase snapshot** (plan, months, amount); access, amounts and invoices use it, so price changes never affect existing purchases
 - Payment history; honest "being configured" state until keys exist
 - Separate from member payments — never mixed
 
@@ -210,6 +218,8 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 
 ### 15. File Storage
 - Profile photos + attachments uploaded via `POST /api/uploads` and served back via authenticated, tenant-checked `GET /api/files/{id}`
+- Uploads: JPG/PNG/WebP/PDF only, **5 MB** max (enforced while streaming). The type is detected from the bytes. Images must fully decode, max 6000 px per side and 36 MP (dimensions checked before decoding; decompression bombs rejected). PDFs are structurally parsed (pypdf). Profile photos are re-encoded: orientation fixed, max 1024 px on the long edge (no upscaling), metadata stripped. Existing attachments stay available; unsafe legacy files download as attachments
+- In the native apps, photos and attachments are fetched through the authenticated API client (Bearer token), not plain links
 - Storage backend set by `STORAGE_BACKEND`: `s3` (AWS S3 / Cloudflare R2 / DigitalOcean Spaces / MinIO) for self-hosting, `emergent` in the preview
 
 ---
@@ -426,7 +436,7 @@ Interactive docs: `http://localhost:8001/docs` (FastAPI Swagger UI).
 - Zoho Mail or Amazon SES for email.
 
 ### Step 1 — Database
-1. Create a MongoDB Atlas cluster. Create a database user and allow your server's IP.
+1. Create a MongoDB Atlas cluster (Atlas is always a replica set — **required**, the API refuses to start on a standalone `mongod` because money writes use transactions). Create a database user and allow your server's IP.
 2. Copy the connection string (`mongodb+srv://...`). This is your `MONGO_URL`. Choose `DB_NAME=gymboss_prod`.
 3. *(Optional)* move the preview data: `mongodump` the preview DB, then `mongorestore` into production (see `DEPLOYMENT.md` §6).
 
@@ -628,10 +638,13 @@ Full assessment with official policy links: `memory/STORE_BILLING_COMPLIANCE.md`
 ## Testing
 ```bash
 cd backend
-python -m pytest tests/ -q -n 0      # run against a running API (reads REACT_APP_BACKEND_URL from frontend/.env)
+python -m pytest -n 0 tests/test_iter2*.py   # maintained suites (paths via tests/paths.py)
 ```
-- **Backend:** 152 automated tests pass. They cover auth, tenant isolation, members, plans, payments, attendance, staff permissions, account deletion, trial read-only, billing sync and store-client blocking.
-- **Frontend:** Playwright end-to-end runs pass for the web app, mobile app, billing portal and store mode.
+- **HTTP suites** (`test_iter20`–`test_iter24`) run against a running API (`REACT_APP_BACKEND_URL` from `frontend/.env`, or the env var).
+- **In-process suites** (`test_iter25`–`test_iter29`) create and drop their own database on the same replica set. They cover crash injection between every money write, concurrency, idempotency, Razorpay cancellation, reports beyond 6,000 payments, IST boundaries, uploads, snapshots, the monthly PDF and dashboard freeze counts. Never point them at production.
+- Old one-off suites are in `tests/archive` (excluded by default).
+- Override paths with `GYMBOSS_ROOT`, `GYMBOSS_BACKEND_ENV`, `GYMBOSS_FRONTEND_ENV`, `GYMBOSS_TEST_CREDENTIALS`.
+- **Frontend:** Playwright end-to-end runs pass for the web app and the mobile web app (`/m`). Native Android/iOS builds have **not** been device-tested.
 
 What was actually run, and what couldn't be verified: `memory/TEST_LOG.md`.
 
@@ -645,6 +658,8 @@ What was actually run, and what couldn't be verified: `memory/TEST_LOG.md`.
 - [ ] Razorpay Live keys are set, the webhook (with secret) is added, a test payment shows in history, and the reconcile cron is installed.
 - [ ] S3 bucket and SMTP are configured. Test a member photo upload and a forgot-password email.
 - [ ] Mobile apps are rebuilt with `REACT_APP_BACKEND_URL=https://gymboss.in` and `CORS_ORIGINS` includes `capacitor://localhost,https://localhost`.
+- [ ] MongoDB is a replica set and `GET /api/health` returns `{"status":"ok","transactions":true}`.
+- [ ] Mobile apps rebuilt after `npx cap sync` and device-tested: login survives restart (secure storage), password change keeps you signed in, receipts/monthly PDF open the share sheet, member photos load.
 - [ ] Database backups are enabled.
 
 ---

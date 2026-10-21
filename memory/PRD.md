@@ -278,3 +278,18 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Ops: GET /api/health (DB + transactions), Dockerfile HEALTHCHECK, frontend/yarn.lock staged for commit, tests use tests/paths.py (old one-off suites moved to tests/archive, excluded).
 - Tests: iteration_27 (in-process tests/test_iter27_round2.py 12/12 on isolated DB with 6,200 payments / 2,600 expenses, IST boundaries) + iteration_28 retest 100%.
 - Known limits: native secure storage/share only verifiable on a device build (needs `npx cap sync`); members list endpoint still loads up to 10,000 members per request; ADMS device-auth review still pending.
+
+## Round 3 — 2026-10-21
+- Monthly Finance PDF (`GET /api/reports/monthly.pdf?month=YYYY-MM&outlet_id=`): collections by type and method, expenses by category, net, and outstanding dues, by IST transaction date. Available from web Reports and mobile Reports.
+- Outlet filter on revenue-trend, member-growth, enquiry-conversion, outstanding-dues, membership-expiry and the PDF. Web uses the header outlet; mobile has its own selector (stored in gb-outlet).
+- Load more for dues and expiry on web and mobile; mobile's 15-row cap removed.
+- Dashboard active count uses deps.member_status, so a future freeze still counts as active.
+- Uploads: 5 MB limit. Images may be at most 6000 px per side and 36 MP; dimensions are checked before decoding, and corrupt images and decompression bombs are rejected. Profile photos are resized to a 1024 px longest edge (never upscaled), EXIF-rotated and stripped of metadata. Attachments are stored byte-identical. PDFs are checked with pypdf (no encrypted or 0-page files). Legacy files are still served.
+- Protected photos and attachments: `ProtectedImg` and `openProtectedFile` load them through the authenticated API client, so native Bearer sessions work.
+- Idempotency: stored retry scopes are hashed, with no member data kept. `GET /api/idempotency/{key}` lets the client reconcile keys after login: completed keys are dropped, and unknown keys only after 10 minutes. Keys no longer expire on a timer without a server check.
+- Tests: backend/tests/test_iter29_round3.py (5/5), iteration_29.json. Native Android/iOS devices were not tested.
+
+## Backlog
+- P1: device-test native photo/attachment loading and PDF sharing after `npx cap sync`.
+- P2: show the member photo in the drawer header; make DateField clearable in Export Center.
+

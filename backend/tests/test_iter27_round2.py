@@ -348,10 +348,21 @@ def test_typed_params_422():
 
 
 # ---------------- Uploads ----------------
-JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 100
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-WEBP = b"RIFF\x00\x00\x00\x00WEBPVP8 " + b"\x00" * 100
-PDF = b"%PDF-1.4\n%test\n" + b"\x00" * 100
+def _real(fmt):
+    """Real, decodable files (iter29+: uploads are fully validated, magic-prefix stubs are rejected)."""
+    from PIL import Image
+    b = io.BytesIO()
+    if fmt == "PDF":
+        from reportlab.pdfgen import canvas
+        cv = canvas.Canvas(b)
+        cv.drawString(100, 750, "TEST")
+        cv.save()
+    else:
+        Image.new("RGB", (40, 30), (1, 2, 3)).save(b, format=fmt)
+    return b.getvalue()
+
+
+JPEG, PNG, WEBP, PDF = _real("JPEG"), _real("PNG"), _real("WEBP"), _real("PDF")
 GIF = b"GIF89a" + b"\x00" * 100
 
 

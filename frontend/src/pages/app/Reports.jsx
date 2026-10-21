@@ -25,11 +25,11 @@ export default function Reports() {
   useEffect(() => {
     const params = { outlet_id: outletId };
     setDues(null); setExpiry(null);
-    api.get("/reports/revenue-trend", { params }).then(({ data }) => setTrend(data.points));
-    loadPage("/reports/outstanding-dues", null, setDues);
-    loadPage("/reports/membership-expiry", null, setExpiry, { days: 30 });
-    api.get("/reports/enquiry-conversion", { params }).then(({ data }) => setConversion(data));
-    api.get("/reports/member-growth", { params }).then(({ data }) => setGrowth(data.points));
+    api.get("/reports/revenue-trend", { params }).then(({ data }) => setTrend(data.points)).catch(() => setTrend([]));
+    loadPage("/reports/outstanding-dues", null, setDues).catch(() => setDues({ items: [], total: 0, count: 0 }));
+    loadPage("/reports/membership-expiry", null, setExpiry, { days: 30 }).catch(() => setExpiry({ items: [], count: 0 }));
+    api.get("/reports/enquiry-conversion", { params }).then(({ data }) => setConversion(data)).catch(() => setConversion(null));
+    api.get("/reports/member-growth", { params }).then(({ data }) => setGrowth(data.points)).catch(() => setGrowth([]));
   }, [outletId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const duesColumns = [
@@ -108,7 +108,7 @@ export default function Reports() {
         <TabsContent value="dues">
           {dues && (
             <p className="mb-3 text-sm text-muted-foreground" data-testid="dues-total">
-              Total outstanding: <span className="font-num font-bold text-danger">{inr(dues.total)}</span> across {dues.count ?? dues.items.length} members
+              Total outstanding: <span className="font-num font-bold text-danger">{inr(dues.total)}</span> across {dues.count ?? dues.items.length} member{(dues.count ?? dues.items.length) === 1 ? "" : "s"}
             </p>
           )}
           <DataTable testid="report-dues-table" columns={duesColumns} rows={dues?.items || []} loading={!dues}

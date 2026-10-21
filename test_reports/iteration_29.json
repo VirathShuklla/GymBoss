@@ -1,0 +1,42 @@
+{
+  "summary": "Round 3 testing. BACKEND: new in-process suite tests/test_iter29_round3.py (isolated DB gymboss_r3_tests, dropped at the end) passes 5/5. (1) Monthly PDF: pypdf text has 'September 2026' and exact collections/expenses/net/outstanding for all outlets and for each outlet. Seeded data includes an IST boundary payment (created 18:45Z 31 Aug, payment_date 1 Sep), excluded 31 Aug and 1 Oct rows, and a +500/-500 reversal pair. Totals match /finance/summary. Bad months (2026-13, abc, 2026-9) return 422. Unknown and foreign outlets return 404. View-only staff without finance get 403; unauthenticated gets 401. (2) Outlet filtering on revenue-trend, member-growth, enquiry-conversion, outstanding-dues and membership-expiry is exact for each outlet and for all outlets. (3) Pagination with 260 members at limit=100 is exact, with unique IDs and correct count and total. (4) Dashboard active_members: a future freeze counts as active, a freeze starting today does not. Matches deps.member_status, including a freeze scheduled through the real API. (5) Uploads return 422 for: 3-byte JPEG, '%PDF-' text, truncated JPEG, corrupt JPEG, 7000x10, 10x7000, 7000x6000, a 100000^2 PNG bomb, a 6000x6001 bomb, an encrypted PDF and a 0-page PDF. A 6000x6000 PNG (<5MB) is accepted (byte-identical as attachment, 1024px as photo). A reportlab PDF is accepted byte-identical. A 3000x2000 photo with EXIF orientation 6 is stored at 683x1024 portrait with no EXIF and the maker tag stripped. 300x200 is not upscaled. An attachment JPEG is stored byte-identical. A legacy file record is still served. (6) GET /idempotency/{key} returns unknown, then completed with ref after a payment; a replay causes no duplicate. Another org gets unknown and no auth gets 401. Regressions (each -n 0): iter27 12/12 after a test-data update (see updated_files), iter26 6/6, iter25 20/20. On the live public URL, demo Sep-2026 PDF totals match /finance/summary exactly (57,775 / 79,200 / -21,425 / 32,625) and dashboard active (9) matches member_status. FRONTEND WEB (1920x1080, preview): Reports Monthly PDF downloads GymBoss-Finance-YYYY-MM.pdf. Demo dues show 9 rows and expiry 4 rows, with no 'Load more' (correct). The outlet switcher to HSR changes dues to Rs 4,500 / 1 row, and the PDF request carries outlet_id. Idempotency on web: the stored key is a hash ('h…'), with no names, phones or amounts during the request, and is cleared to {} after success. After reload, a stale pending entry the server reports completed is removed, a fresh unknown entry is kept, an unknown entry >10 min old is removed, and a legacy plain-text key is migrated to a hash. Photos: the member list img and the member-form photo preview load (naturalWidth 768). attachment-open opens a new tab and /api/files returns 200 application/pdf. MOBILE PWA (390x844, /m): m-monthly-report-download downloads the PDF. On a throwaway tenant with 60 dues and 55 expiries, the lists show 50 plus 'Load more (50 of 60)' and then 60 unique rows, the button disappears, and expiry behaves the same (50 then 55). Not capped at 15. NOT TESTED: native Android/iOS (Capacitor) builds — Bearer-token ProtectedImg/openProtectedFile blob path, secure-storage tokens and native downloads cannot be run in this environment. Only the web/PWA code paths were exercised.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Mobile Reports outlet filtering", "issue": "mobile/manage/Reports.jsx never sends outlet_id, and the /m app has no outlet selector. Mobile reports and the mobile Monthly PDF are always 'All outlets'. Web filters correctly. The requirement says outlet filtering on all reports, so mobile is partial.", "affected_selectors": ["m-reports", "m-monthly-report-download"]}
+    ],
+    "design_issues": [
+      {"screen": "Reports (web + mobile) Monthly PDF", "issues": ["MonthlyReportButton uses a native <input type='month'> (browser default picker), unlike the DateField popovers used elsewhere. Firefox and desktop Safari don't support type=month and fall back to a free-text box, so a typed '2026-9' gives a 422 toast."]},
+      {"screen": "Monthly PDF", "issues": ["The Net card prints 'Rs. -21,425', but the tables use '- Rs. x' for negatives. The formatting is inconsistent (cosmetic)."]},
+      {"screen": "Reports > Outstanding Dues", "issues": ["Grammar: 'across 1 members'."]},
+      {"screen": "Member drawer", "issues": ["The drawer header shows initials even when the member has a photo. The photo shows only in the list and the edit form (cosmetic)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter29_round3.py", "/app/backend/tests/seed_iter29_pagination_tenant.py", "/app/test_reports/pytest/iter29.xml"],
+  "action_items": [
+    "Add outlet support to mobile Reports. Pass an outlet_id (e.g. from a selector or the stored gb-outlet) to /reports/* and to MonthlyReportButton outletId, or label the mobile screen 'All outlets'.",
+    "Optional: replace <input type=month> in MonthlyReportButton with a shadcn month picker or a Select of recent months, so it works in Firefox and Safari.",
+    "Optional: add .catch on the web Reports.jsx loaders (dues/expiry otherwise stay in a loading skeleton forever on error) and a stale-response guard when the outlet changes."
+  ],
+  "critical_code_review_comments": [
+    "web Reports.jsx: loadPage/initial api.get calls have no .catch. A failed request leaves dues/expiry null (infinite skeleton) and causes an unhandled promise rejection. Quickly switching outlets can let an older response overwrite a newer one. LoadMore also uses the current outletId closure, so changing the outlet mid-load could mix outlets.",
+    "Monthly PDF: 'Outstanding dues' is the current balance, not the balance at month end. The PDF labels it '(current balance)', which is OK, but past-month reports will show today's dues.",
+    "validate_upload: the bomb/dimension check happens before decode and DecompressionBombWarning is escalated. The order is correct. The photo path decodes up to 36MP (~108MB RGB) per request in a worker thread. Concurrent large uploads could spike memory; consider a semaphore.",
+    "Seeded members without invoices make recompute() produce odd dues after a payment. This is a test-data artifact only, not an app bug."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter29_round3.py (new)",
+    "/app/backend/tests/seed_iter29_pagination_tenant.py (new: seed/cleanup throwaway TEST tenant for Load-more UI)",
+    "/app/backend/tests/test_iter27_round2.py (upload fixtures JPEG/PNG/WEBP/PDF changed from magic-prefix stubs to real decodable files, because the new validation rejects stubs by design; assertions unchanged)"
+  ],
+  "success_rate": {"backend": "100% (5/5 new + 38/38 regression)", "frontend": "100% of web/PWA flows tested; native not tested"},
+  "seed_data_creation": "A throwaway tenant test_iter29_pg@example.com ('TEST_Iter29 Gym') was created with 60 members, 2 payments, 2 uploaded files (photo and PDF) and idempotency keys. Everything with its organisation_id was removed via seed_iter29_pagination_tenant.py cleanup; it is no longer in the DB. The 2 uploaded blobs remain in object storage with no record (unreachable). The demo account had no data written, except one forgot-password request used for the playbook check. gymboss_r3_tests was dropped.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run in-process suites from /app/backend: pytest -n 0 tests/test_iter29_round3.py (and iter27/26/25 separately). To recreate the 60-dues tenant for UI Load-more checks: python tests/seed_iter29_pagination_tenant.py seed|cleanup. Mobile reports URL: /m/manage?tab=reports, mobile page size 50, web 100. The web outlet switcher is [data-testid=outlet-switcher] with role=option items. Attachment open is on step 2 of the member form (click 'Next'). Native Capacitor flows have never been tested by any agent.",
+  "test_credentials": "demo@gymbossvvo.in / Demo@2026 (from /app/memory/test_credentials.md). Playbook: bcrypt $2b$, httpOnly cookies, CORS with explicit origin + credentials, and an identical forgot-password response are all verified. The lockout check was skipped to avoid locking the demo account; earlier iterations covered it."
+}
