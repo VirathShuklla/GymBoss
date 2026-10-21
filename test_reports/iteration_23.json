@@ -1,0 +1,39 @@
+{
+  "summary": "Retest of the iteration-22 audit fixes. New suite backend/tests/test_iter23_audit_fixes.py: 15/15 pass. Regression run of iter22+iter20+iter19+milestones with -n 0: 139/140 on the first run. The one failure was test_lockout_forgot_reset: login with the correct password returned 200 instead of 429. It passed when rerun alone, and the full iter22 file then passed 28/28, so I'm logging it as flaky (1 of 3 runs). Verified fixed: (1) A manager without finance access can edit staff without the salary changing, and a salary they send is ignored. Owner, admin and finance-enabled users can change salary. An owner edit that leaves salary out keeps it. (2) Staff toggle/delete: a full-permission manager acting on an admin gets 403. Staff acting on their own record get 403, checked for both a manager and an admin. A full manager can toggle a trainer. An admin can toggle another admin. The owner can disable an admin (whose login then gets 403) and delete them. (3) client_ip honours X-Forwarded-For: login attempts are now stored as <real ip>:<email> (34.170.x seen). The 5-failure per-IP lock fires, and another IP is not locked. The forgot-password cap of 15 counts per IP. ADMS allowed_ips matches the XFF IP. (4) Adding a future freeze while one is active keeps the member frozen, and check-in returns 403. (5) DELETE on expenses, plans and devices: 403 for 'manage' users, 200 for 'full' and owner. (6) Verify with a valid signature but an unknown Razorpay payment id returns 400, and the org is not activated. (7) Reconcile marks 'created' orders older than 3 days as expired and leaves a 1-day-old one alone. It took 19.6s for 17 recent orders polled one after another (3 errors). (8) ADMS devicecmd with Return=-1 re-queues the command; it is resent on the next getrequest; after 3 attempts it is 'failed' and getrequest returns OK. Frontend (UI): the web drawer shows drawer-credit-amount ₹300. Mobile shows m-member-credit-<id> and m-action-credit. The mobile renew sheet preselects the member's plan, so m-renew-save is enabled. Mobile Add Member auto-selects the only plan for the first add. NEW BUG: a second add in the same session fails with 'Please select a membership plan'.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "deps.client_ip (login lockout, forgot-password cap, ADMS allowed_ips)", "issue": "Since TRUSTED_PROXIES='*', client_ip takes the FIRST X-Forwarded-For entry, and the client controls that entry (the ingress appends to it). Reproduced: sending X-Forwarded-For: 1.2.3.x stored login attempts under 1.2.3.x. From the container IP 34.170.x, a cdata punch sent with X-Forwarded-For: 203.0.113.77 was accepted for a device whose allowed_ips is ['203.0.113.77']. Effects: (a) ADMS allowed_ips can be bypassed by anyone who knows the serial number; (b) the per-IP login lock (5) and forgot-password IP cap (15) can be bypassed by rotating the header. Only the per-email caps (10 logins, 5 resets) still hold.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/internal/billing/reconcile", "issue": "Orders less than 3 days old are polled one at a time. 17 orders took about 19.6s (3 errors from test order ids). That works, but it slows down linearly as volume grows. Consider a 24h window, running the polls concurrently, or skipping order ids that return 404 'not found'."},
+      {"endpoint": "POST /iclock/devicecmd", "issue": "A resend gives the command a new seq. A late ack for the old seq then no longer matches any command, so it is ignored and the command is sent again. Low impact."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "mobile/manage/Members.jsx Add Member", "issue": "Only the first add auto-selects the plan. After a successful add, setF(EMPTY) clears plan_id, so a second add in the same session (single plan) shows the toast 'Please select a membership plan' and the plan pill is not selected. Fix: reset to {...EMPTY, plan_id: plans.length === 1 ? plans[0].id : ''}.", "selector": "[data-testid='m-member-save']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iter23_audit_fixes.py", "/app/backend/tests/seed_iter23_ui.py", "/app/test_reports/pytest/pytest_iter23.xml", "/app/test_reports/pytest/pytest_iter23_regression.xml"],
+  "action_items": [
+    "Fix client_ip spoofing: with '*' (or a list of trusted hops), take the client IP from the RIGHT side of X-Forwarded-For (skip the known proxy hops), or use a header the edge sets and overwrites, such as CF-Connecting-IP or X-Real-IP from the ingress. Do not use xff.split(',')[0]. This matters most for ADMS allowed_ips.",
+    "Mobile Add Member: keep the auto-selected single plan after setF(EMPTY) when the add succeeds.",
+    "Optional: make reconcile order polling bounded or concurrent, and handle a late devicecmd ack for an old seq."
+  ],
+  "critical_code_review_comments": [
+    "deps.client_ip: the first XFF entry is attacker-controlled when TRUSTED_PROXIES='*'.",
+    "update_staff runs guard_staff_target only when the target is an admin (a one-line conditional expression used as a statement). That is fine logically, but it reads oddly; use a normal if statement.",
+    "Mobile renew preselects m.plan_id even if that plan is archived. No pill is then highlighted but Save is enabled, so the backend returns an error. It would be cleaner to preselect only when the plan is in the active list."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter23_audit_fixes.py", "/app/backend/tests/seed_iter23_ui.py"],
+  "success_rate": {"backend": "100% of fix checks (15/15); regression 139/140 with 1 flaky", "frontend": "83% (5/6 UI checks; second mobile add fails)"},
+  "flaky_tests": ["test_iter22_security_ledger.py::TestPlaybook::test_lockout_forgot_reset - failed 1 of 3 runs (correct-password login gave 200 after the lockout, probably because the egress IP changed between requests and the lock is keyed per IP)"],
+  "seed_data_creation": "UI org test_iter23_ui_ab4cdb@example.com / TestPass@2026 (org d2cd1dc8-...) has one plan, 'TEST Credit ab4cdb' with credit 300, and a 'TEST Auto 0' member. The pytest module fixtures clean up after themselves.",
+  "test_credentials": "Taken from /app/memory/test_credentials.md; throwaway orgs were registered for all mutations.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with -n 0. New suite: tests/test_iter23_audit_fixes.py. Send the X-Forwarded-For header to simulate client IPs; until the spoofing fix lands, the ADMS test passes only because the spoof works. After the fix, the test_adms_allowed_ips_match_xff test needs to change.",
+  "rca of the issue": "Mobile add: the plans effect sets plan_id once on mount, and submit() then resets the form to the EMPTY constant (plan_id ''). Spoof: the ingress/Cloudflare chain appends the real IP to an existing client-supplied XFF header, and client_ip returns index 0."
+}

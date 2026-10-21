@@ -65,7 +65,7 @@ export default function Members({ autoAdd }) {
       });
       toast.success("Member added");
       setOpen(false);
-      setF(EMPTY);
+      setF({ ...EMPTY, plan_id: plans.length === 1 ? plans[0].id : "" });
       load();
     } catch (e) {
       toast.error(apiError(e, "Could not add member"));

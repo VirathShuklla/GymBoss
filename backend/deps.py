@@ -81,15 +81,23 @@ NATIVE_PLATFORMS = ("android_store", "ios_store")
 
 
 TRUSTED_PROXIES = {p.strip() for p in os.environ.get("TRUSTED_PROXIES", "").split(",") if p.strip()}
+TRUSTED_PROXY_HOPS = int(os.environ.get("TRUSTED_PROXY_HOPS", "1"))
+REAL_IP_HEADER = os.environ.get("REAL_IP_HEADER", "").strip()
 
 
 def client_ip(request: Request) -> str:
-    """X-Forwarded-For is honoured only when the direct peer is a configured trusted proxy (or '*')."""
+    """Client IP behind trusted proxies. Uses REAL_IP_HEADER (e.g. CF-Connecting-IP / X-Real-IP set by your edge)
+    if configured; otherwise the X-Forwarded-For entry appended by the outermost trusted hop, counted from the RIGHT
+    (left-most entries are client-controlled and never trusted)."""
     peer = request.client.host if request.client else "unknown"
-    xff = request.headers.get("x-forwarded-for")
-    if xff and ("*" in TRUSTED_PROXIES or peer in TRUSTED_PROXIES):
-        return xff.split(",")[0].strip()
-    return peer
+    if not ("*" in TRUSTED_PROXIES or peer in TRUSTED_PROXIES):
+        return peer
+    if REAL_IP_HEADER and request.headers.get(REAL_IP_HEADER):
+        return request.headers[REAL_IP_HEADER].strip()
+    parts = [p.strip() for p in (request.headers.get("x-forwarded-for") or "").split(",") if p.strip()]
+    if not parts:
+        return peer
+    return parts[-min(TRUSTED_PROXY_HOPS, len(parts))]
 
 
 def set_auth_cookies(response: Response, user: dict):
