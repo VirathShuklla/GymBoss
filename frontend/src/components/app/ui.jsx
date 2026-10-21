@@ -18,7 +18,7 @@ export function PageHeader({ title, subtitle, children, testid }) {
         <h1 className="font-display text-2xl font-bold tracking-tight text-foreground">{title}</h1>
         {subtitle && <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>}
       </div>
-      {children && <div className="flex items-center gap-2.5">{children}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2.5">{children}</div>}
     </div>
   );
 }

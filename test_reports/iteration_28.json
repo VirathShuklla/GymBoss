@@ -1,0 +1,24 @@
+{
+  "summary": "Round 2 retest of iteration_27 fixes. Backend: 4/4 pass on the public URL (tests/test_iter28_export_checks.py). An inverted export range returns 422 'End date must be on or after start date'. Valid and same-day ranges return 200 CSV. A member named '=TEST_cmd' is exported as \"'=TEST_cmd\", and no other non-numeric cell starts with = + - @. Frontend (demo login, 1920x1080): all items pass. On Finance, a custom range of 20 Oct to 05 Oct shows the toast 'End date must be on or after start date', clears the KPI/breakdown section, shows no 'Load more' link and the empty state, with no page errors. The valid range 20 to 25 Oct loads again. A reversal row renders '-₹777' in text-danger (rgb 239,68,68) and the original shows '₹777' in green. Export Center uses DateField popover buttons (export-date-from/to) and has no native date inputs. An invalid range shows the server message in the toast. A valid range downloads gymboss_payments_2026-10-21.csv with the IST date in the name. The Members page export downloads gymboss_members_2026-10-21.csv (28 lines).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Finance", "issues": ["When a range has a payment and its reversal, 'Collections by Method' lists 'Cash ₹0'. Consider hiding zero-net methods (cosmetic)."]},
+      {"screen": "Export Center / Finance", "issues": ["A DateField date can't be cleared once picked, so the user can't go back to an open-ended export range without reloading (minor UX)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter28_export_checks.py", "/app/test_reports/pytest/iter28.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Finance.jsx useEffect has no abort or stale-response guard. Quickly switching ranges can let a slower earlier response overwrite newer summary/transactions (low risk).",
+    "_cell escapes only str values. Numeric negatives stay raw, which is correct. Fine as is."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter28_export_checks.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary members '=TEST_cmd' and 'TEST_Reversal' were created. TEST_Reversal had a ₹777 payment plus its reversal. All were hard-deleted from Mongo afterwards, along with their payments and member_invoices. The member code and receipt counters advanced as a side effect.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The DateField day picker selector is [role=dialog] button[name=day]:not(.day-outside), filtered by exact day text (react-day-picker 8.10.1). The payment reversal endpoint is DELETE /api/payments/{id}. POST /api/members requires plan_id. Member DELETE is soft-delete only."
+}

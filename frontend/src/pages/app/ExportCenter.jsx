@@ -41,6 +41,7 @@ export default function ExportCenter() {
       <PageHeader title="Export Center" subtitle="Download your gym data as CSV files. Payment and expense dates are transaction dates (IST)." testid="export-header">
         <div className="w-40"><DateField value={range.from} onChange={(v) => setRange({ ...range, from: v })} testid="export-date-from" placeholder="From" /></div>
         <div className="w-40"><DateField value={range.to} onChange={(v) => setRange({ ...range, to: v })} testid="export-date-to" placeholder="To" /></div>
+        {(range.from || range.to) && <button onClick={() => setRange({ from: "", to: "" })} className="text-xs font-semibold text-muted-foreground hover:text-foreground" data-testid="export-date-clear">Clear dates</button>}
         {outlets.length > 1 && (
           <Select value={outletId} onValueChange={setOutletId}>
             <SelectTrigger className="h-9 w-44" data-testid="export-outlet"><SelectValue /></SelectTrigger>

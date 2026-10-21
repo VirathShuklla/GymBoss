@@ -265,3 +265,16 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Frontend: api.js auto-adds Idempotency-Key to money writes (reused on retry, cleared on success); reversed/reversal rows show badges, red -₹ amounts, no Edit/Reverse (web drawer, Payments table, mobile).
 - Tests: iteration_25 + iteration_26 — in-process suites tests/test_iter25_txn_recovery.py (20/20) and test_iter26_idem_fp_purge.py (6/6) on isolated DB gymboss_txn_tests; HTTP regression 48/48. Razorpay MOCKED in those tests only.
 - Next: Round 2 (reports aggregation + IST accounting dates, typed params, upload sniffing/limits, lockfile/pins/health checks, portable isolated tests, ADMS device auth review).
+
+
+## Round 2 — reports, uploads, native app, portability (2026-10-21)
+- User choices: reports use the transaction date entered (IST), legacy rows derive it from created_at in IST; uploads = JPG/PNG/WebP/PDF up to 5 MB; reversals dated on their own day, originals kept.
+- Reports/finance (finance.py): all totals via MongoDB aggregation (no 5,000/2,000 caps) on payments.payment_date / expenses.date; paginated transactions, dues, expiry, expenses (stable sort with id tiebreaker); streamed CSV exports with date_from/date_to, formula-injection escaping; strict 422 param validation (parse_day, page_params, ranges/months/days).
+- Dashboard today's collection uses payment_date == today IST. Payments list filters on payment_date. Migration 2026_10_txn_dates_v1 (server.backfill_txn_dates) backfilled payment_date, expense dates and member joining_date.
+- Uploads: body streamed with a 5 MB limit (413 early), real type sniffed from bytes, safe filenames; files served with sniffed type + nosniff; unsafe legacy files served as attachment with CSP sandbox (existing attachments kept).
+- Billing: immutable purchase snapshot (plan_id, plan_name, months, amount) stored on orders and autodebit subscriptions; access grants, subscription amount and invoices use the snapshot.
+- Auth: change-password returns replacement native tokens for app clients; disabled/deleting orgs rejected at login/refresh.
+- Frontend: persistent Idempotency-Keys in localStorage 'gb-idem' (24h, removed on success); native tokens in OS secure storage (@aparajita/capacitor-secure-storage, migrated from localStorage); native PDF/CSV via @capacitor/filesystem + @capacitor/share; exports via authenticated API (no window.open); Finance "Load more"; Export Center date range.
+- Ops: GET /api/health (DB + transactions), Dockerfile HEALTHCHECK, frontend/yarn.lock staged for commit, tests use tests/paths.py (old one-off suites moved to tests/archive, excluded).
+- Tests: iteration_27 (in-process tests/test_iter27_round2.py 12/12 on isolated DB with 6,200 payments / 2,600 expenses, IST boundaries) + iteration_28 retest 100%.
+- Known limits: native secure storage/share only verifiable on a device build (needs `npx cap sync`); members list endpoint still loads up to 10,000 members per request; ADMS device-auth review still pending.
