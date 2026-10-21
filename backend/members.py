@@ -12,8 +12,9 @@ from analytics import after_change
 from deps import (
     db, now_utc, today_ist, new_id, get_org_user, require_write, get_current_user, audit,
     add_duration, member_status, days_left, member_public,
-    next_receipt_no, next_member_code, normalize_phone, put_object, get_object,
+    next_receipt_no, next_member_code, normalize_phone, put_object, get_object, require_full,
 )
+from member_ledger import validate_method, membership_plan, cycle_payable, create_invoice, recompute, touch
 
 router = APIRouter(tags=["members"])
 
@@ -97,10 +98,10 @@ class MemberBody(BaseModel):
     photo_url: Optional[str] = None
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
-    admission_amount: float = 0
-    payment_date: Optional[str] = None
-    discount: float = 0
-    amount_paid: float = 0
+    admission_amount: float = Field(default=0, ge=0, le=10_000_000, allow_inf_nan=False)
+    payment_date: Optional[date] = None
+    discount: float = Field(default=0, ge=0, le=10_000_000, allow_inf_nan=False)
+    amount_paid: float = Field(default=0, ge=0, le=10_000_000, allow_inf_nan=False)
     payment_method: str = "Cash"
     notes: Optional[str] = None
     outlet_id: Optional[str] = None
@@ -108,20 +109,24 @@ class MemberBody(BaseModel):
 
 async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None = None) -> dict:
     org_id = user["organisation_id"]
-    plan = await db.plans.find_one({"id": body.plan_id, "organisation_id": org_id})
-    if not plan:
-        raise HTTPException(404, "Membership plan not found")
+    plan = await membership_plan(org_id, body.plan_id)
+    validate_method(body.payment_method)
     phone = normalize_phone(body.phone)
     if len(phone) != 10:
         raise HTTPException(422, "Enter a valid 10-digit mobile number")
+    if body.outlet_id and not await db.outlets.find_one({"id": body.outlet_id, "organisation_id": org_id}):
+        raise HTTPException(422, "Outlet not found")
     outlet_id = body.outlet_id or (user.get("org_doc") or {}).get("primary_outlet_id")
     if not outlet_id:
         outlet_doc = await db.outlets.find_one({"organisation_id": org_id, "is_primary": True}) or await db.outlets.find_one({"organisation_id": org_id})
         outlet_id = outlet_doc["id"]
-    start = date.fromisoformat((body.membership_start or body.joining_date or today_ist().isoformat())[:10])
+    try:
+        start = date.fromisoformat((body.membership_start or body.joining_date or today_ist().isoformat())[:10])
+    except ValueError:
+        raise HTTPException(422, "Invalid membership start date")
     expiry = add_duration(start, plan.get("duration_type") or "months", plan.get("duration") or 1)
     price = plan.get("price", 0)
-    payable = max(0, round(price + body.admission_amount - body.discount, 2))
+    payable = cycle_payable(price, body.admission_amount, body.discount)
     due = max(0, round(payable - body.amount_paid, 2))
     payment_status = "Paid" if due == 0 else ("Partially Paid" if body.amount_paid > 0 else "Due")
     ts = now_utc()
@@ -159,10 +164,14 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
         "frozen_until": None,
         "freeze_history": [],
         "whatsapp_opt_in": True,
+        "ledger_v": 1,
+        "ledger_rev": 1,
+        "credit_balance": 0,
         "created_at": ts,
         "deleted_at": None,
     }
     await db.members.insert_one(member)
+    await create_invoice(org_id, member["id"], "admission", plan, payable, start.isoformat(), expiry.isoformat(), user["id"])
     if body.batch:
         await db.batches.update_one(
             {"organisation_id": org_id, "name": body.batch.strip()},
@@ -181,7 +190,7 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
             "amount": body.amount_paid,
             "discount": body.discount,
             "admission_amount": body.admission_amount,
-            "payment_date": body.payment_date or today_ist().isoformat(),
+            "payment_date": (body.payment_date or today_ist()).isoformat(),
             "method": body.payment_method,
             "receipt_no": await next_receipt_no(org_id),
             "created_at": ts,
@@ -189,6 +198,7 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
         })
         await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}})
     await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.member": True}})
+    member.update(await recompute(org_id, member["id"]))
     if enquiry_id:
         await db.enquiries.update_one({"id": enquiry_id, "organisation_id": org_id}, {"$set": {"status": "Converted", "converted_member_id": member["id"]}})
     await audit(user["id"], "member.created", member["id"], {"name": member["full_name"]}, org_id)
@@ -312,7 +322,7 @@ async def update_member(member_id: str, body: MemberUpdateBody, user: dict = Dep
 
 
 @router.delete("/members/{member_id}")
-async def delete_member(member_id: str, user: dict = Depends(require_write)):
+async def delete_member(member_id: str, user: dict = Depends(require_full)):
     res = await db.members.update_one(
         {"id": member_id, "organisation_id": user["organisation_id"], "deleted_at": None},
         {"$set": {"deleted_at": now_utc()}},
@@ -324,9 +334,9 @@ async def delete_member(member_id: str, user: dict = Depends(require_write)):
 
 
 class FreezeBody(BaseModel):
-    freeze_from: str
-    freeze_until: str
-    reason: Optional[str] = None
+    freeze_from: date
+    freeze_until: date
+    reason: Optional[str] = Field(default=None, max_length=300)
     extend_expiry: bool = True
 
 
@@ -335,39 +345,62 @@ async def freeze_member(member_id: str, body: FreezeBody, user: dict = Depends(r
     m = await db.members.find_one({"id": member_id, "organisation_id": user["organisation_id"], "deleted_at": None})
     if not m:
         raise HTTPException(404, "Member not found")
-    f_from = date.fromisoformat(body.freeze_from[:10])
-    f_until = date.fromisoformat(body.freeze_until[:10])
+    f_from, f_until = body.freeze_from, body.freeze_until
     if f_until < f_from:
         raise HTTPException(422, "Freeze-until must be after freeze-from")
-    days = (f_until - f_from).days
+    if f_from < today_ist() - timedelta(days=1):
+        raise HTTPException(422, "A freeze can't start in the past")
+    for h in m.get("freeze_history") or []:
+        if h.get("cancelled"):
+            continue
+        end = h.get("ended_on") or h["freeze_until"]
+        if f_from.isoformat() <= end and h["freeze_from"] <= f_until.isoformat():
+            raise HTTPException(409, "This member already has a freeze that overlaps these dates")
+    days = (f_until - f_from).days + 1
     expiry = date.fromisoformat(str(m["membership_expiry"])[:10])
     new_expiry = expiry + timedelta(days=days) if body.extend_expiry else expiry
-    entry = {"freeze_from": f_from.isoformat(), "freeze_until": f_until.isoformat(), "reason": body.reason, "days": days, "created_at": now_utc().isoformat()}
-    await db.members.update_one(
-        {"id": member_id},
-        {"$set": {"frozen_until": f_until.isoformat(), "membership_expiry": new_expiry.isoformat()}, "$push": {"freeze_history": entry}},
+    entry = {"id": new_id(), "freeze_from": f_from.isoformat(), "freeze_until": f_until.isoformat(), "reason": body.reason, "days": days,
+             "extended": body.extend_expiry, "created_at": now_utc().isoformat(), "by": user["id"]}
+    res = await db.members.update_one(
+        {"id": member_id, "freeze_history": m.get("freeze_history") or []},
+        {"$set": {"frozen_from": f_from.isoformat(), "frozen_until": f_until.isoformat(), "membership_expiry": new_expiry.isoformat()}, "$push": {"freeze_history": entry}},
     )
+    if not res.modified_count:
+        raise HTTPException(409, "This member was updated at the same time. Please retry.")
     await audit(user["id"], "member.frozen", member_id, {"days": days}, user["organisation_id"])
-    updated = await db.members.find_one({"id": member_id})
-    return member_public(updated)
+    return member_public(await db.members.find_one({"id": member_id}))
 
 
 @router.post("/members/{member_id}/unfreeze")
 async def unfreeze_member(member_id: str, user: dict = Depends(require_write)):
-    res = await db.members.update_one(
-        {"id": member_id, "organisation_id": user["organisation_id"], "deleted_at": None},
-        {"$set": {"frozen_until": None}},
-    )
-    if not res.matched_count:
+    """Ends the current/upcoming freeze early and gives back the unused extension days."""
+    m = await db.members.find_one({"id": member_id, "organisation_id": user["organisation_id"], "deleted_at": None})
+    if not m:
         raise HTTPException(404, "Member not found")
-    m = await db.members.find_one({"id": member_id})
-    return member_public(m)
+    today = today_ist()
+    hist = m.get("freeze_history") or []
+    updates = {"frozen_from": None, "frozen_until": None}
+    expiry = date.fromisoformat(str(m["membership_expiry"])[:10])
+    for h in hist:
+        if h.get("cancelled") or h.get("ended_on") or h["freeze_until"] < today.isoformat():
+            continue
+        f_from, f_until = date.fromisoformat(h["freeze_from"]), date.fromisoformat(h["freeze_until"])
+        used = max(0, (today - f_from).days) if today >= f_from else 0
+        unused = (f_until - f_from).days + 1 - used
+        if h.get("extended", True):
+            expiry -= timedelta(days=unused)
+        h["ended_on"] = (today - timedelta(days=1)).isoformat() if used else h["freeze_from"]
+        h["cancelled"] = used == 0
+    updates.update({"membership_expiry": expiry.isoformat(), "freeze_history": hist})
+    await db.members.update_one({"id": member_id}, {"$set": updates})
+    await audit(user["id"], "member.unfrozen", member_id, org_id=user["organisation_id"])
+    return member_public(await db.members.find_one({"id": member_id}))
 
 
 class RenewBody(BaseModel):
     plan_id: str
-    discount: float = 0
-    amount_paid: float = 0
+    discount: float = Field(default=0, ge=0, le=10_000_000, allow_inf_nan=False)
+    amount_paid: float = Field(default=0, ge=0, le=10_000_000, allow_inf_nan=False)
     payment_method: str = "Cash"
 
 
@@ -377,32 +410,32 @@ async def renew_member(member_id: str, body: RenewBody, user: dict = Depends(req
     m = await db.members.find_one({"id": member_id, "organisation_id": org_id, "deleted_at": None})
     if not m:
         raise HTTPException(404, "Member not found")
-    plan = await db.plans.find_one({"id": body.plan_id, "organisation_id": org_id})
-    if not plan:
-        raise HTTPException(404, "Plan not found")
+    plan = await membership_plan(org_id, body.plan_id)
+    validate_method(body.payment_method)
     today = today_ist()
     expiry = date.fromisoformat(str(m["membership_expiry"])[:10])
     start = max(today, expiry)
     new_expiry = add_duration(start, plan.get("duration_type") or "months", plan.get("duration") or 1)
     price = plan.get("price", 0)
-    payable = max(0, round(price - body.discount, 2))
-    due = max(0, round(payable - body.amount_paid, 2))
-    payment_status = "Paid" if due == 0 else ("Partially Paid" if body.amount_paid > 0 else "Due")
+    payable = cycle_payable(price, 0, body.discount)
     ts = now_utc()
+    await touch(member_id)
     await db.members.update_one({"id": member_id}, {"$set": {
         "plan_id": plan["id"], "plan_name": plan["name"], "plan_price": price,
         "membership_start": start.isoformat(), "membership_expiry": new_expiry.isoformat(),
-        "due_amount": due, "discount": body.discount, "admission_amount": 0,
-        "payable": payable, "payment_status": payment_status, "frozen_until": None, "updated_at": ts,
+        "discount": body.discount, "admission_amount": 0,
+        "payable": payable, "frozen_from": None, "frozen_until": None, "updated_at": ts,
     }})
+    await create_invoice(org_id, member_id, "renewal", plan, payable, start.isoformat(), new_expiry.isoformat(), user["id"])
     if body.amount_paid > 0:
         await db.payments.insert_one({
             "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
             "member_id": member_id, "member_name": m["full_name"], "type": "renewal",
             "plan_name": plan["name"], "amount": body.amount_paid, "discount": body.discount,
             "method": body.payment_method, "receipt_no": await next_receipt_no(org_id),
-            "created_at": ts, "created_by": user["id"],
+            "payment_date": today.isoformat(), "created_at": ts, "created_by": user["id"],
         })
+    await recompute(org_id, member_id)
     await audit(user["id"], "member.renewed", member_id, {"plan": plan["name"]}, org_id)
     await after_change(org_id, user["id"])
     updated = await db.members.find_one({"id": member_id})
@@ -413,95 +446,98 @@ async def renew_member(member_id: str, body: RenewBody, user: dict = Depends(req
 
 class PaymentBody(BaseModel):
     member_id: str
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, le=10_000_000, allow_inf_nan=False)
     method: str = "Cash"
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
+    payment_date: Optional[date] = None
 
 
 @router.post("/payments")
 async def record_payment(body: PaymentBody, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
-    if body.method not in ("Cash", "UPI", "Card", "Bank Transfer", "Other"):
-        raise HTTPException(422, "Invalid payment method")
+    validate_method(body.method)
     m = await db.members.find_one({"id": body.member_id, "organisation_id": org_id, "deleted_at": None})
     if not m:
         raise HTTPException(404, "Member not found")
     ts = now_utc()
+    await touch(m["id"])
     payment = {
         "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
         "member_id": m["id"], "member_name": m["full_name"], "type": "due",
         "plan_name": m.get("plan_name"), "amount": body.amount, "method": body.method,
         "notes": body.notes, "receipt_no": await next_receipt_no(org_id),
+        "payment_date": (body.payment_date or today_ist()).isoformat(), "status": "active",
         "created_at": ts, "created_by": user["id"],
     }
     await db.payments.insert_one(payment)
-    new_due = max(0, round(m.get("due_amount", 0) - body.amount, 2))
-    new_status = "Paid" if new_due == 0 else "Partially Paid"
-    await db.members.update_one({"id": m["id"]}, {"$set": {"due_amount": new_due, "payment_status": new_status}})
+    bal = await recompute(org_id, m["id"])
+    new_due = bal["due_amount"]
     await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}})
     await audit(user["id"], "payment.recorded", payment["id"], {"amount": body.amount, "member": m["full_name"]}, org_id)
     await after_change(org_id, user["id"])
     payment.pop("_id", None)
     payment["member_due_remaining"] = new_due
+    payment["member_credit"] = bal["credit_balance"]
     return payment
 
 
 class PaymentEditBody(BaseModel):
-    amount: float = Field(gt=0)
+    amount: float = Field(gt=0, le=10_000_000, allow_inf_nan=False)
     method: Optional[str] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
 
 
-async def _apply_payment_delta(member: dict | None, old_amount: float, new_amount: float):
-    """Adjust a member's outstanding due when a payment amount changes or is reversed.
-    Keeps the source-of-truth invariant for the cycle: paying more lowers the due,
-    paying less (or reversing to 0) raises it, always clamped to [0, payable]."""
-    if not member:
-        return None
-    payable = member.get("payable")
-    if payable is None:
-        payable = max(0, round((member.get("plan_price", 0) or 0) - (member.get("discount", 0) or 0) + (member.get("admission_amount", 0) or 0), 2))
-    due = member.get("due_amount", 0) or 0
-    new_due = max(0, min(payable, round(due + (old_amount - new_amount), 2)))
-    status = "Paid" if new_due <= 0 else ("Due" if new_due >= payable else "Partially Paid")
-    await db.members.update_one({"id": member["id"]}, {"$set": {"due_amount": new_due, "payment_status": status, "payable": payable}})
-    return new_due
+class ReverseBody(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=300)
 
 
 @router.put("/payments/{payment_id}")
 async def edit_payment(payment_id: str, body: PaymentEditBody, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
-    if body.method is not None and body.method not in ("Cash", "UPI", "Card", "Bank Transfer", "Other"):
-        raise HTTPException(422, "Invalid payment method")
+    if body.method is not None:
+        validate_method(body.method)
     p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
     if not p:
         raise HTTPException(404, "Payment not found")
+    if p.get("status") == "reversed" or p.get("type") == "reversal":
+        raise HTTPException(409, "Reversed payments can't be edited")
     old_amount = p.get("amount", 0)
-    set_fields = {"amount": body.amount, "updated_at": now_utc()}
+    set_fields = {"amount": body.amount, "updated_at": now_utc(), "edited_by": user["id"]}
     if body.method is not None:
         set_fields["method"] = body.method
     if body.notes is not None:
         set_fields["notes"] = body.notes
-    await db.payments.update_one({"id": payment_id, "organisation_id": org_id}, {"$set": set_fields})
-    member = await db.members.find_one({"id": p["member_id"], "organisation_id": org_id})
-    new_due = await _apply_payment_delta(member, old_amount, body.amount)
+    await touch(p["member_id"])
+    await db.payments.update_one({"id": payment_id, "organisation_id": org_id}, {"$set": set_fields, "$push": {"edit_history": {"from": old_amount, "to": body.amount, "by": user["id"], "at": now_utc()}}})
+    bal = await recompute(org_id, p["member_id"])
     await audit(user["id"], "payment.edited", payment_id, {"from": old_amount, "to": body.amount}, org_id)
     updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
-    updated["member_due_remaining"] = new_due
+    updated["member_due_remaining"] = bal["due_amount"]
     return updated
 
 
 @router.delete("/payments/{payment_id}")
-async def reverse_payment(payment_id: str, user: dict = Depends(require_write)):
+async def reverse_payment(payment_id: str, body: ReverseBody | None = None, user: dict = Depends(require_full)):
+    """Never deletes: marks the original reversed and adds a compensating negative entry."""
     org_id = user["organisation_id"]
-    p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
+    ts = now_utc()
+    p = await db.payments.find_one_and_update(
+        {"id": payment_id, "organisation_id": org_id, "status": {"$ne": "reversed"}, "type": {"$ne": "reversal"}},
+        {"$set": {"status": "reversed", "reversed_at": ts, "reversed_by": user["id"], "reversal_reason": (body.reason if body else None)}},
+    )
     if not p:
-        raise HTTPException(404, "Payment not found")
-    member = await db.members.find_one({"id": p["member_id"], "organisation_id": org_id})
-    await db.payments.delete_one({"id": payment_id, "organisation_id": org_id})
-    new_due = await _apply_payment_delta(member, p.get("amount", 0), 0)
+        raise HTTPException(404, "Payment not found or already reversed")
+    await touch(p["member_id"])
+    await db.payments.insert_one({
+        "id": new_id(), "organisation_id": org_id, "outlet_id": p.get("outlet_id"), "member_id": p["member_id"],
+        "member_name": p.get("member_name"), "type": "reversal", "reversal_of": payment_id, "plan_name": p.get("plan_name"),
+        "amount": -abs(p.get("amount", 0)), "method": p.get("method"), "notes": (body.reason if body else None),
+        "receipt_no": f"REV-{p.get('receipt_no') or payment_id[:8]}", "payment_date": today_ist().isoformat(),
+        "status": "active", "created_at": ts, "created_by": user["id"],
+    })
+    bal = await recompute(org_id, p["member_id"])
     await audit(user["id"], "payment.reversed", payment_id, {"amount": p.get("amount", 0), "member": p.get("member_name")}, org_id)
-    return {"message": "Payment reversed", "member_due_remaining": new_due}
+    return {"message": "Payment reversed", "member_due_remaining": bal["due_amount"]}
 
 
 @router.get("/payments")
@@ -523,10 +559,14 @@ async def list_payments(
         q["method"] = method
     if type:
         q["type"] = type
-    if date_from:
-        q["created_at"] = {"$gte": datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)}
-    if date_to:
-        q.setdefault("created_at", {})["$lt"] = datetime.fromisoformat(date_to).replace(tzinfo=timezone.utc) + timedelta(days=1)
+    try:
+        if date_from:
+            q["created_at"] = {"$gte": datetime.combine(date.fromisoformat(date_from[:10]), datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30)}
+        if date_to:
+            q.setdefault("created_at", {})["$lt"] = datetime.combine(date.fromisoformat(date_to[:10]), datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30) + timedelta(days=1)
+    except ValueError:
+        raise HTTPException(422, "Invalid date filter")
+    page, limit = max(page, 1), min(max(limit, 1), 200)
     if search:
         rx = {"$regex": re.escape(search.strip()), "$options": "i"}
         q["$or"] = [{"member_name": rx}, {"receipt_no": rx}]
@@ -578,17 +618,11 @@ async def check_in(body: CheckInBody, user: dict = Depends(get_org_user)):
         m = await db.members.find_one({"organisation_id": org_id, "deleted_at": None, "$or": [{"full_name": rx}, {"phone": rx}, {"member_code": rx}]})
     if not m:
         raise HTTPException(404, "Member not found")
-    today = today_ist()
-    open_visit = await db.attendance.find_one({"member_id": m["id"], "check_out": None, "check_in": {"$gte": datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30)}})
-    if open_visit:
+    from attendance import punch_member, assert_member_eligible
+    assert_member_eligible(m)
+    action, doc = await punch_member(m, "manual", checkin_only=True)
+    if action != "in":
         raise HTTPException(409, f"{m['full_name']} is already checked in")
-    doc = {
-        "id": new_id(), "organisation_id": org_id, "outlet_id": m["outlet_id"],
-        "member_id": m["id"], "member_name": m["full_name"], "member_code": m["member_code"],
-        "check_in": now_utc(), "check_out": None, "source": "manual",
-    }
-    await db.attendance.insert_one(doc)
-    doc.pop("_id", None)
     return doc
 
 

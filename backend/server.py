@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, EmailStr
 from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
-    get_org_user, derive_subscription, public_user, org_public, audit, init_storage, STORAGE_BACKEND, COOKIE_KW, issue_native_tokens,
+    get_org_user, derive_subscription, public_user, org_public, audit, init_storage, STORAGE_BACKEND, COOKIE_KW, issue_native_tokens, client_ip,
     get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans,
 )
 from members import router as members_router
@@ -119,8 +119,8 @@ class RegisterBody(BaseModel):
 
 
 class LoginBody(BaseModel):
-    identifier: str
-    password: str
+    identifier: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class ForgotBody(BaseModel):
@@ -196,7 +196,10 @@ async def find_user_by_identifier(identifier: str) -> Optional[dict]:
     if not user:
         digits = normalize_phone(ident)
         if len(digits) == 10:
-            user = await db.users.find_one({"phone": f"+91{digits}"})
+            matches = await db.users.find({"phone": f"+91{digits}"}).to_list(2)
+            if len(matches) > 1:
+                raise HTTPException(status_code=409, detail="This mobile number is linked to more than one account. Please log in with your email.")
+            user = matches[0] if matches else None
     if user:
         user.pop("_id", None)
     return user
@@ -205,8 +208,7 @@ async def find_user_by_identifier(identifier: str) -> Optional[dict]:
 @api.post("/auth/login")
 async def login(body: LoginBody, request: Request, response: Response):
     ident = body.identifier.strip()
-    xff = request.headers.get("x-forwarded-for", "")
-    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+    ip = client_ip(request)
     lock_key = f"{ip}:{ident.lower()}"
     cutoff = now_utc() - timedelta(minutes=15)
     ip_attempts = await db.login_attempts.count_documents({"identifier": lock_key, "created_at": {"$gt": cutoff}})
@@ -250,6 +252,8 @@ async def refresh(request: Request, response: Response):
     user = await db.users.find_one({"id": payload["sub"]})
     if not user or payload.get("ver", 0) != user.get("token_version", 0):
         raise HTTPException(status_code=401, detail="Session expired")
+    if user.get("status") == "disabled":
+        raise HTTPException(status_code=403, detail="This account has been disabled.")
     response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/", **COOKIE_KW)
     return {"message": "refreshed", **issue_native_tokens(request, user, refresh=False)}
 
@@ -273,8 +277,7 @@ async def me(user: dict = Depends(get_current_user)):
 async def forgot_password(body: ForgotBody, request: Request, background_tasks: BackgroundTasks):
     generic = {"message": "If that email is registered, a reset link has been sent."}
     email = body.email.lower().strip()
-    xff = request.headers.get("x-forwarded-for", "")
-    ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+    ip = client_ip(request)
     cutoff = now_utc() - timedelta(minutes=15)
     email_recent = await db.password_reset_requests.count_documents({"email": email, "created_at": {"$gt": cutoff}})
     ip_recent = await db.password_reset_requests.count_documents({"ip": ip, "created_at": {"$gt": cutoff}})
@@ -566,30 +569,30 @@ DEMO_MEMBERS = [
 
 
 async def seed_super_admin():
-    username = os.environ.get("SUPER_ADMIN_USERNAME", "GymBoss")
-    password = os.environ.get("SUPER_ADMIN_PASSWORD", "GymBoss@2026")
+    """Creates the platform admin once from explicit env credentials. Never resets an existing password."""
+    username = os.environ.get("SUPER_ADMIN_USERNAME")
+    password = os.environ.get("SUPER_ADMIN_PASSWORD")
     email = os.environ.get("SUPER_ADMIN_EMAIL", "").lower()
-    existing = await db.users.find_one({"username": username})
-    if not existing:
-        await db.users.insert_one({
-            "id": new_id(),
-            "username": username,
-            "email": email or None,
-            "full_name": "BuildVVO Super Admin",
-            "role": "super_admin",
-            "organisation_id": None,
-            "password_hash": hash_password(password),
-            "token_version": 0,
-            "status": "active",
-            "created_at": now_utc(),
-        })
-        logger.info("Seeded super admin '%s'", username)
-    elif not verify_password(password, existing["password_hash"]):
-        await db.users.update_one({"username": username}, {"$set": {"password_hash": hash_password(password)}})
+    if not username or not password:
+        logger.warning("SUPER_ADMIN_USERNAME/SUPER_ADMIN_PASSWORD not set; skipping super admin seed")
+        return
+    if len(password) < 10:
+        logger.error("SUPER_ADMIN_PASSWORD must be at least 10 characters; skipping super admin seed")
+        return
+    if await db.users.find_one({"username": username}):
+        return
+    await db.users.insert_one({
+        "id": new_id(), "username": username, "email": email or None, "full_name": "BuildVVO Super Admin",
+        "role": "super_admin", "organisation_id": None, "password_hash": hash_password(password),
+        "token_version": 0, "status": "active", "created_at": now_utc(),
+    })
+    logger.info("Seeded super admin '%s'", username)
 
 
 async def seed_demo():
-    email = os.environ.get("DEMO_OWNER_EMAIL", "demo@gymbossvvo.in").lower()
+    email = os.environ.get("DEMO_OWNER_EMAIL", "").lower()
+    if not email or not os.environ.get("DEMO_OWNER_PASSWORD"):
+        return
     if await db.users.find_one({"email": email}):
         return
     password = os.environ.get("DEMO_OWNER_PASSWORD", "Demo@2026")
@@ -858,11 +861,31 @@ async def ensure_indexes():
     await db.webhook_events.create_index("received_at", expireAfterSeconds=60 * 60 * 24 * 45)
     await db.subscription_payments.create_index("payment_id", sparse=True)
     await db.subscription_payments.create_index("order_id")
+    await db.member_invoices.create_index([("organisation_id", 1), ("member_id", 1), ("created_at", 1)])
+    await db.payments.create_index([("organisation_id", 1), ("member_id", 1)])
+    await db.device_commands.create_index([("device_id", 1), ("pin", 1), ("expiry", 1)], unique=True, sparse=True)
+    await db.device_commands.create_index([("device_id", 1), ("seq", 1)])
+
+
+MIGRATIONS = [("2026_06_member_ledger_v1", "member_ledger.migrate_all")]
+
+
+async def run_migrations():
+    """Versioned, run-once data migrations (recorded in db.migrations)."""
+    import importlib
+    for mid, target in MIGRATIONS:
+        if await db.migrations.find_one({"id": mid}):
+            continue
+        mod, fn = target.rsplit(".", 1)
+        await getattr(importlib.import_module(mod), fn)()
+        await db.migrations.insert_one({"id": mid, "applied_at": now_utc()})
+        logger.info("Applied migration %s", mid)
 
 
 @app.on_event("startup")
 async def startup():
     await ensure_indexes()
+    await run_migrations()
     demo_org = await db.organisations.find_one({"is_demo": True})
     if demo_org and not await db.plans.find_one({"organisation_id": demo_org["id"], "type": "pt"}):
         ts = now_utc()
@@ -936,6 +959,25 @@ app.include_router(adms_router)
 
 allowed_origins = [o.strip().rstrip("/") for o in [os.environ.get("FRONTEND_URL", ""), os.environ.get("PORTAL_URL", ""),
                    *os.environ.get("CORS_ORIGINS", "").split(",")] if o.strip() and o.strip() != "*"]
+CSRF_EXEMPT = ("/api/webhooks/", "/api/internal/", "/api/public/", "/iclock/")
+
+
+@app.middleware("http")
+async def csrf_origin_guard(request: Request, call_next):
+    """Cookie auth uses SameSite=None, so state-changing cookie requests must come from an allowed Origin.
+    Bearer-token (store app) and server-to-server endpoints are unaffected."""
+    if (request.method in ("POST", "PUT", "PATCH", "DELETE") and "access_token" in request.cookies
+            and not request.headers.get("authorization") and not request.url.path.startswith(CSRF_EXEMPT)):
+        origin = (request.headers.get("origin") or "").rstrip("/")
+        if not origin:
+            ref = request.headers.get("referer") or ""
+            origin = "/".join(ref.split("/")[:3]) if ref else ""
+        if origin and origin not in allowed_origins:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "Cross-site request blocked"}, status_code=403)
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

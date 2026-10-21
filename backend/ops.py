@@ -210,12 +210,15 @@ PERMISSIONS = {"view", "manage", "full"}
 
 @router.get("/staff")
 async def list_staff(user: dict = Depends(get_org_user)):
-    return await db.staff.find({"organisation_id": user["organisation_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    hide = {"_id": 0} if (user.get("role") in ("owner", "admin") or user.get("finance_enabled")) else {"_id": 0, "salary": 0}
+    return await db.staff.find({"organisation_id": user["organisation_id"]}, hide).sort("created_at", -1).to_list(500)
 
 
 @router.post("/staff")
 async def create_staff(body: StaffBody, user: dict = Depends(require_manager)):
     role = body.role.lower()
+    if user.get("role") not in ("owner", "admin") and (role == "admin" or body.password or body.permission == "full" or body.enable_finance):
+        raise HTTPException(403, "Only the owner or an admin can create admins, logins, full-access or finance-enabled staff")
     if role not in STAFF_ROLES:
         raise HTTPException(422, "Invalid role")
     if body.permission not in PERMISSIONS:
@@ -278,6 +281,9 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
     if body.password and len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
     login_id = existing.get("user_id")
+    if user.get("role") not in ("owner", "admin") and (data["permission"] != existing.get("permission", "view")
+                                                       or bool(data.get("enable_finance")) != bool(existing.get("enable_finance"))):
+        raise HTTPException(403, "Only the owner or an admin can change permissions or finance access")
     if user.get("role") != "owner" and (body.password or data["role"] != existing.get("role") or (login_id and email != existing.get("email"))):
         raise HTTPException(403, "Only the gym owner can change roles, login emails or passwords")
     if login_id == user["id"] and data["role"] != existing.get("role"):

@@ -18,7 +18,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+client = AsyncIOMotorClient(os.environ["MONGO_URL"], tz_aware=True, tzinfo=timezone.utc)
 db = client[os.environ["DB_NAME"]]
 
 JWT_ALGORITHM = "HS256"
@@ -80,6 +80,18 @@ COOKIE_KW = {"domain": os.environ.get("COOKIE_DOMAIN") or None}
 NATIVE_PLATFORMS = ("android_store", "ios_store")
 
 
+TRUSTED_PROXIES = {p.strip() for p in os.environ.get("TRUSTED_PROXIES", "").split(",") if p.strip()}
+
+
+def client_ip(request: Request) -> str:
+    """X-Forwarded-For is honoured only when the direct peer is a configured trusted proxy (or '*')."""
+    peer = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for")
+    if xff and ("*" in TRUSTED_PROXIES or peer in TRUSTED_PROXIES):
+        return xff.split(",")[0].strip()
+    return peer
+
+
 def set_auth_cookies(response: Response, user: dict):
     response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/", **COOKIE_KW)
     response.set_cookie("refresh_token", create_refresh_token(user), httponly=True, secure=True, samesite="none", max_age=604800, path="/", **COOKIE_KW)
@@ -133,28 +145,48 @@ async def get_org_user(request: Request, user: dict = Depends(get_current_user))
     if org and org.get("disabled"):
         raise HTTPException(status_code=403, detail="This gym account has been disabled. Contact BuildVVO support.")
     if (request.method not in ("GET", "HEAD", "OPTIONS") and not request.url.path.startswith(WRITE_ALLOWED_WHEN_EXPIRED)
-            and derive_subscription(org)["status"] == "expired"):
+            and derive_subscription(org)["status"] in RESTRICTED_SUB_STATES):
         raise HTTPException(status_code=402, detail="Your trial has ended, so GymBoss is in view-only mode. Your data is safe. Reactivate GymBoss to add or edit again.")
     user["org_doc"] = org
     return user
 
 
+RESTRICTED_SUB_STATES = ("expired", "payment_due", "cancelled", "none")
+
+# Permission matrix (single source of truth, mirrored in frontend/src/lib/permissions.js):
+#   owner/admin  : everything (only the owner changes roles, login emails/passwords, deletes the account)
+#   permission "full"   : create/edit + delete/reverse + manage staff, outlets, settings
+#   permission "manage" : create/edit only
+#   permission "view"   : read only
+#   finance pages: owner, admin, or finance_enabled
+
+
+def perm_level(user: dict) -> str:
+    if user.get("role") in ("owner", "admin"):
+        return "full"
+    return user.get("permission") if user.get("permission") in ("view", "manage", "full") else "view"
+
+
 async def require_manager(user: dict = Depends(get_org_user)) -> dict:
-    if user.get("role") not in ("owner", "admin", "manager"):
+    if user.get("role") not in ("owner", "admin", "manager") or perm_level(user) != "full":
         raise HTTPException(status_code=403, detail="You do not have permission for this action")
     return user
 
 
+async def require_full(user: dict = Depends(get_org_user)) -> dict:
+    if perm_level(user) != "full":
+        raise HTTPException(status_code=403, detail="Only full-access users can delete or reverse records")
+    return user
+
+
 async def require_write(user: dict = Depends(get_org_user)) -> dict:
-    if user.get("role") == "owner":
-        return user
-    if user.get("permission") == "view":
+    if perm_level(user) == "view":
         raise HTTPException(status_code=403, detail="Your role has view-only access")
     return user
 
 
 async def require_finance_access(user: dict = Depends(get_org_user)) -> dict:
-    if user.get("role") == "owner" or user.get("finance_enabled"):
+    if user.get("role") in ("owner", "admin") or user.get("finance_enabled"):
         return user
     raise HTTPException(status_code=403, detail="You do not have access to finance")
 
@@ -237,12 +269,11 @@ async def audit(actor: str, action: str, target: str = "", meta: dict | None = N
 def add_duration(start: date, dtype: str, duration: int) -> date:
     if dtype == "days":
         return start + timedelta(days=duration)
-    if dtype == "years":
-        return date(start.year + duration, start.month, min(start.day, 28))
-    months = duration if dtype == "months" else 1
+    import calendar
+    months = duration * 12 if dtype == "years" else (duration if dtype == "months" else 1)
     total = (start.year * 12 + start.month - 1) + months
     y, m = divmod(total, 12)
-    return date(y, m + 1, min(start.day, 28))
+    return date(y, m + 1, min(start.day, calendar.monthrange(y, m + 1)[1]))
 
 
 def member_status(m: dict, today: date | None = None) -> str:
@@ -250,7 +281,10 @@ def member_status(m: dict, today: date | None = None) -> str:
     frozen_until = m.get("frozen_until")
     if isinstance(frozen_until, str):
         frozen_until = date.fromisoformat(frozen_until[:10])
-    if frozen_until and frozen_until >= today:
+    frozen_from = m.get("frozen_from")
+    if isinstance(frozen_from, str):
+        frozen_from = date.fromisoformat(frozen_from[:10])
+    if frozen_until and frozen_until >= today and (not frozen_from or frozen_from <= today):
         return "frozen"
     expiry = m.get("membership_expiry")
     if isinstance(expiry, str):

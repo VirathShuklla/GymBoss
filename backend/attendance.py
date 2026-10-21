@@ -1,5 +1,6 @@
 """Attendance: QR self check-in (public, per-outlet token), biometric devices (eSSL/ZKTeco ADMS
 push protocol), staff attendance, and a shared punch-in/punch-out engine."""
+import logging
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,9 @@ ONLINE_WINDOW = timedelta(minutes=5)
 DOUBLE_SCAN = timedelta(minutes=1)
 
 
+logger = logging.getLogger(__name__)
+
+
 def day_start(d=None) -> datetime:
     d = d or today_ist()
     return datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30)
@@ -32,13 +36,28 @@ def device_pin(member: dict) -> str:
     return str(int(m.group(1))) if m else ""
 
 
-async def punch(collection, key: str, person_id: str, base_doc: dict, at: datetime | None = None) -> tuple[str, dict]:
-    """First punch of the day = check-in, next = check-out. Ignores accidental double scans."""
+def assert_member_eligible(m: dict):
+    """One eligibility rule for manual, QR and biometric check-ins."""
+    st = member_status(m)
+    if st == "expired":
+        raise HTTPException(403, f"Membership expired on {str(m.get('membership_expiry'))[:10]}. Please renew at the front desk.")
+    if st == "frozen":
+        raise HTTPException(403, "This membership is currently frozen.")
+
+
+async def punch(collection, key: str, person_id: str, base_doc: dict, at: datetime | None = None, checkin_only: bool = False) -> tuple[str, dict]:
+    """First punch of the (event's IST) day = check-in, next = check-out. Ignores accidental double scans.
+    Uses the punch's own timestamp, so delayed biometric uploads pair with the right day."""
     at = at or now_utc()
-    open_visit = await collection.find_one({key: person_id, "check_out": None, "check_in": {"$gte": day_start()}})
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    start = day_start(at.astimezone(IST).date())
+    if await collection.find_one({key: person_id, "$or": [{"check_in": at}, {"check_out": at}]}):
+        return "duplicate", {"check_in": at, "check_out": None}
+    open_visit = await collection.find_one({key: person_id, "check_out": None, "check_in": {"$gte": start, "$lt": start + timedelta(days=1), "$lte": at}})
     if open_visit:
         ci = open_visit["check_in"].replace(tzinfo=timezone.utc) if open_visit["check_in"].tzinfo is None else open_visit["check_in"]
-        if at - ci < DOUBLE_SCAN:
+        if at - ci < DOUBLE_SCAN or checkin_only:
             open_visit.pop("_id", None)
             return "duplicate", open_visit
         await collection.update_one({"id": open_visit["id"]}, {"$set": {"check_out": at}})
@@ -51,12 +70,12 @@ async def punch(collection, key: str, person_id: str, base_doc: dict, at: dateti
     return "in", doc
 
 
-async def punch_member(m: dict, source: str, at: datetime | None = None, device_id: str | None = None, outlet_id: str | None = None):
+async def punch_member(m: dict, source: str, at: datetime | None = None, device_id: str | None = None, outlet_id: str | None = None, checkin_only: bool = False):
     base = {
         "organisation_id": m["organisation_id"], "outlet_id": outlet_id or m.get("outlet_id"),
         "member_name": m["full_name"], "member_code": m["member_code"], "source": source, "device_id": device_id,
     }
-    return await punch(db.attendance, "member_id", m["id"], base, at)
+    return await punch(db.attendance, "member_id", m["id"], base, at, checkin_only)
 
 
 def _fmt(dt):
@@ -155,12 +174,17 @@ async def public_checkin(token: str, body: PublicCheckin):
         or_q = [{"email": ident.lower()}]
         if len(digits) >= 10:
             or_q.append({"phone": {"$regex": f"{digits[-10:]}$"}})
-        u = await db.users.find_one({"organisation_id": org_id, "is_active": {"$ne": False}, "$or": or_q})
+        u = await db.staff.find_one({"organisation_id": org_id, "$or": or_q})
         if not u:
-            raise HTTPException(404, "No staff account found with that phone or email.")
-        base = {"organisation_id": org_id, "outlet_id": outlet["id"], "staff_name": u.get("full_name"), "role": u.get("role"), "source": "qr"}
-        action, doc = await punch(db.staff_attendance, "staff_id", u["id"], base)
-        name = u.get("full_name")
+            owner = await db.users.find_one({"organisation_id": org_id, "role": "owner", "status": {"$ne": "disabled"}, "$or": or_q})
+            u = {"id": owner["id"], "user_id": owner["id"], "name": owner.get("full_name"), "role": "owner", "status": "active"} if owner else None
+        if not u:
+            raise HTTPException(404, "No staff member found with that phone or email.")
+        if u.get("status", "active") != "active":
+            raise HTTPException(403, "This staff account is disabled.")
+        base = {"organisation_id": org_id, "outlet_id": outlet["id"], "staff_name": u.get("name"), "role": u.get("role"), "source": "qr"}
+        action, doc = await punch(db.staff_attendance, "staff_id", u.get("user_id") or u["id"], base)
+        name = u.get("name") or "there"
     else:
         or_q = [{"member_code": {"$regex": f"^{re.escape(ident)}$", "$options": "i"}}]
         if len(digits) >= 10:
@@ -170,11 +194,7 @@ async def public_checkin(token: str, body: PublicCheckin):
         m = await db.members.find_one({"organisation_id": org_id, "deleted_at": None, "$or": or_q})
         if not m:
             raise HTTPException(404, "We couldn't find you. Check your member ID or phone number, or ask the front desk.")
-        st = member_status(m)
-        if st == "expired":
-            raise HTTPException(403, f"Your membership expired on {str(m.get('membership_expiry'))[:10]}. Please renew at the front desk.")
-        if st == "frozen":
-            raise HTTPException(403, "Your membership is currently frozen. Please contact the front desk.")
+        assert_member_eligible(m)
         action, doc = await punch_member(m, "qr", outlet_id=outlet["id"])
         name = m["full_name"]
     t = doc["check_out"] if action == "out" else doc["check_in"]
@@ -237,6 +257,7 @@ async def add_device(body: DeviceBody, user: dict = Depends(require_write)):
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
     auto_delete_on_expiry: Optional[bool] = None
+    allowed_ips: Optional[list[str]] = None
 
 
 @router.put("/attendance/devices/{device_id}")
@@ -287,10 +308,19 @@ async def device_ids(user: dict = Depends(get_org_user)):
 
 # ---------------- ADMS push protocol (device -> server) ----------------
 
-async def _device_by_sn(sn: str | None):
+def _client_ip(request: Request) -> str:
+    from deps import client_ip
+    return client_ip(request)
+
+
+async def _device_by_sn(sn: str | None, request: Request | None = None):
+    """Devices are identified by serial number; if the owner set allowed IPs, the request must also come from one."""
     if not sn:
         return None
     d = await db.biometric_devices.find_one({"serial_number": sn.strip().upper()})
+    if d and d.get("allowed_ips") and request is not None and _client_ip(request) not in d["allowed_ips"]:
+        logger.warning("ADMS request for %s from unlisted IP %s rejected", sn, _client_ip(request))
+        return None
     if d:
         await db.biometric_devices.update_one({"id": d["id"]}, {"$set": {"last_seen": now_utc()}})
     return d
@@ -305,8 +335,8 @@ async def _member_by_pin(org_id: str, pin: str):
 
 
 @adms_router.get("/iclock/cdata", response_class=PlainTextResponse)
-async def adms_handshake(SN: str = "", options: str = ""):
-    await _device_by_sn(SN)
+async def adms_handshake(request: Request, SN: str = "", options: str = ""):
+    await _device_by_sn(SN, request)
     return "\n".join([
         f"GET OPTION FROM: {SN}", "ATTLOGStamp=None", "OPERLOGStamp=9999", "ATTPHOTOStamp=None",
         "ErrorDelay=30", "Delay=10", "TransTimes=00:00;14:05", "TransInterval=1",
@@ -316,7 +346,7 @@ async def adms_handshake(SN: str = "", options: str = ""):
 
 @adms_router.post("/iclock/cdata", response_class=PlainTextResponse)
 async def adms_upload(request: Request, SN: str = "", table: str = ""):
-    d = await _device_by_sn(SN)
+    d = await _device_by_sn(SN, request)
     body = (await request.body()).decode("utf-8", errors="ignore")
     if not d or table.upper() != "ATTLOG":
         return "OK"
@@ -331,38 +361,54 @@ async def adms_upload(request: Request, SN: str = "", table: str = ""):
         except ValueError:
             continue
         m = await _member_by_pin(d["organisation_id"], pin)
-        if not m or await db.attendance.find_one({"device_id": d["id"], "member_id": m["id"], "$or": [{"check_in": at}, {"check_out": at}]}):
+        if not m or member_status(m, at.astimezone(IST).date()) in ("expired", "frozen"):
             continue
-        await punch_member(m, "biometric", at=at, device_id=d["id"], outlet_id=d.get("outlet_id"))
-        count += 1
+        action, _ = await punch_member(m, "biometric", at=at, device_id=d["id"], outlet_id=d.get("outlet_id"))
+        count += action != "duplicate"
     if count:
         await db.biometric_devices.update_one({"id": d["id"]}, {"$inc": {"punches": count}})
     return f"OK: {count}"
 
 
 @adms_router.get("/iclock/getrequest", response_class=PlainTextResponse)
-async def adms_getrequest(SN: str = ""):
-    """Device polls for commands. With auto-delete on, expired members are removed from the device."""
-    d = await _device_by_sn(SN)
-    if not d or not d.get("auto_delete_on_expiry"):
+async def adms_getrequest(request: Request, SN: str = ""):
+    """Device polls for commands. Commands stay queued until the device acknowledges them via /iclock/devicecmd;
+    unacknowledged commands are re-sent after 5 minutes."""
+    d = await _device_by_sn(SN, request)
+    if not d:
         return "OK"
-    deleted = d.get("deleted_pins") or {}
-    cmds, today = [], today_ist().isoformat()
-    async for m in db.members.find({"organisation_id": d["organisation_id"], "deleted_at": None, "membership_expiry": {"$lt": today}}):
-        pin = device_pin(m)
-        exp = str(m.get("membership_expiry"))[:10]
-        if pin and deleted.get(pin) != exp:
-            cmds.append(f"C:{len(cmds) + 1}:DATA DELETE USERINFO PIN={pin}")
-            deleted[pin] = exp
-        if len(cmds) >= 20:
-            break
+    if d.get("auto_delete_on_expiry"):
+        today = today_ist().isoformat()
+        async for m in db.members.find({"organisation_id": d["organisation_id"], "deleted_at": None, "membership_expiry": {"$lt": today}}).limit(200):
+            pin, exp = device_pin(m), str(m.get("membership_expiry"))[:10]
+            if pin:
+                await db.device_commands.update_one(
+                    {"device_id": d["id"], "pin": pin, "expiry": exp},
+                    {"$setOnInsert": {"id": new_id(), "device_id": d["id"], "pin": pin, "expiry": exp, "cmd": f"DATA DELETE USERINFO PIN={pin}",
+                                      "status": "queued", "created_at": now_utc()}}, upsert=True)
+    resend = now_utc() - timedelta(minutes=5)
+    q = {"device_id": d["id"], "$or": [{"status": "queued"}, {"status": "sent", "sent_at": {"$lt": resend}}]}
+    cmds = await db.device_commands.find(q).sort("created_at", 1).limit(20).to_list(20)
     if not cmds:
         return "OK"
-    await db.biometric_devices.update_one({"id": d["id"]}, {"$set": {"deleted_pins": deleted}})
-    return "\n".join(cmds)
+    lines = []
+    for c in cmds:
+        seq = await db.counters.find_one_and_update({"id": f"devcmd:{d['id']}"}, {"$inc": {"seq": 1}}, upsert=True, return_document=True)
+        await db.device_commands.update_one({"id": c["id"]}, {"$set": {"status": "sent", "sent_at": now_utc(), "seq": seq["seq"]}})
+        lines.append(f"C:{seq['seq']}:{c['cmd']}")
+    return "\n".join(lines)
 
 
 @adms_router.post("/iclock/devicecmd", response_class=PlainTextResponse)
-async def adms_devicecmd(SN: str = ""):
-    await _device_by_sn(SN)
+async def adms_devicecmd(request: Request, SN: str = ""):
+    """Device reports results as lines like ID=12&Return=0&CMD=DATA. Return=0 means success."""
+    d = await _device_by_sn(SN, request)
+    if not d:
+        return "OK"
+    body = (await request.body()).decode("utf-8", errors="ignore")
+    for line in body.splitlines():
+        kv = dict(p.split("=", 1) for p in line.strip().split("&") if "=" in p)
+        if kv.get("ID", "").isdigit():
+            status = "done" if kv.get("Return", "-1") in ("0", "") else "failed"
+            await db.device_commands.update_one({"device_id": d["id"], "seq": int(kv["ID"])}, {"$set": {"status": status, "acked_at": now_utc(), "return": kv.get("Return")}})
     return "OK"

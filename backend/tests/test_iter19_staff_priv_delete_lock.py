@@ -135,7 +135,9 @@ class TestCredentialChangeOwnerOnly:
     def test_manager_can_edit_non_credential_fields(self):
         owner, _, _ = register()
         a_email = unique_email("test_iter19_mgr2")
-        create_staff(owner, a_email, STAFF_PW, role="manager")
+        mgr, mbody = create_staff(owner, a_email, STAFF_PW, role="manager")
+        mbody.pop("password", None)
+        owner.put(f"{API}/staff/{mgr['id']}", json={**mbody, "permission": "full"})  # staff management needs Full access
         tgt, tbody = create_staff(owner, unique_email("test_iter19_t2"), STAFF_PW)
         a = session_for(a_email, STAFF_PW)
         tbody.pop("password")

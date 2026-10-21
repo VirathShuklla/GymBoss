@@ -100,6 +100,13 @@ async def activate_subscription(org_id: str, payment_id: str, actor: str = "razo
 STORE_PLATFORMS = ("android_store", "ios_store")
 
 
+def payment_matches(pay: dict, rec: dict) -> bool:
+    """A signed payment must belong to this exact order, for the expected amount/currency, and be successful."""
+    return (pay.get("order_id") == rec.get("order_id") and pay.get("currency") == rec.get("currency", "INR")
+            and int(pay.get("amount") or 0) == int(round((rec.get("amount") or 0) * 100))
+            and pay.get("status") in ("captured", "authorized"))
+
+
 def require_billing_role(user: dict):
     if user.get("role") not in ("owner", "admin"):
         raise HTTPException(403, "Only the gym owner or an admin can manage billing.")
@@ -122,6 +129,9 @@ async def verify_payment(body: VerifyBody, user: dict = Depends(get_org_user)):
     rec = await db.subscription_payments.find_one({"order_id": body.razorpay_order_id, "organisation_id": user["organisation_id"]})
     if not rec:
         raise HTTPException(404, "Order not found")
+    pay, _ = await razorpay_request("GET", f"/payments/{body.razorpay_payment_id}")
+    if not payment_matches(pay, rec):
+        raise HTTPException(400, "Payment does not match this order")
     await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], plan_id=rec.get("plan_id"), order_id=body.razorpay_order_id)
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     return {"message": "Subscription activated", "subscription": derive_subscription(org, await get_plan_price())}

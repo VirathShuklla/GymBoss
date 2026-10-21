@@ -90,7 +90,7 @@ export default function AppLayout() {
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-3" data-testid={`sidebar-nav-${scope}`}>
         {NAV.filter((item) => {
           if (!item.finance) return true;
-          return ["owner", "admin", "manager"].includes(user?.role) || user?.finance_enabled;
+          return ["owner", "admin"].includes(user?.role) || user?.finance_enabled;
         }).map((item) => (
           <NavLink
             key={item.to}

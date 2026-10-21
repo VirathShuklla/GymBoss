@@ -136,6 +136,10 @@ async def handle_payment_event(event_name: str, event: dict) -> str:
     if not record:
         return "ignored"
     if event_name == "payment.captured":
+        from billing import payment_matches
+        if not payment_matches(entity, record):
+            logger.error("payment.captured mismatch for order %s; not applied", order_id)
+            return "mismatch"
         await apply_payment(record["organisation_id"], entity.get("id", ""), plan_id=record.get("plan_id"), order_id=order_id)
     elif event_name == "payment.failed" and record.get("status") != "paid":
         await db.subscription_payments.update_one({"order_id": order_id, "status": {"$ne": "paid"}},
