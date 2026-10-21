@@ -1,0 +1,18 @@
+{
+  "summary": "Retested the 2 open items from iteration 23. Both are fixed. (1) client_ip spoofing: deps.client_ip now takes the right-most X-Forwarded-For hop (TRUSTED_PROXY_HOPS=1). A spoofed XFF of 1.2.3.4 or '1.2.3.4, 5.6.7.8' still stores the real ingress-seen IP 35.186.245.91. Rotating XFF across 6 bad logins gives 401x5 then 429, with one lock identifier. ADMS: a device with allowed_ips ['203.0.113.77'] rejects a cdata punch that sends XFF 203.0.113.77 (0 attendance rows). The same punch is accepted when allowed_ips holds the real IP, even with a spoofed XFF. Forgot-password also ignores a spoofed XFF. (2) Mobile Add Member with one plan, tested in a 390x844 Playwright session: two adds in a row both showed the 'Member added' toast and no 'Please select a membership plan' toast. Both members appeared in the list on the Solo plan. Regression: test_iter24_client_ip + test_iter23_audit_fixes + test_iter22_security_ledger, run with -n 0, gave 47/47 passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter24_client_ip.py", "/app/backend/tests/test_iter23_audit_fixes.py", "/app/backend/tests/test_iter22_security_ledger.py", "/app/test_reports/pytest/iter24.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "client_ip with TRUSTED_PROXIES='*' trusts any direct peer. That is fine only because the backend is reachable solely through the ingress. In production, set TRUSTED_PROXIES to the ingress CIDRs or set REAL_IP_HEADER, and match TRUSTED_PROXY_HOPS to the real proxy chain. If a CDN like Cloudflare sits in front of the ingress, hops=1 would return the CDN edge IP for everyone, so use REAL_IP_HEADER=CF-Connecting-IP.",
+    "TRUSTED_PROXIES='*' with REAL_IP_HEADER set would trust a client-sent copy of that header unless the edge overwrites it. Document this.",
+    "attendance._device_by_sn calls _client_ip twice on the reject path. This is trivial."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter24_client_ip.py (new)", "/app/backend/tests/test_iter23_audit_fixes.py (TestClientIP tests rewritten: the old tests relied on spoofable left-most XFF; now login-lock-not-bypassed and ADMS-spoof-rejected)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Used seed_iter23_ui.py to create a throwaway org (one plan) for the UI check, then deleted it. pytest fixtures clean up their own orgs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run with -n 0. Client IP as seen by the server from this container is 35.186.245.91. Tests learn it from the login_attempts identifier, which is '<ip>:<ident>'. Sending X-Forwarded-For no longer simulates a different client IP, so per-IP lock tests from one container share one IP. Keep the 15/IP forgot-password cap in mind."
+}

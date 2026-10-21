@@ -240,3 +240,14 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - QR staff check-in uses the staff record + status (owner fallback);
   - biometric devices take an optional allowed_ips allowlist; deletion commands are queued in device_commands until the device acknowledges them via /iclock/devicecmd (re-sent after 5 min).
 - Round 2 (pending): reports via aggregation + accounting-date policy, typed report params, upload content sniffing + streaming limits, lockfile/pins/health checks, portable isolated tests.
+- Round-1 follow-ups (iteration_22/23 findings, fixed):
+  - salary isn't overwritten by non-finance editors;
+  - staff toggle/delete hierarchy guard (no self, admins only by owner/admin);
+  - deletes of expenses, plans and devices need full access;
+  - freeze status is read from freeze_history;
+  - verify returns 400 for an unknown payment;
+  - reconcile expires stale orders;
+  - ADMS failed commands are retried 3×;
+  - credit balance is shown in the web drawer and mobile member list/actions;
+  - the mobile renew sheet preselects the current plan;
+  - client IP is taken from the right-most trusted X-Forwarded-For hop, or REAL_IP_HEADER, so spoofing is blocked.

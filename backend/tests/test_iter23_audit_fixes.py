@@ -164,46 +164,26 @@ class TestDeleteMatrix:
 
 # ---- client_ip / X-Forwarded-For ----
 class TestClientIP:
-    def test_login_lockout_keyed_by_xff_ip(self, org):
+    # iter24: client_ip ignores client-supplied XFF entries; spoof tests moved to test_iter24_client_ip.py
+    def test_login_lockout_not_bypassed_by_xff(self, org):
         ident = f"test_iter23_lock_{uniq()}@example.com"
-        ip_a, ip_b = f"198.51.100.{int(uniq(), 16) % 250}", f"203.0.113.{int(uniq(), 16) % 250}"
         try:
-            codes = [login(ident, "bad", ip=ip_a)[1].status_code for _ in range(6)]
+            codes = [login(ident, "bad", ip=f"198.51.100.{i + 1}")[1].status_code for i in range(6)]
             assert codes[:5] == [401] * 5 and codes[5] == 429, codes
-            rows = db.login_attempts.find({"email": ident})
-            assert all(r["identifier"].startswith(ip_a + ":") for r in rows)
-            # a different client IP is not locked by ip_a's 5 failures (email cap is 10)
-            assert login(ident, "bad", ip=ip_b)[1].status_code == 401
+            assert len({r["identifier"] for r in db.login_attempts.find({"email": ident})}) == 1
         finally:
             db.login_attempts.delete_many({"email": ident})
 
-    def test_forgot_password_ip_cap_per_ip(self):
-        ip = f"192.0.2.{int(uniq(), 16) % 250}"
-        emails = [f"test_iter23_fp_{uniq()}@example.com" for _ in range(17)]
-        try:
-            for e in emails:
-                r = requests.post(f"{API}/auth/forgot-password", json={"email": e}, headers={"X-Forwarded-For": ip})
-                assert r.status_code == 200
-            assert db.password_reset_requests.count_documents({"ip": ip}) == 15
-            other = f"test_iter23_fp_{uniq()}@example.com"
-            requests.post(f"{API}/auth/forgot-password", json={"email": other}, headers={"X-Forwarded-For": "192.0.2.251"})
-            assert db.password_reset_requests.count_documents({"email": other}) == 1
-            emails.append(other)
-        finally:
-            db.password_reset_requests.delete_many({"email": {"$in": emails}})
-
-    def test_adms_allowed_ips_match_xff(self, org):
+    def test_adms_allowed_ips_ignores_spoofed_xff(self, org):
         sn = f"TST{uniq().upper()}"
         d = org["s"].post(f"{API}/attendance/devices", json={"device_type": "eSSL K30", "serial_number": sn, "name": "TEST dev"}).json()
         org["s"].put(f"{API}/attendance/devices/{d['id']}", json={"allowed_ips": ["203.0.113.77"]})
         m = mk_member(org).json()
         pin = m["member_code"].split("-")[-1]
         line = f"{pin}\t{datetime.now(IST):%Y-%m-%d %H:%M:%S}\t0\t1"
-        requests.post(f"{API}/iclock/cdata", params={"SN": sn, "table": "ATTLOG"}, data=line, headers={"X-Forwarded-For": "198.51.100.1"})
-        assert db.attendance.count_documents({"member_id": m["id"]}) == 0
         r = requests.post(f"{API}/iclock/cdata", params={"SN": sn, "table": "ATTLOG"}, data=line, headers={"X-Forwarded-For": "203.0.113.77"})
         assert r.status_code == 200
-        assert db.attendance.count_documents({"member_id": m["id"]}) == 1
+        assert db.attendance.count_documents({"member_id": m["id"]}) == 0
 
 
 # ---- Freeze history ----

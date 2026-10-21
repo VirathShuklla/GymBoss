@@ -44,7 +44,7 @@ Run it under systemd, supervisor or Docker. Put Nginx/Caddy in front for HTTPS.
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | AWS S3 / Cloudflare R2 / DigitalOcean Spaces (set `S3_ENDPOINT_URL` for non-AWS) |
 | `EMAIL_PROVIDER` + `SMTP_HOST/PORT/USER/PASSWORD/FROM`, `EMAIL_FROM_NAME` | Password-reset email via any SMTP (Zoho, SES, Gmail Workspace) |
 | `SUPER_ADMIN_USERNAME/PASSWORD/EMAIL` | Creates the BuildVVO super admin once (required, no defaults, password ≥10 chars; never reset on restart) |
-| `TRUSTED_PROXIES` | Comma-separated IPs of your reverse proxies (e.g. `127.0.0.1`), so client IPs from X-Forwarded-For are trusted only from them |
+| `TRUSTED_PROXIES`, `TRUSTED_PROXY_HOPS`, `REAL_IP_HEADER` | Client-IP detection for lockouts and biometric IP allowlists. `TRUSTED_PROXIES` = IPs of your reverse proxies (e.g. `127.0.0.1`). `TRUSTED_PROXY_HOPS` = how many proxies append to X-Forwarded-For (Nginx only = 1; Cloudflare + Nginx = 2). Or set `REAL_IP_HEADER=CF-Connecting-IP` behind Cloudflare. Left-most (client-supplied) X-Forwarded-For entries are never trusted |
 | `SEED_DEMO` | `false` in production, so the demo gym isn't created |
 
 ## 2. Frontend (website, web app, `/m`, billing portal)
