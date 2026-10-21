@@ -182,3 +182,8 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Mobile polish: refined primitives (buttons, sheets, inputs with focus rings, tabs/pills with 40px+ targets, skeleton rows, empty states), sticky Manage tabs that auto-scroll to the active tab, row press states, emoji removed, checklist hidden once complete, trial badge kept on one line, reduced-motion support. Tailwind opacity 8/12 added (fixes invisible avatar/tint backgrounds).
 - Demo trial auto-refreshes when ≤3 days left.
 - Tested: iteration_18/19 → backend 33/33, frontend 100%.
+
+## Bug fix: Razorpay checkout "Something went wrong / Payment Failed" (2026-06)
+- Root cause: Razorpay keys were switched to a new account, but the cached Razorpay plan ID (settings.razorpay_plan_cache*) and the pending "created" subscriptions belonged to the old account → checkout got a non-existent subscription_id.
+- Fix: the plan cache is now tied to key_id; reused pending subscriptions are re-validated with Razorpay (and abandoned if invalid or from another key); saving new keys in Super Admin clears the plan cache and abandons pending subs. Yearly plan also failed (total_count 120 > Razorpay max) → total_count = 120 // months.
+- Verified: monthly/quarterly/half-yearly/yearly autodebit start OK; checkout opens with payment options in test mode.

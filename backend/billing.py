@@ -192,16 +192,27 @@ async def razorpay_webhook(request: Request):
 async def get_or_create_rzp_plan(plan: dict) -> str:
     cache_id = "razorpay_plan_cache" if plan["id"] == "monthly" else f"razorpay_plan_cache_{plan['id']}"
     price = plan["effective_price"]
+    key_id = (await get_razorpay_keys())[0]
     cache = await db.settings.find_one({"id": cache_id}) or {}
-    if cache.get("price") == price and cache.get("plan_id"):
+    if cache.get("price") == price and cache.get("plan_id") and cache.get("key_id") == key_id:
         return cache["plan_id"]
     data, _ = await razorpay_request("POST", "/plans", {
         "period": "monthly",
         "interval": plan["months"],
         "item": {"name": f"GymBoss_VVO {plan['name']}", "amount": price * 100, "currency": "INR"},
     })
-    await db.settings.update_one({"id": cache_id}, {"$set": {"price": price, "plan_id": data["id"]}}, upsert=True)
+    await db.settings.update_one({"id": cache_id}, {"$set": {"price": price, "plan_id": data["id"], "key_id": key_id}}, upsert=True)
     return data["id"]
+
+
+async def reusable_subscription(sub: dict, key_id: str) -> bool:
+    if sub.get("key_id", key_id) != key_id:
+        return False
+    try:
+        data, _ = await razorpay_request("GET", f"/subscriptions/{sub['razorpay_subscription_id']}")
+    except HTTPException:
+        return False
+    return data.get("status") in ("created", "authenticated", "active")
 
 
 @router.post("/subscription/autodebit/start")
@@ -211,23 +222,23 @@ async def autodebit_start(body: PlanChoice | None = None, user: dict = Depends(g
     price = plan["effective_price"]
     plan_id = await get_or_create_rzp_plan(plan)
     existing = await db.subscriptions.find_one({"organisation_id": org_id, "status": {"$in": ["created", "active"]}})
-    if existing and existing["status"] == "created" and existing.get("plan_id") != plan_id:
+    key_id = (await get_razorpay_keys())[0]
+    if existing and existing["status"] == "created" and (existing.get("plan_id") != plan_id or not await reusable_subscription(existing, key_id)):
         await db.subscriptions.update_one({"id": existing["id"]}, {"$set": {"status": "abandoned"}})
         existing = None
     await track("payment_initiated", org_id, user["id"], props={"plan": plan["id"], "amount": price, "mode": "autodebit"})
     if existing:
-        key_id = (await get_razorpay_keys())[0]
         return {"subscription_id": existing["razorpay_subscription_id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": existing["status"]}
     data, key_id = await razorpay_request("POST", "/subscriptions", {
         "plan_id": plan_id,
-        "total_count": 120,
+        "total_count": max(1, 120 // plan["months"]),
         "quantity": 1,
         "customer_notify": 0,
         "notes": {"org_id": org_id},
     })
     await db.subscriptions.insert_one({
         "id": new_id(), "organisation_id": org_id, "razorpay_subscription_id": data["id"],
-        "plan_id": plan_id, "plan_key": plan["id"], "amount": price, "status": "created", "created_at": now_utc(),
+        "plan_id": plan_id, "plan_key": plan["id"], "amount": price, "status": "created", "key_id": key_id, "created_at": now_utc(),
     })
     await audit(user["id"], "subscription.autodebit_started", org_id, {"rzp_subscription": data["id"]}, org_id)
     return {"subscription_id": data["id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": "created"}

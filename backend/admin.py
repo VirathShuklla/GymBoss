@@ -236,6 +236,9 @@ async def admin_update_settings(body: PlatformSettingsBody, user: dict = Depends
     if not data:
         return await db.settings.find_one({"id": "platform"}, {"_id": 0})
     await db.settings.update_one({"id": "platform"}, {"$set": data}, upsert=True)
+    if data.get("razorpay_key_id") or data.get("razorpay_key_secret"):
+        await db.settings.delete_many({"id": {"$regex": "^razorpay_plan_cache"}})
+        await db.subscriptions.update_many({"status": "created"}, {"$set": {"status": "abandoned"}})
     await audit(user["id"], "platform.settings_updated", "platform", {"keys": [k for k, v in data.items() if v]})
     return await admin_get_settings(user)
 
