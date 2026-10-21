@@ -12,15 +12,20 @@ const platform = getPlatform();
 const native = isNative();
 
 // Money writes carry an Idempotency-Key that is reused when the same request is retried, so a lost
-// response, double tap or page reload never records twice. Pending keys are persisted on the device
-// until the server confirms success (or 24h pass).
+// response, double tap or page reload never records twice. Only a hash of the request is stored on the
+// device (no member details). A pending key is discarded only after the server confirms the outcome.
 const IDEM_ROUTES = [/^post \/members$/, /^post \/members\/[^/]+\/renew$/, /^post \/payments$/, /^delete \/payments\/[^/]+$/];
 const IDEM_STORE = "gb-idem";
-const IDEM_TTL = 24 * 3600 * 1000;
+const UNKNOWN_GRACE = 10 * 60 * 1000;
+const hashScope = (s) => {
+  let a = 5381, b = 52711;
+  for (let i = 0; i < s.length; i += 1) { const c = s.charCodeAt(i); a = (a * 33) ^ c; b = (b * 31) ^ c; }
+  return `h${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}${s.length.toString(36)}`;
+};
 const loadKeys = () => {
   try {
     const all = JSON.parse(localStorage.getItem(IDEM_STORE)) || {};
-    return Object.fromEntries(Object.entries(all).filter(([, v]) => Date.now() - v.t < IDEM_TTL));
+    return Object.fromEntries(Object.entries(all).map(([s, v]) => [s.startsWith("h") && !s.includes(" ") ? s : hashScope(s), v]));
   } catch (e) { return {}; }
 };
 const storeKeys = (keys) => { try { localStorage.setItem(IDEM_STORE, JSON.stringify(keys)); } catch (e) { /* storage full/blocked */ } };
@@ -33,8 +38,21 @@ const resolveKey = (scope) => { const keys = loadKeys(); delete keys[scope]; sto
 const newKey = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 const idemScope = (config) => {
   const route = `${(config.method || "get").toLowerCase()} ${(config.url || "").split("?")[0]}`;
-  return IDEM_ROUTES.some((r) => r.test(route)) ? `${route} ${typeof config.data === "string" ? config.data : JSON.stringify(config.data ?? null)}` : null;
+  return IDEM_ROUTES.some((r) => r.test(route)) ? hashScope(`${route} ${typeof config.data === "string" ? config.data : JSON.stringify(config.data ?? null)}`) : null;
 };
+
+// Ask the server about each pending key: "completed" means it was recorded (drop the key); "unknown" after the
+// grace period means the transaction never committed, so nothing was recorded and the key can go.
+export async function reconcilePendingKeys() {
+  const keys = loadKeys();
+  storeKeys(keys);
+  for (const [scope, v] of Object.entries(keys)) {
+    try {
+      const { data } = await api.get(`/idempotency/${encodeURIComponent(v.k)}`);
+      if (data.status === "completed" || Date.now() - v.t > UNKNOWN_GRACE) resolveKey(scope);
+    } catch (e) { /* offline or signed out: keep the key */ }
+  }
+}
 
 // Store apps identify themselves; native (Capacitor) builds use Bearer tokens (kept in secure storage).
 api.interceptors.request.use(async (config) => {

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api from "../lib/api";
+import api, { reconcilePendingKeys } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -10,6 +10,7 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setState({ status: "authed", user: data.user, organisation: data.organisation, outlets: data.outlets || [], subscription: data.subscription });
+      if (data.organisation) reconcilePendingKeys();
     } catch {
       setState({ status: "guest", user: null, organisation: null, outlets: [], subscription: null });
     }

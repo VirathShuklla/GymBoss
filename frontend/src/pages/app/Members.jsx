@@ -4,6 +4,7 @@ import { Plus, Users, Download, BellRing } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
 import { downloadExport, blobError } from "../../lib/files";
+import { ProtectedImg } from "../../lib/upload";
 import { inr, formatDate, formatPhone } from "../../lib/format";
 import { waMe } from "../../lib/whatsapp";
 import { useAuth } from "../../contexts/AuthContext";
@@ -96,7 +97,7 @@ export default function Members() {
     { key: "member", label: "Member", render: (m) => (
       <div className="flex items-center gap-3">
         {m.photo_url ? (
-          <img src={`${process.env.REACT_APP_BACKEND_URL}${m.photo_url}`} alt={m.full_name} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
+          <ProtectedImg url={m.photo_url} alt={m.full_name} className="h-9 w-9 shrink-0 rounded-lg object-cover" />
         ) : (
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/12 font-display text-xs font-bold text-brand">
             {m.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}

@@ -768,6 +768,53 @@ def sniff_type(data: bytes) -> str | None:
     return None
 
 
+MAX_SIDE, MAX_PIXELS, PHOTO_EDGE = 6000, 36_000_000, 1024
+PIL_FORMATS = {"image/jpeg": "JPEG", "image/png": "PNG", "image/webp": "WEBP"}
+
+
+def validate_upload(data: bytes, content_type: str, kind: str) -> bytes:
+    """Fully validate the file; profile photos are re-encoded (orientation fixed, <=1024px, metadata stripped)."""
+    import io
+    import warnings
+    if content_type == "application/pdf":
+        from pypdf import PdfReader
+        try:
+            reader = PdfReader(io.BytesIO(data), strict=True)
+            if reader.is_encrypted or len(reader.pages) < 1:
+                raise ValueError("no pages")
+            reader.pages[0].mediabox  # noqa: B018  (forces page tree parsing)
+        except Exception:
+            raise HTTPException(422, "This PDF is damaged, empty or password-protected")
+        return data
+    from PIL import Image, ImageOps
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as probe:  # header only: dimensions known before decoding
+                w, h = probe.size
+                if probe.format != PIL_FORMATS[content_type]:
+                    raise ValueError("format mismatch")
+                if w < 1 or h < 1 or w > MAX_SIDE or h > MAX_SIDE or w * h > MAX_PIXELS:
+                    raise HTTPException(422, "Image is too large (max 6000 px per side, 36 megapixels)")
+                probe.verify()
+            img = Image.open(io.BytesIO(data))
+            img.load()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(422, "This image is damaged or not a valid JPG, PNG or WebP")
+    if kind != "photo":
+        return data
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((PHOTO_EDGE, PHOTO_EDGE))
+    fmt = PIL_FORMATS[content_type]
+    if fmt == "JPEG" and img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    out = io.BytesIO()
+    img.save(out, format=fmt, **({"quality": 88} if fmt in ("JPEG", "WEBP") else {}))
+    return out.getvalue()
+
+
 async def read_limited_body(request: Request, limit: int) -> None:
     """Stream the request body and abort as soon as it exceeds the limit (never buffers an oversized upload)."""
     declared = request.headers.get("content-length") or "0"
@@ -803,6 +850,8 @@ async def upload_file(request: Request, user: dict = Depends(require_write)):
     if content_type not in allowed:
         raise HTTPException(422, "Only JPG, PNG, WebP" + (" or PDF" if kind == "attachment" else "") + " files are allowed")
     ext = SAFE_TYPES[content_type]
+    import asyncio
+    data = await asyncio.to_thread(validate_upload, data, content_type, kind)
     filename = re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename)[:120]
     path = f"gymbossvvo/{user['organisation_id']}/{uuid.uuid4()}.{ext}"
     try:

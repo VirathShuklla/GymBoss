@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import { BarChart3, AlertCircle, CalendarClock, ArrowRightLeft } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import api from "../../lib/api";
 import { inr, formatDate, formatPhone } from "../../lib/format";
 import { PageHeader, DataTable, EmptyState } from "../../components/app/ui";
+import { MonthlyReportButton } from "../../components/app/MonthlyReportButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 
 export default function Reports() {
@@ -12,14 +14,23 @@ export default function Reports() {
   const [expiry, setExpiry] = useState(null);
   const [conversion, setConversion] = useState(null);
   const [growth, setGrowth] = useState(null);
+  const { outletId } = useOutletContext() || {};
+
+  const loadPage = async (path, prev, setter, extra = {}) => {
+    const page = (prev?.page || 0) + 1;
+    const { data } = await api.get(path, { params: { ...extra, outlet_id: outletId, page, limit: 100 } });
+    setter({ ...data, items: page === 1 ? data.items : [...prev.items, ...data.items] });
+  };
 
   useEffect(() => {
-    api.get("/reports/revenue-trend").then(({ data }) => setTrend(data.points));
-    api.get("/reports/outstanding-dues").then(({ data }) => setDues(data));
-    api.get("/reports/membership-expiry", { params: { days: 30 } }).then(({ data }) => setExpiry(data.items));
-    api.get("/reports/enquiry-conversion").then(({ data }) => setConversion(data));
-    api.get("/reports/member-growth").then(({ data }) => setGrowth(data.points));
-  }, []);
+    const params = { outlet_id: outletId };
+    setDues(null); setExpiry(null);
+    api.get("/reports/revenue-trend", { params }).then(({ data }) => setTrend(data.points));
+    loadPage("/reports/outstanding-dues", null, setDues);
+    loadPage("/reports/membership-expiry", null, setExpiry, { days: 30 });
+    api.get("/reports/enquiry-conversion", { params }).then(({ data }) => setConversion(data));
+    api.get("/reports/member-growth", { params }).then(({ data }) => setGrowth(data.points));
+  }, [outletId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const duesColumns = [
     { key: "full_name", label: "Member", render: (m) => (
@@ -44,7 +55,9 @@ export default function Reports() {
 
   return (
     <div data-testid="reports-page">
-      <PageHeader title="Reports" subtitle="Understand your gym's performance." testid="reports-header" />
+      <PageHeader title="Reports" subtitle="Understand your gym's performance." testid="reports-header">
+        <MonthlyReportButton outletId={outletId} />
+      </PageHeader>
       <Tabs defaultValue="revenue">
         <TabsList className="mb-5 flex-wrap" data-testid="reports-tabs">
           <TabsTrigger value="revenue" data-testid="report-tab-revenue">Revenue</TabsTrigger>
@@ -100,12 +113,14 @@ export default function Reports() {
           )}
           <DataTable testid="report-dues-table" columns={duesColumns} rows={dues?.items || []} loading={!dues}
                      empty={<EmptyState icon={AlertCircle} title="No outstanding dues" description="All members are settled up." testid="dues-empty" />} />
+          <LoadMore data={dues} onMore={() => loadPage("/reports/outstanding-dues", dues, setDues)} testid="dues-load-more" />
         </TabsContent>
 
         <TabsContent value="expiry">
-          <p className="mb-3 text-sm text-muted-foreground">Memberships expiring in the next 30 days</p>
-          <DataTable testid="report-expiry-table" columns={expiryColumns} rows={expiry || []} loading={!expiry}
+          <p className="mb-3 text-sm text-muted-foreground" data-testid="expiry-total">Memberships expiring in the next 30 days{expiry ? ` · ${expiry.count}` : ""}</p>
+          <DataTable testid="report-expiry-table" columns={expiryColumns} rows={expiry?.items || []} loading={!expiry}
                      empty={<EmptyState icon={CalendarClock} title="No upcoming expiries" testid="expiry-empty" />} />
+          <LoadMore data={expiry} onMore={() => loadPage("/reports/membership-expiry", expiry, setExpiry, { days: 30 })} testid="expiry-load-more" />
         </TabsContent>
 
         <TabsContent value="enquiries">
@@ -150,6 +165,19 @@ function Stat({ label, value, color = "text-foreground" }) {
     <div className="rounded-xl border border-border bg-card p-4 shadow-card">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className={`font-num mt-1 text-xl font-bold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+
+function LoadMore({ data, onMore, testid }) {
+  const [busy, setBusy] = useState(false);
+  if (!data || !data.count || data.items.length >= data.count) return null;
+  return (
+    <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+      <span data-testid={`${testid}-count`}>Showing {data.items.length} of {data.count}</span>
+      <button disabled={busy} onClick={async () => { setBusy(true); try { await onMore(); } catch (e) { /* keep rows */ } finally { setBusy(false); } }}
+              className="font-semibold text-brand hover:underline disabled:opacity-60" data-testid={testid}>{busy ? "Loading…" : "Load more"}</button>
     </div>
   );
 }

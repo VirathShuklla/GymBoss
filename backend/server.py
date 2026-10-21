@@ -25,7 +25,7 @@ from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
     get_org_user, derive_subscription, public_user, org_public, audit, init_storage, STORAGE_BACKEND, COOKIE_KW, issue_native_tokens, client_ip,
-    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans, IST,
+    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans, IST, member_status,
 )
 from members import router as members_router
 from ops import router as ops_router
@@ -415,6 +415,15 @@ async def resume_purges():
 
 # ---------------- Public config ----------------
 
+@api.get("/idempotency/{key}")
+async def idempotency_status(key: str, user: dict = Depends(get_org_user)):
+    """Lets a client resolve an interrupted money submission before discarding its retry key."""
+    doc = await db.idempotency_keys.find_one({"organisation_id": user["organisation_id"], "key": key[:100]})
+    if not doc:
+        return {"status": "unknown"}
+    return {"status": "completed", "scope": doc["scope"].split(":")[0], "ref": doc.get("ref")}
+
+
 @api.get("/health")
 async def health():
     """Liveness + readiness: DB reachable and running as a replica set (transactions available)."""
@@ -517,16 +526,12 @@ async def dashboard_summary(outlet_id: Optional[str] = None, user: dict = Depend
 
     total_members = 0
     active = expiring_today = expiring_soon = due_members = birthdays = 0
-    async for m in db.members.find(member_q, {"membership_expiry": 1, "frozen_until": 1, "due_amount": 1, "dob": 1}):
+    async for m in db.members.find(member_q, {"membership_expiry": 1, "frozen_until": 1, "frozen_from": 1, "freeze_history": 1, "due_amount": 1, "dob": 1}):
         total_members += 1
         expiry = m.get("membership_expiry")
         if isinstance(expiry, str):
             expiry = date.fromisoformat(expiry[:10])
-        frozen_until = m.get("frozen_until")
-        if isinstance(frozen_until, str):
-            frozen_until = date.fromisoformat(frozen_until[:10])
-        frozen = bool(frozen_until and frozen_until >= today)
-        if not frozen and expiry and expiry >= today:
+        if member_status(m, today) in ("active", "expiring_soon"):
             active += 1
         if expiry == today:
             expiring_today += 1

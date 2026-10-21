@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Check, Camera, Paperclip, X } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
-import { uploadFile, fileUrl } from "../../lib/upload";
+import { uploadFile, ProtectedImg, openProtectedFile } from "../../lib/upload";
 import { inr, formatDate } from "../../lib/format";
 import { DateField } from "./ui";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -211,7 +211,7 @@ export function MemberForm({ open, onClose, member, prefill, plans, outlets, onS
               <button type="button" onClick={() => photoInput.current?.click()} data-testid="member-photo-upload"
                       className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-border bg-secondary/50 text-muted-foreground transition-colors hover:border-brand hover:text-brand">
                 {form.photo_url ? (
-                  <img src={fileUrl(form.photo_url)} alt="Member" className="h-full w-full object-cover" />
+                  <ProtectedImg url={form.photo_url} alt="Member" className="h-full w-full object-cover" data-testid="member-photo-preview" />
                 ) : uploading === "photo" ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
@@ -287,9 +287,9 @@ export function MemberForm({ open, onClose, member, prefill, plans, outlets, onS
               <div className="mt-1.5">
                 {form.attachment_url ? (
                   <div className="flex items-center justify-between rounded-lg border border-border bg-secondary/50 px-3 py-2.5" data-testid="attachment-chip">
-                    <a href={fileUrl(form.attachment_url)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-brand hover:underline">
+                    <button type="button" onClick={() => openProtectedFile(form.attachment_url, form.attachment_name || "attachment").catch(() => toast.error("Couldn't open the attachment"))} className="flex items-center gap-2 text-sm font-medium text-brand hover:underline" data-testid="attachment-open">
                       <Paperclip className="h-4 w-4" />{form.attachment_name || "Attachment"}
-                    </a>
+                    </button>
                     <button type="button" onClick={() => setForm((f) => ({ ...f, attachment_url: "", attachment_name: "" }))} className="text-muted-foreground hover:text-danger" aria-label="Remove attachment">
                       <X className="h-4 w-4" />
                     </button>

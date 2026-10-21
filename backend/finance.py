@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 
 from deps import db, today_ist, require_finance_access, parse_day, page_params, add_duration
 
@@ -95,20 +95,20 @@ def _month_windows(months: int) -> list[tuple[str, str, str]]:
     return out
 
 
-async def _by_month(coll: str, field: str, org_id: str, start: str, end: str) -> dict:
+async def _by_month(coll: str, field: str, scope: dict, start: str, end: str) -> dict:
     rows = await db[coll].aggregate([
-        {"$match": {"organisation_id": org_id, field: {"$gte": start, "$lte": end}}},
+        {"$match": {**scope, field: {"$gte": start, "$lte": end}}},
         {"$group": {"_id": {"$substrCP": [f"${field}", 0, 7]}, "t": {"$sum": "$amount"}}},
     ]).to_list(None)
     return {r["_id"]: round(r["t"], 2) for r in rows}
 
 
 @router.get("/reports/revenue-trend")
-async def report_revenue_trend(months: int = 6, user: dict = Depends(require_finance_access)):
-    org_id = user["organisation_id"]
+async def report_revenue_trend(months: int = 6, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
+    scope = _scope(user["organisation_id"], outlet_id)
     wins = _month_windows(months)
-    rev = await _by_month("payments", "payment_date", org_id, wins[0][1], wins[-1][2])
-    exp = await _by_month("expenses", "date", org_id, wins[0][1], wins[-1][2])
+    rev = await _by_month("payments", "payment_date", scope, wins[0][1], wins[-1][2])
+    exp = await _by_month("expenses", "date", scope, wins[0][1], wins[-1][2])
     points = []
     for label, s, _ in wins:
         r, e = rev.get(s[:7], 0), exp.get(s[:7], 0)
@@ -117,9 +117,9 @@ async def report_revenue_trend(months: int = 6, user: dict = Depends(require_fin
 
 
 @router.get("/reports/outstanding-dues")
-async def report_outstanding_dues(page: int = 1, limit: int = 100, user: dict = Depends(require_finance_access)):
+async def report_outstanding_dues(page: int = 1, limit: int = 100, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
     page, limit = page_params(page, limit, 500)
-    q = {"organisation_id": user["organisation_id"], "deleted_at": None, "due_amount": {"$gt": 0}}
+    q = {**_scope(user["organisation_id"], outlet_id), "deleted_at": None, "due_amount": {"$gt": 0}}
     total, count = await _sum_count("members", q, "due_amount")
     items = await db.members.find(
         q, {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "due_amount": 1, "membership_expiry": 1},
@@ -128,12 +128,12 @@ async def report_outstanding_dues(page: int = 1, limit: int = 100, user: dict = 
 
 
 @router.get("/reports/membership-expiry")
-async def report_membership_expiry(days: int = 30, page: int = 1, limit: int = 100, user: dict = Depends(require_finance_access)):
+async def report_membership_expiry(days: int = 30, page: int = 1, limit: int = 100, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
     if not 1 <= days <= 365:
         raise HTTPException(422, "days must be between 1 and 365")
     page, limit = page_params(page, limit, 500)
     today = today_ist()
-    q = {"organisation_id": user["organisation_id"], "deleted_at": None,
+    q = {**_scope(user["organisation_id"], outlet_id), "deleted_at": None,
          "membership_expiry": {"$gte": today.isoformat(), "$lte": (today + timedelta(days=days)).isoformat()}}
     count = await db.members.count_documents(q)
     members = await db.members.find(
@@ -145,8 +145,8 @@ async def report_membership_expiry(days: int = 30, page: int = 1, limit: int = 1
 
 
 @router.get("/reports/enquiry-conversion")
-async def report_enquiry_conversion(user: dict = Depends(require_finance_access)):
-    q = {"organisation_id": user["organisation_id"]}
+async def report_enquiry_conversion(outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
+    q = _scope(user["organisation_id"], outlet_id)
 
     async def counts(field: str, default: str) -> dict:
         rows = await db.enquiries.aggregate([{"$match": q}, {"$group": {"_id": f"${field}", "n": {"$sum": 1}}}]).to_list(None)
@@ -158,14 +158,32 @@ async def report_enquiry_conversion(user: dict = Depends(require_finance_access)
 
 
 @router.get("/reports/member-growth")
-async def report_member_growth(months: int = 6, user: dict = Depends(require_finance_access)):
-    org_id = user["organisation_id"]
+async def report_member_growth(months: int = 6, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
+    scope = _scope(user["organisation_id"], outlet_id)
     points = []
     for label, s, e in _month_windows(months):
-        joined = await db.members.count_documents({"organisation_id": org_id, "joining_date": {"$gte": s, "$lte": e}})
-        total = await db.members.count_documents({"organisation_id": org_id, "joining_date": {"$lte": e}, "deleted_at": None})
+        joined = await db.members.count_documents({**scope, "joining_date": {"$gte": s, "$lte": e}})
+        total = await db.members.count_documents({**scope, "joining_date": {"$lte": e}, "deleted_at": None})
         points.append({"month": label, "joined": joined, "total": total})
     return {"points": points}
+
+
+@router.get("/reports/monthly.pdf")
+async def report_monthly_pdf(month: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
+    """One-page monthly finance statement on transaction dates (IST)."""
+    from receipt_pdf import build_monthly_report_pdf
+    month = month or today_ist().strftime("%Y-%m")
+    first = parse_day(f"{month}-01", "month")
+    last = add_duration(first, "months", 1) - timedelta(days=1)
+    s = await finance_summary("custom", first.isoformat(), last.isoformat(), outlet_id, user)
+    org = await db.organisations.find_one({"id": user["organisation_id"]}, {"name": 1, "city": 1})
+    outlet = await db.outlets.find_one({"id": outlet_id, "organisation_id": user["organisation_id"]}, {"name": 1}) if outlet_id else None
+    if outlet_id and not outlet:
+        raise HTTPException(404, "Outlet not found")
+    pdf = build_monthly_report_pdf(s, {"gym": (org or {}).get("name"), "city": (org or {}).get("city"),
+                                       "outlet": outlet["name"] if outlet else "All outlets", "month": first.strftime("%B %Y"),
+                                       "generated": today_ist().strftime("%d %b %Y")})
+    return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="GymBoss-Finance-{month}.pdf"'})
 
 
 # ---------------- Export Center ----------------

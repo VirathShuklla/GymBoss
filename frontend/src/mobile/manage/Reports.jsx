@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import api from "../../lib/api";
 import { inr } from "../../lib/format";
 import { ListSkeleton } from "../ui";
+import { MonthlyReportButton } from "../../components/app/MonthlyReportButton";
+
+const more = async (path, prev, setter, extra = {}) => {
+  const page = (prev?.page || 0) + 1;
+  const { data } = await api.get(path, { params: { ...extra, page, limit: 50 } });
+  setter({ ...data, items: page === 1 ? data.items : [...prev.items, ...data.items] });
+};
 
 export default function Reports() {
   const [trend, setTrend] = useState(null);
@@ -13,8 +20,8 @@ export default function Reports() {
 
   useEffect(() => {
     api.get("/reports/revenue-trend?months=6").then(({ data }) => setTrend(data.points)).catch(() => setTrend([]));
-    api.get("/reports/outstanding-dues").then(({ data }) => setDues(data)).catch(() => setDues({ items: [], total: 0 }));
-    api.get("/reports/membership-expiry?days=30").then(({ data }) => setExpiry(data.items)).catch(() => setExpiry([]));
+    more("/reports/outstanding-dues", null, setDues).catch(() => setDues({ items: [], total: 0, count: 0 }));
+    more("/reports/membership-expiry", null, setExpiry, { days: 30 }).catch(() => setExpiry({ items: [], count: 0 }));
     api.get("/reports/enquiry-conversion").then(({ data }) => setConv(data)).catch(() => setConv(null));
   }, []);
 
@@ -22,6 +29,9 @@ export default function Reports() {
 
   return (
     <div data-testid="m-reports" className="space-y-6">
+      <Section title="Monthly finance report">
+        <MonthlyReportButton testid="m-monthly-report" compact />
+      </Section>
       <Section title="Revenue Trend (6 months)">
         {!trend ? <ListSkeleton rows={3} /> : (
           <div className="rounded-2xl border border-border bg-card p-4" data-testid="m-reports-trend">
@@ -43,19 +53,21 @@ export default function Reports() {
       <Section title={`Outstanding Dues${dues ? ` · ${inr(dues.total)}` : ""}`}>
         {!dues ? <ListSkeleton rows={3} /> : dues.items.length === 0 ? <Empty text="No outstanding dues" /> : (
           <div className="space-y-2" data-testid="m-reports-dues">
-            {dues.items.slice(0, 15).map((m) => (
+            {dues.items.map((m) => (
               <Row key={m.id} a={m.full_name} b={m.member_code} c={inr(m.due_amount)} cls="text-danger" />
             ))}
+            <More data={dues} onMore={() => more("/reports/outstanding-dues", dues, setDues)} testid="m-dues-more" />
           </div>
         )}
       </Section>
 
       <Section title="Expiring in 30 days">
-        {!expiry ? <ListSkeleton rows={3} /> : expiry.length === 0 ? <Empty text="No upcoming expiries" /> : (
+        {!expiry ? <ListSkeleton rows={3} /> : expiry.items.length === 0 ? <Empty text="No upcoming expiries" /> : (
           <div className="space-y-2" data-testid="m-reports-expiry">
-            {expiry.slice(0, 15).map((m) => (
+            {expiry.items.map((m) => (
               <Row key={m.id} a={m.full_name} b={m.plan_name} c={`${m.days_left}d`} cls={m.days_left <= 7 ? "text-warning" : "text-foreground"} />
             ))}
+            <More data={expiry} onMore={() => more("/reports/membership-expiry", expiry, setExpiry, { days: 30 })} testid="m-expiry-more" />
           </div>
         )}
       </Section>
@@ -100,6 +112,17 @@ function Stat({ label, value, cls }) {
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className={`font-num font-bold ${cls}`}>{value}</span>
     </div>
+  );
+}
+
+function More({ data, onMore, testid }) {
+  const [busy, setBusy] = useState(false);
+  if (!data?.count || data.items.length >= data.count) return null;
+  return (
+    <button disabled={busy} onClick={async () => { setBusy(true); try { await onMore(); } catch (e) { /* keep list */ } finally { setBusy(false); } }}
+            className="w-full rounded-2xl border border-border py-3 text-sm font-semibold text-brand disabled:opacity-60" data-testid={testid}>
+      {busy ? "Loading…" : `Load more (${data.items.length} of ${data.count})`}
+    </button>
   );
 }
 
