@@ -1,11 +1,13 @@
 """Purge QA-created TEST_* documents so seeded-data assertions in backend_test.py stay valid.
-Run: python /app/backend/tests/cleanup_test_data.py
+Run: python backend/tests/cleanup_test_data.py
 """
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import dotenv_values
 
-be = dotenv_values("/app/backend/.env")
+from paths import BACKEND_ENV
+
+be = dotenv_values(BACKEND_ENV)
 RX = {"$regex": "^TEST_", "$options": "i"}
 
 

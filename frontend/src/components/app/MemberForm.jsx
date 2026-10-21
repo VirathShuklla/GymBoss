@@ -298,10 +298,10 @@ export function MemberForm({ open, onClose, member, prefill, plans, outlets, onS
                   <button type="button" onClick={() => attachInput.current?.click()} disabled={uploading === "attachment"} data-testid="member-attachment-upload"
                           className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border px-4 py-5 text-sm font-medium text-muted-foreground transition-colors hover:border-brand hover:text-brand">
                     {uploading === "attachment" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
-                    Upload document (image or PDF, max 10 MB)
+                    Upload document (image or PDF, max 5 MB)
                   </button>
                 )}
-                <input ref={attachInput} type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" className="hidden" onChange={pickAttachment} />
+                <input ref={attachInput} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={pickAttachment} />
               </div>
             </div>
           </div>

@@ -28,6 +28,12 @@ Run it under systemd, supervisor or Docker. Put Nginx/Caddy in front for HTTPS.
 
 **MongoDB must be a replica set.** Payments, renewals, reversals and subscription grants use multi-document transactions, and the API refuses to start on a standalone `mongod`. Atlas clusters already qualify. For self-managed MongoDB, start `mongod --replSet rs0`, then run once: `mongosh --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"<host>:27017"}]})'`. A single-member replica set is enough.
 
+**Health check:** `GET /api/health` returns 200 `{"status":"ok","transactions":true}` only when MongoDB is reachable and transactions are available, otherwise 503. Point your load balancer / uptime monitor at it (the Dockerfile already declares a `HEALTHCHECK`).
+
+**Reproducible frontend installs:** `frontend/yarn.lock` is committed; install with `yarn install --frozen-lockfile`. After pulling new native plugins (secure storage, filesystem, share) run `npx cap sync` (done by `scripts/build-mobile.sh`).
+
+**Tests:** maintained suites are in `backend/tests/` and resolve paths relative to the repo (override with `GYMBOSS_ROOT`, `GYMBOSS_BACKEND_ENV`, `GYMBOSS_FRONTEND_ENV`, `GYMBOSS_TEST_CREDENTIALS`). In-process suites (`test_iter25_*`, `test_iter26_*`, `test_iter27_*`) create and drop their own database, so never point them at production data. Run serially: `pytest -n 0 tests/test_iter27_*.py`.
+
 **Important:** `pip install -r requirements.txt` includes `emergentintegrations`, served from Emergent's private index. The self-hosted code doesn't use it. Remove that line, or install with `--extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/`.
 
 ### Environment variables (`backend/.env`)

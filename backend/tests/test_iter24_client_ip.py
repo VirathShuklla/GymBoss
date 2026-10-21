@@ -5,10 +5,12 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests
 from dotenv import dotenv_values
+
+from paths import BACKEND_ENV, FRONTEND_ENV
 from pymongo import MongoClient
 
-FE = dotenv_values("/app/frontend/.env")
-BE = dotenv_values("/app/backend/.env")
+FE = dotenv_values(FRONTEND_ENV)
+BE = dotenv_values(BACKEND_ENV)
 API = FE["REACT_APP_BACKEND_URL"].rstrip("/") + "/api"
 db = MongoClient(BE["MONGO_URL"])[BE["DB_NAME"]]
 IST = timezone(timedelta(hours=5, minutes=30))

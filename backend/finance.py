@@ -1,192 +1,211 @@
-"""Finance summaries, business reports, and the CSV export center (all finance-access gated)."""
+"""Finance summaries, business reports, and the CSV export center (all finance-access gated).
+All money totals are computed in MongoDB (no row caps) on the transaction date (IST calendar day):
+payments.payment_date and expenses.date, both 'YYYY-MM-DD'."""
 import csv
 import io
-import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 
-from deps import db, IST, today_ist, require_finance_access, member_status
+from deps import db, today_ist, require_finance_access, parse_day, page_params, add_duration
 
 router = APIRouter(tags=["finance"])
 
+RANGES = ("today", "week", "month", "year", "custom")
 
-def range_bounds(range_name: str, date_from: Optional[str], date_to: Optional[str]):
+
+def range_days(range_name: str, date_from: Optional[str], date_to: Optional[str]) -> tuple[str, str]:
+    """Inclusive IST day range as ISO strings."""
+    if range_name not in RANGES:
+        raise HTTPException(422, f"range must be one of {', '.join(RANGES)}")
     today = today_ist()
-    if range_name == "today":
-        start_d = today
-    elif range_name == "week":
-        start_d = today - timedelta(days=today.weekday())
-    elif range_name == "year":
-        start_d = today.replace(month=1, day=1)
-    elif range_name == "custom" and date_from:
-        start_d = datetime.fromisoformat(date_from).date()
-    else:
-        start_d = today.replace(day=1)
-    end_d = datetime.fromisoformat(date_to).date() if (range_name == "custom" and date_to) else today
-    start = datetime.combine(start_d, datetime.min.time(), tzinfo=IST)
-    end = datetime.combine(end_d + timedelta(days=1), datetime.min.time(), tzinfo=IST)
-    return start, end
+    start_d, end_d = {
+        "today": today, "week": today - timedelta(days=today.weekday()),
+        "year": today.replace(month=1, day=1), "month": today.replace(day=1),
+    }.get(range_name), today
+    if range_name == "custom":
+        start_d = parse_day(date_from, "date_from")
+        end_d = parse_day(date_to, "date_to") or today
+        if not start_d:
+            raise HTTPException(422, "date_from is required for a custom range")
+    if end_d < start_d:
+        raise HTTPException(422, "date_to must be on or after date_from")
+    if (end_d - start_d).days > 3700:
+        raise HTTPException(422, "Date range is too long (max 10 years)")
+    return start_d.isoformat(), end_d.isoformat()
+
+
+def _scope(org_id: str, outlet_id: Optional[str]) -> dict:
+    return {"organisation_id": org_id, **({"outlet_id": outlet_id} if outlet_id else {})}
+
+
+async def _group(coll, match: dict, key: str) -> dict:
+    rows = await db[coll].aggregate([{"$match": match}, {"$group": {"_id": f"${key}", "t": {"$sum": "$amount"}}}]).to_list(None)
+    return {(r["_id"] or "Other"): round(r["t"], 2) for r in rows}
+
+
+async def _sum_count(coll, match: dict, field: str = "amount") -> tuple[float, int]:
+    rows = await db[coll].aggregate([{"$match": match}, {"$group": {"_id": None, "t": {"$sum": f"${field}"}, "n": {"$sum": 1}}}]).to_list(1)
+    return (round(rows[0]["t"], 2), rows[0]["n"]) if rows else (0, 0)
 
 
 @router.get("/finance/summary")
 async def finance_summary(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
-    org_id = user["organisation_id"]
-    start, end = range_bounds(range, date_from, date_to)
-    pay_q = {"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}}
-    exp_q = {"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}}
-    if outlet_id:
-        pay_q["outlet_id"] = outlet_id
-        exp_q["outlet_id"] = outlet_id
-    payments = await db.payments.find(pay_q).to_list(5000)
-    expenses = await db.expenses.find(exp_q).to_list(2000)
-
-    revenue = sum(p.get("amount", 0) for p in payments)
-    expense_total = sum(e.get("amount", 0) for e in expenses)
-    by_method, by_type, by_category = {}, {}, {}
-    for p in payments:
-        by_method[p.get("method", "Other")] = by_method.get(p.get("method", "Other"), 0) + p.get("amount", 0)
-        by_type[p.get("type", "other")] = by_type.get(p.get("type", "other"), 0) + p.get("amount", 0)
-    for e in expenses:
-        by_category[e.get("category", "General")] = by_category.get(e.get("category", "General"), 0) + e.get("amount", 0)
-
-    due_q = {"organisation_id": org_id, "deleted_at": None, "due_amount": {"$gt": 0}}
-    if outlet_id:
-        due_q["outlet_id"] = outlet_id
-    due_members = await db.members.find(due_q, {"due_amount": 1}).to_list(10000)
-    outstanding = sum(m.get("due_amount", 0) for m in due_members)
-
+    start, end = range_days(range, date_from, date_to)
+    base = _scope(user["organisation_id"], outlet_id)
+    pay_q = {**base, "payment_date": {"$gte": start, "$lte": end}}
+    exp_q = {**base, "date": {"$gte": start, "$lte": end}}
+    revenue, count = await _sum_count("payments", pay_q)
+    expense_total, _ = await _sum_count("expenses", exp_q)
+    outstanding, due_count = await _sum_count("members", {**base, "deleted_at": None, "due_amount": {"$gt": 0}}, "due_amount")
     return {
-        "revenue": revenue,
-        "expenses": expense_total,
-        "net": revenue - expense_total,
-        "outstanding": outstanding,
-        "due_member_count": len(due_members),
-        "by_method": by_method,
-        "by_type": by_type,
-        "expense_by_category": by_category,
-        "transaction_count": len(payments),
+        "revenue": revenue, "expenses": expense_total, "net": round(revenue - expense_total, 2),
+        "outstanding": outstanding, "due_member_count": due_count,
+        "by_method": await _group("payments", pay_q, "method"),
+        "by_type": await _group("payments", pay_q, "type"),
+        "expense_by_category": await _group("expenses", exp_q, "category"),
+        "transaction_count": count, "date_from": start, "date_to": end,
     }
 
 
 @router.get("/finance/transactions")
-async def finance_transactions(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
-    start, end = range_bounds(range, date_from, date_to)
-    q = {"organisation_id": user["organisation_id"], "created_at": {"$gte": start, "$lt": end}}
-    if outlet_id:
-        q["outlet_id"] = outlet_id
-    return await db.payments.find(q, {"_id": 0}).sort("created_at", -1).to_list(1000)
+async def finance_transactions(range: str = "month", date_from: Optional[str] = None, date_to: Optional[str] = None, outlet_id: Optional[str] = None,
+                               page: int = 1, limit: int = 50, user: dict = Depends(require_finance_access)):
+    page, limit = page_params(page, limit)
+    start, end = range_days(range, date_from, date_to)
+    q = {**_scope(user["organisation_id"], outlet_id), "payment_date": {"$gte": start, "$lte": end}}
+    amount, total = await _sum_count("payments", q)
+    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"items": items, "total": total, "amount_total": amount, "page": page, "limit": limit}
 
 
 # ---------------- Reports ----------------
 
+def _month_windows(months: int) -> list[tuple[str, str, str]]:
+    if not 1 <= months <= 36:
+        raise HTTPException(422, "months must be between 1 and 36")
+    first = today_ist().replace(day=1)
+    out = []
+    for i in range(months - 1, -1, -1):
+        s = add_duration(first, "months", -i)
+        e = add_duration(s, "months", 1) - timedelta(days=1)
+        out.append((s.strftime("%b %Y"), s.isoformat(), e.isoformat()))
+    return out
+
+
+async def _by_month(coll: str, field: str, org_id: str, start: str, end: str) -> dict:
+    rows = await db[coll].aggregate([
+        {"$match": {"organisation_id": org_id, field: {"$gte": start, "$lte": end}}},
+        {"$group": {"_id": {"$substrCP": [f"${field}", 0, 7]}, "t": {"$sum": "$amount"}}},
+    ]).to_list(None)
+    return {r["_id"]: round(r["t"], 2) for r in rows}
+
+
 @router.get("/reports/revenue-trend")
 async def report_revenue_trend(months: int = 6, user: dict = Depends(require_finance_access)):
     org_id = user["organisation_id"]
-    today = today_ist()
+    wins = _month_windows(months)
+    rev = await _by_month("payments", "payment_date", org_id, wins[0][1], wins[-1][2])
+    exp = await _by_month("expenses", "date", org_id, wins[0][1], wins[-1][2])
     points = []
-    for i in range(months - 1, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        start = datetime(y, m, 1, tzinfo=IST)
-        end = datetime(y + (m == 12), (m % 12) + 1, 1, tzinfo=IST)
-        rev = sum(p.get("amount", 0) for p in await db.payments.find({"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}}, {"amount": 1}).to_list(5000))
-        exp = sum(e.get("amount", 0) for e in await db.expenses.find({"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}}, {"amount": 1}).to_list(2000))
-        points.append({"month": start.strftime("%b %Y"), "revenue": rev, "expenses": exp, "net": rev - exp})
+    for label, s, _ in wins:
+        r, e = rev.get(s[:7], 0), exp.get(s[:7], 0)
+        points.append({"month": label, "revenue": r, "expenses": e, "net": round(r - e, 2)})
     return {"points": points}
 
 
 @router.get("/reports/outstanding-dues")
-async def report_outstanding_dues(user: dict = Depends(require_finance_access)):
-    members = await db.members.find(
-        {"organisation_id": user["organisation_id"], "deleted_at": None, "due_amount": {"$gt": 0}},
-        {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "due_amount": 1, "membership_expiry": 1},
-    ).sort("due_amount", -1).to_list(5000)
-    return {"items": members, "total": sum(m.get("due_amount", 0) for m in members)}
+async def report_outstanding_dues(page: int = 1, limit: int = 100, user: dict = Depends(require_finance_access)):
+    page, limit = page_params(page, limit, 500)
+    q = {"organisation_id": user["organisation_id"], "deleted_at": None, "due_amount": {"$gt": 0}}
+    total, count = await _sum_count("members", q, "due_amount")
+    items = await db.members.find(
+        q, {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "due_amount": 1, "membership_expiry": 1},
+    ).sort([("due_amount", -1), ("id", 1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"items": items, "total": total, "count": count, "page": page, "limit": limit}
 
 
 @router.get("/reports/membership-expiry")
-async def report_membership_expiry(days: int = 30, user: dict = Depends(require_finance_access)):
+async def report_membership_expiry(days: int = 30, page: int = 1, limit: int = 100, user: dict = Depends(require_finance_access)):
+    if not 1 <= days <= 365:
+        raise HTTPException(422, "days must be between 1 and 365")
+    page, limit = page_params(page, limit, 500)
     today = today_ist()
-    limit = (today + timedelta(days=days)).isoformat()
+    q = {"organisation_id": user["organisation_id"], "deleted_at": None,
+         "membership_expiry": {"$gte": today.isoformat(), "$lte": (today + timedelta(days=days)).isoformat()}}
+    count = await db.members.count_documents(q)
     members = await db.members.find(
-        {"organisation_id": user["organisation_id"], "deleted_at": None, "membership_expiry": {"$gte": today.isoformat(), "$lte": limit}},
-        {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "membership_expiry": 1, "due_amount": 1},
-    ).sort("membership_expiry", 1).to_list(5000)
+        q, {"_id": 0, "id": 1, "full_name": 1, "phone": 1, "member_code": 1, "plan_name": 1, "membership_expiry": 1, "due_amount": 1},
+    ).sort([("membership_expiry", 1), ("id", 1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     for m in members:
         m["days_left"] = (datetime.fromisoformat(str(m["membership_expiry"])[:10]).date() - today).days
-    return {"items": members}
+    return {"items": members, "count": count, "page": page, "limit": limit}
 
 
 @router.get("/reports/enquiry-conversion")
 async def report_enquiry_conversion(user: dict = Depends(require_finance_access)):
-    items = await db.enquiries.find({"organisation_id": user["organisation_id"]}, {"_id": 0, "status": 1, "source": 1, "name": 1, "phone": 1, "created_at": 1}).to_list(5000)
-    by_status, by_source = {}, {}
-    for e in items:
-        by_status[e.get("status", "New")] = by_status.get(e.get("status", "New"), 0) + 1
-        by_source[e.get("source", "Other")] = by_source.get(e.get("source", "Other"), 0) + 1
+    q = {"organisation_id": user["organisation_id"]}
+
+    async def counts(field: str, default: str) -> dict:
+        rows = await db.enquiries.aggregate([{"$match": q}, {"$group": {"_id": f"${field}", "n": {"$sum": 1}}}]).to_list(None)
+        return {(r["_id"] or default): r["n"] for r in rows}
+    by_status, by_source = await counts("status", "New"), await counts("source", "Other")
+    total = sum(by_status.values())
     converted = by_status.get("Converted", 0)
-    return {"total": len(items), "converted": converted, "rate": round(100 * converted / len(items), 1) if items else 0, "by_status": by_status, "by_source": by_source}
+    return {"total": total, "converted": converted, "rate": round(100 * converted / total, 1) if total else 0, "by_status": by_status, "by_source": by_source}
 
 
 @router.get("/reports/member-growth")
 async def report_member_growth(months: int = 6, user: dict = Depends(require_finance_access)):
     org_id = user["organisation_id"]
-    today = today_ist()
     points = []
-    for i in range(months - 1, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        start = datetime(y, m, 1, tzinfo=IST)
-        end = datetime(y + (m == 12), (m % 12) + 1, 1, tzinfo=IST)
-        joined = await db.members.count_documents({"organisation_id": org_id, "created_at": {"$gte": start, "$lt": end}})
-        total = await db.members.count_documents({"organisation_id": org_id, "created_at": {"$lt": end}, "deleted_at": None})
-        points.append({"month": start.strftime("%b %Y"), "joined": joined, "total": total})
+    for label, s, e in _month_windows(months):
+        joined = await db.members.count_documents({"organisation_id": org_id, "joining_date": {"$gte": s, "$lte": e}})
+        total = await db.members.count_documents({"organisation_id": org_id, "joining_date": {"$lte": e}, "deleted_at": None})
+        points.append({"month": label, "joined": joined, "total": total})
     return {"points": points}
 
 
 # ---------------- Export Center ----------------
 
 EXPORTS = {
-    "members": ("members", {"_id": 0, "member_code": 1, "full_name": 1, "phone": 1, "email": 1, "gender": 1, "plan_name": 1, "joining_date": 1, "membership_expiry": 1, "due_amount": 1, "batch": 1, "trainer": 1}),
-    "payments": ("payments", {"_id": 0, "receipt_no": 1, "member_name": 1, "type": 1, "plan_name": 1, "amount": 1, "method": 1, "created_at": 1}),
-    "attendance": ("attendance", {"_id": 0, "member_name": 1, "member_code": 1, "check_in": 1, "check_out": 1}),
-    "expenses": ("expenses", {"_id": 0, "name": 1, "category": 1, "date": 1, "amount": 1, "method": 1, "notes": 1}),
-    "enquiries": ("enquiries", {"_id": 0, "name": 1, "phone": 1, "email": 1, "status": 1, "source": 1, "category": 1, "follow_up_date": 1, "created_at": 1}),
-    "staff": ("staff", {"_id": 0, "name": 1, "role": 1, "email": 1, "phone": 1, "joining_date": 1, "status": 1, "salary": 1}),
-    "plans": ("plans", {"_id": 0, "name": 1, "type": 1, "category": 1, "duration_type": 1, "duration": 1, "price": 1, "status": 1}),
+    "members": ("members", ["member_code", "full_name", "phone", "email", "gender", "plan_name", "joining_date", "membership_expiry", "due_amount", "credit_balance", "batch", "trainer"], None),
+    "payments": ("payments", ["payment_date", "receipt_no", "member_name", "type", "status", "reversal_of", "plan_name", "amount", "method", "created_at"], "payment_date"),
+    "attendance": ("attendance", ["member_name", "member_code", "check_in", "check_out"], None),
+    "expenses": ("expenses", ["date", "name", "category", "amount", "method", "notes"], "date"),
+    "enquiries": ("enquiries", ["name", "phone", "email", "status", "source", "category", "follow_up_date", "created_at"], None),
+    "staff": ("staff", ["name", "role", "email", "phone", "joining_date", "status", "salary"], None),
+    "plans": ("plans", ["name", "type", "category", "duration_type", "duration", "price", "status"], None),
 }
 
 
 @router.get("/export/{dataset}")
-async def export_dataset(dataset: str, outlet_id: Optional[str] = None, user: dict = Depends(require_finance_access)):
+async def export_dataset(dataset: str, outlet_id: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None,
+                         user: dict = Depends(require_finance_access)):
     if dataset not in EXPORTS:
         raise HTTPException(404, "Unknown dataset")
-    collection, projection = EXPORTS[dataset]
-    q = {"organisation_id": user["organisation_id"]}
-    if outlet_id:
-        q["outlet_id"] = outlet_id
+    collection, fields, date_field = EXPORTS[dataset]
+    q = _scope(user["organisation_id"], outlet_id)
     if dataset == "members":
         q["deleted_at"] = None
-    rows = await db[collection].find(q, projection).to_list(20000)
-    buf = io.StringIO()
-    if rows:
-        writer = csv.DictWriter(buf, fieldnames=list(projection.keys())[1:])
+    d_from, d_to = parse_day(date_from, "date_from"), parse_day(date_to, "date_to")
+    if date_field and (d_from or d_to):
+        q[date_field] = {**({"$gte": d_from.isoformat()} if d_from else {}), **({"$lte": d_to.isoformat()} if d_to else {})}
+    sort = [(date_field, 1)] if date_field else [("_id", 1)]
+
+    async def rows():
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        for r in rows:
-            writer.writerow({k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in r.items() if k in projection})
-    else:
-        buf.write("no data\n")
-    return Response(
-        content=buf.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="gymboss_{dataset}_{today_ist().isoformat()}.csv"'},
-    )
+        async for r in db[collection].find(q, {"_id": 0, **{f: 1 for f in fields}}).sort(sort):
+            writer.writerow({k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in r.items()})
+            if buf.tell() > 64_000:
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate()
+        yield buf.getvalue()
+
+    return StreamingResponse(rows(), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="gymboss_{dataset}_{today_ist().isoformat()}.csv"'})

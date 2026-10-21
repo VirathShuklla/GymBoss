@@ -6,7 +6,7 @@ import uuid
 import asyncio
 
 os.environ["DB_NAME"] = "gymboss_txn_tests"
-sys.path.insert(0, "/app/backend")
+import paths  # noqa: F401,E402  (adds backend/ to sys.path)
 
 import pytest  # noqa: E402
 import httpx  # noqa: E402

@@ -1,6 +1,23 @@
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import api from "./api";
+import { isNative } from "./inApp";
 
-export function downloadBlob(blob, filename) {
+const toBase64 = (blob) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(",")[1]);
+  r.onerror = reject;
+  r.readAsDataURL(blob);
+});
+
+// Native apps: write the file to the app cache and open the OS share/save sheet (Files, Drive, WhatsApp...).
+async function nativeShare(blob, filename, text) {
+  const { uri } = await Filesystem.writeFile({ path: filename, data: await toBase64(blob), directory: Directory.Cache });
+  await Share.share({ title: filename, text, files: [uri], dialogTitle: filename });
+}
+
+export async function downloadBlob(blob, filename) {
+  if (isNative()) return nativeShare(blob, filename);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -15,17 +32,28 @@ const fetchReceiptPdf = async (paymentId) =>
   (await api.get(`/payments/${paymentId}/receipt.pdf`, { responseType: "blob" })).data;
 
 export async function downloadReceiptPdf(paymentId, receiptNo) {
-  downloadBlob(await fetchReceiptPdf(paymentId), `Receipt-${receiptNo || paymentId.slice(0, 8)}.pdf`);
+  await downloadBlob(await fetchReceiptPdf(paymentId), `Receipt-${receiptNo || paymentId.slice(0, 8)}.pdf`);
 }
 
-// Shares the PDF file via the OS share sheet (WhatsApp etc.) when supported; returns false otherwise.
+// Shares the PDF via the OS share sheet (WhatsApp etc.) when supported; returns false if it fell back to a download.
 export async function shareReceiptPdf(paymentId, receiptNo, text) {
   const blob = await fetchReceiptPdf(paymentId);
-  const file = new File([blob], `Receipt-${receiptNo || "payment"}.pdf`, { type: "application/pdf" });
+  const name = `Receipt-${receiptNo || "payment"}.pdf`;
+  if (isNative()) {
+    await nativeShare(blob, name, text);
+    return true;
+  }
+  const file = new File([blob], name, { type: "application/pdf" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     await navigator.share({ files: [file], text });
     return true;
   }
-  downloadBlob(blob, file.name);
+  await downloadBlob(blob, file.name);
   return false;
+}
+
+// CSV exports go through the authenticated API client (works with cookies on web and Bearer tokens in apps).
+export async function downloadExport(dataset, params = {}) {
+  const res = await api.get(`/export/${dataset}`, { params, responseType: "blob" });
+  await downloadBlob(res.data, `gymboss_${dataset}_${new Date().toISOString().slice(0, 10)}.csv`);
 }

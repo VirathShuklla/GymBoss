@@ -1,12 +1,12 @@
 """Operations module: enquiries/CRM, expenses, outlets, staff & permissions, gym + user profile."""
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as date_t
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, require_full, require_write, audit, hash_password, normalize_phone
+from deps import db, now_utc, today_ist, new_id, get_org_user, require_manager, require_full, require_write, audit, hash_password, normalize_phone, page_params
 
 router = APIRouter(tags=["operations"])
 
@@ -87,27 +87,33 @@ async def add_follow_up(enquiry_id: str, body: FollowUpBody, user: dict = Depend
 
 class ExpenseBody(BaseModel):
     name: str = Field(min_length=2, max_length=120)
-    category: str = "General"
-    date: str
-    amount: float = Field(gt=0)
+    category: str = Field(default="General", max_length=60)
+    date: date_t
+    amount: float = Field(gt=0, le=10_000_000, allow_inf_nan=False)
     method: str = "Cash"
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
     outlet_id: Optional[str] = None
+
+    def doc(self) -> dict:
+        return {**self.model_dump(), "date": self.date.isoformat()}
 
 
 @router.get("/expenses")
-async def list_expenses(month: Optional[int] = None, year: Optional[int] = None, category: Optional[str] = None, outlet_id: Optional[str] = None, user: dict = Depends(get_org_user)):
+async def list_expenses(month: Optional[int] = None, year: Optional[int] = None, category: Optional[str] = None, outlet_id: Optional[str] = None,
+                        page: int = 1, limit: int = 200, user: dict = Depends(get_org_user)):
+    page, limit = page_params(page, limit, 500)
     q = {"organisation_id": user["organisation_id"]}
     if outlet_id:
         q["outlet_id"] = outlet_id
     if category and category != "all":
         q["category"] = category
-    items = await db.expenses.find(q, {"_id": 0}).sort("date", -1).to_list(2000)
-    if month and year:
-        prefix = f"{year}-{month:02d}"
-        items = [e for e in items if str(e.get("date", "")).startswith(prefix)]
-    total = sum(e.get("amount", 0) for e in items)
-    return {"items": items, "total_amount": total}
+    if month or year:
+        if not (month and year) or not 1 <= month <= 12 or not 2000 <= year <= 2100:
+            raise HTTPException(422, "Provide a valid month (1-12) and year together")
+        q["date"] = {"$regex": f"^{year}-{month:02d}-"}
+    rows = await db.expenses.aggregate([{"$match": q}, {"$group": {"_id": None, "t": {"$sum": "$amount"}, "n": {"$sum": 1}}}]).to_list(1)
+    items = await db.expenses.find(q, {"_id": 0}).sort([("date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
+    return {"items": items, "total_amount": round(rows[0]["t"], 2) if rows else 0, "total": rows[0]["n"] if rows else 0, "page": page, "limit": limit}
 
 
 @router.post("/expenses")
@@ -116,7 +122,7 @@ async def create_expense(body: ExpenseBody, user: dict = Depends(require_write))
     if not outlet_id:
         outlet_doc = await db.outlets.find_one({"organisation_id": user["organisation_id"], "is_primary": True}) or await db.outlets.find_one({"organisation_id": user["organisation_id"]})
         outlet_id = outlet_doc["id"]
-    doc = {"id": new_id(), "organisation_id": user["organisation_id"], **body.model_dump(), "outlet_id": outlet_id, "created_at": now_utc()}
+    doc = {"id": new_id(), "organisation_id": user["organisation_id"], **body.doc(), "outlet_id": outlet_id, "created_at": now_utc()}
     await db.expenses.insert_one(doc)
     doc.pop("_id", None)
     return doc
@@ -126,7 +132,7 @@ async def create_expense(body: ExpenseBody, user: dict = Depends(require_write))
 async def update_expense(expense_id: str, body: ExpenseBody, user: dict = Depends(require_write)):
     res = await db.expenses.update_one(
         {"id": expense_id, "organisation_id": user["organisation_id"]},
-        {"$set": {**body.model_dump(), "updated_at": now_utc()}},
+        {"$set": {**body.doc(), "updated_at": now_utc()}},
     )
     if not res.matched_count:
         raise HTTPException(404, "Expense not found")

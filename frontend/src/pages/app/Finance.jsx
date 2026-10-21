@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { TrendingUp, TrendingDown, Wallet, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import api from "../../lib/api";
+import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { useAuth } from "../../contexts/AuthContext";
 import { PageHeader, DataTable, StatusBadge, EmptyState, DateField } from "../../components/app/ui";
@@ -23,16 +23,27 @@ export default function Finance() {
   const [outletId, setOutletId] = useState("all");
   const [summary, setSummary] = useState(null);
   const [transactions, setTransactions] = useState(null);
+  const [txMeta, setTxMeta] = useState({ total: 0, page: 1 });
+
+  const txParams = () => ({
+    range,
+    outlet_id: outletId === "all" ? undefined : outletId,
+    date_from: range === "custom" ? custom.from || undefined : undefined,
+    date_to: range === "custom" ? custom.to || undefined : undefined,
+  });
+
+  const loadMore = async () => {
+    const page = txMeta.page + 1;
+    const { data } = await api.get("/finance/transactions", { params: { ...txParams(), page } });
+    setTransactions((t) => [...(t || []), ...data.items]);
+    setTxMeta({ total: data.total, page });
+  };
 
   useEffect(() => {
-    const params = {
-      range,
-      outlet_id: outletId === "all" ? undefined : outletId,
-      date_from: range === "custom" ? custom.from || undefined : undefined,
-      date_to: range === "custom" ? custom.to || undefined : undefined,
-    };
-    api.get("/finance/summary", { params }).then(({ data }) => setSummary(data)).catch(() => toast.error("Couldn't load finance summary"));
-    api.get("/finance/transactions", { params }).then(({ data }) => setTransactions(data));
+    const params = txParams();
+    if (range === "custom" && !custom.from) return;
+    api.get("/finance/summary", { params }).then(({ data }) => setSummary(data)).catch((e) => toast.error(apiError(e, "Couldn't load finance summary")));
+    api.get("/finance/transactions", { params }).then(({ data }) => { setTransactions(data.items); setTxMeta({ total: data.total, page: 1 }); }).catch(() => setTransactions([]));
   }, [range, custom.from, custom.to, outletId]);
 
   const cards = [
@@ -43,7 +54,7 @@ export default function Finance() {
   ];
 
   const columns = [
-    { key: "created_at", label: "Date", render: (t) => formatDate(t.created_at) },
+    { key: "payment_date", label: "Date", render: (t) => formatDate(t.payment_date || t.created_at) },
     { key: "member_name", label: "Member", render: (t) => <span className="font-medium text-foreground">{t.member_name}</span> },
     { key: "type", label: "Type", render: (t) => <StatusBadge status={t.type} /> },
     { key: "plan_name", label: "Description", render: (t) => t.plan_name || "—" },
@@ -128,6 +139,12 @@ export default function Finance() {
       <h2 className="mb-3 mt-7 font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Transactions</h2>
       <DataTable testid="finance-transactions-table" columns={columns} rows={transactions || []} loading={!transactions}
                  empty={<EmptyState icon={Wallet} title="No transactions in this period" testid="finance-transactions-empty" />} />
+      {transactions && txMeta.total > transactions.length && (
+        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+          <span data-testid="finance-transactions-count">Showing {transactions.length} of {txMeta.total}</span>
+          <button onClick={loadMore} className="font-semibold text-brand hover:underline" data-testid="finance-transactions-more">Load more</button>
+        </div>
+      )}
     </div>
   );
 }

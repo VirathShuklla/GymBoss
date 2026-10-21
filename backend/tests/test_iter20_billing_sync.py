@@ -8,13 +8,15 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import requests
 from dotenv import dotenv_values
+
+from paths import BACKEND_ENV
 from pymongo import MongoClient
 
 from conftest import API, unique_email
 
 WEBHOOK_SECRET = "whsec_preview_test_only"
 CRON_SECRET = "c4ccd2fc5f01b0403c339b6de9042097438609f5411d34bf"
-_env = dotenv_values("/app/backend/.env")
+_env = dotenv_values(BACKEND_ENV)
 mdb = MongoClient(_env["MONGO_URL"])[_env["DB_NAME"]]
 
 

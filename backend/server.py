@@ -25,7 +25,7 @@ from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
     get_org_user, derive_subscription, public_user, org_public, audit, init_storage, STORAGE_BACKEND, COOKIE_KW, issue_native_tokens, client_ip,
-    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans,
+    get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans, IST,
 )
 from members import router as members_router
 from ops import router as ops_router
@@ -330,7 +330,7 @@ class ChangePasswordBody(BaseModel):
 
 
 @api.post("/auth/change-password")
-async def change_password(body: ChangePasswordBody, response: Response, user: dict = Depends(get_current_user)):
+async def change_password(body: ChangePasswordBody, request: Request, response: Response, user: dict = Depends(get_current_user)):
     lock_key = f"chpw:{user['id']}"
     cutoff = now_utc() - timedelta(minutes=15)
     if await db.login_attempts.count_documents({"identifier": lock_key, "created_at": {"$gt": cutoff}}) >= 5:
@@ -349,7 +349,7 @@ async def change_password(body: ChangePasswordBody, response: Response, user: di
     await db.login_attempts.delete_many({"identifier": lock_key})
     await db.password_reset_tokens.delete_many({"user_id": user["id"], "used": False})
     set_auth_cookies(response, updated)
-    return {"message": "Password changed. Other devices have been signed out."}
+    return {"message": "Password changed. Other devices have been signed out.", **issue_native_tokens(request, updated)}
 
 
 class DeleteAccountBody(BaseModel):
@@ -414,6 +414,17 @@ async def resume_purges():
 
 
 # ---------------- Public config ----------------
+
+@api.get("/health")
+async def health():
+    """Liveness + readiness: DB reachable and running as a replica set (transactions available)."""
+    try:
+        hello = await db.command("hello")
+    except Exception:
+        return Response('{"status":"error","db":"unreachable"}', status_code=503, media_type="application/json")
+    ok = bool(hello.get("setName") or hello.get("msg") == "isdbgrid")
+    body = '{"status":"ok","db":"ok","transactions":true}' if ok else '{"status":"error","db":"ok","transactions":false}'
+    return Response(body, status_code=200 if ok else 503, media_type="application/json")
 
 @api.get("/public/config")
 async def public_config():
@@ -491,20 +502,23 @@ async def dashboard_summary(outlet_id: Optional[str] = None, user: dict = Depend
     today = today_ist()
     start, end = day_bounds(today)
 
-    payments_today = await db.payments.find({**pay_q, "created_at": {"$gte": start, "$lt": end}}).to_list(1000)
-    today_collection = sum(p.get("amount", 0) for p in payments_today)
-    today_online = sum(p.get("amount", 0) for p in payments_today if p.get("method") != "Cash")
-    today_cash = sum(p.get("amount", 0) for p in payments_today if p.get("method") == "Cash")
-    today_admissions = sum(1 for p in payments_today if p.get("type") == "admission")
-    today_renewals = sum(1 for p in payments_today if p.get("type") == "renewal")
-    due_paid_today = sum(p.get("amount", 0) for p in payments_today if p.get("type") == "due")
+    payments_today = await db.payments.aggregate([
+        {"$match": {**pay_q, "payment_date": today.isoformat()}},
+        {"$group": {"_id": {"type": "$type", "cash": {"$eq": ["$method", "Cash"]}}, "t": {"$sum": "$amount"}, "n": {"$sum": 1}}},
+    ]).to_list(None)
+    today_collection = round(sum(g["t"] for g in payments_today), 2)
+    today_online = round(sum(g["t"] for g in payments_today if not g["_id"]["cash"]), 2)
+    today_cash = round(sum(g["t"] for g in payments_today if g["_id"]["cash"]), 2)
+    today_admissions = sum(g["n"] for g in payments_today if g["_id"]["type"] == "admission")
+    today_renewals = sum(g["n"] for g in payments_today if g["_id"]["type"] == "renewal")
+    due_paid_today = round(sum(g["t"] for g in payments_today if g["_id"]["type"] == "due"), 2)
     today_enquiries = await db.enquiries.count_documents({**enq_q, "created_at": {"$gte": start, "$lt": end}})
     attendance_today = await db.attendance.count_documents({**att_q, "check_in": {"$gte": start, "$lt": end}})
 
-    members = await db.members.find(member_q).to_list(10000)
-    total_members = len(members)
+    total_members = 0
     active = expiring_today = expiring_soon = due_members = birthdays = 0
-    for m in members:
+    async for m in db.members.find(member_q, {"membership_expiry": 1, "frozen_until": 1, "due_amount": 1, "dob": 1}):
+        total_members += 1
         expiry = m.get("membership_expiry")
         if isinstance(expiry, str):
             expiry = date.fromisoformat(expiry[:10])
@@ -736,6 +750,8 @@ async def seed_demo():
                 "admission_amount": admission,
                 "method": rng.choice(["Cash", "UPI", "UPI", "Card", "Bank Transfer"]),
                 "receipt_no": f"RCPT-{receipt}",
+                "payment_date": pay_date.astimezone(IST).date().isoformat(),
+                "status": "active",
                 "created_at": pay_date,
             })
         if i < 12:
@@ -845,6 +861,8 @@ async def ensure_indexes():
     await db.password_reset_requests.create_index("created_at", expireAfterSeconds=900)
     await db.members.create_index([("organisation_id", 1), ("outlet_id", 1)])
     await db.payments.create_index([("organisation_id", 1), ("created_at", -1)])
+    await db.payments.create_index([("organisation_id", 1), ("payment_date", -1)])
+    await db.expenses.create_index([("organisation_id", 1), ("date", -1)])
     await db.attendance.create_index([("organisation_id", 1), ("check_in", -1)])
     await db.enquiries.create_index("organisation_id")
     await db.expenses.create_index("organisation_id")
@@ -898,7 +916,17 @@ async def ensure_indexes():
     await db.device_commands.create_index([("device_id", 1), ("seq", 1)])
 
 
-MIGRATIONS = [("2026_06_member_ledger_v1", "member_ledger.migrate_all")]
+MIGRATIONS = [("2026_06_member_ledger_v1", "member_ledger.migrate_all"), ("2026_10_txn_dates_v1", "server.backfill_txn_dates")]
+
+
+async def backfill_txn_dates():
+    """Legacy rows without a transaction date get the IST calendar day of created_at (idempotent)."""
+    ist_day = {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at", "timezone": "+05:30"}}
+    missing = lambda f: {"$or": [{f: {"$exists": False}}, {f: None}, {f: ""}]}  # noqa: E731
+    await db.payments.update_many({**missing("payment_date"), "created_at": {"$type": "date"}}, [{"$set": {"payment_date": ist_day}}])
+    await db.expenses.update_many({**missing("date"), "created_at": {"$type": "date"}}, [{"$set": {"date": ist_day}}])
+    await db.expenses.update_many({"date": {"$type": "string", "$regex": "^\\d{4}-\\d{2}-\\d{2}.+"}}, [{"$set": {"date": {"$substrCP": ["$date", 0, 10]}}}])
+    await db.members.update_many({**missing("joining_date"), "created_at": {"$type": "date"}}, [{"$set": {"joining_date": ist_day}}])
 
 
 async def run_migrations():

@@ -20,7 +20,24 @@ REMOTE_ENDED = ("cancelled", "completed", "expired")
 EVENT_LEASE = timedelta(minutes=5)
 
 
-async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", plan_id: str | None = None,
+def purchase_from_plan(plan: dict) -> dict:
+    """Immutable snapshot of what was bought, stored on the order/subscription at checkout."""
+    return {"plan_id": plan["id"], "plan_name": plan["name"], "months": plan["months"],
+            "amount": plan["effective_price"], "currency": "INR", "captured_at": now_utc()}
+
+
+async def resolve_purchase(rec: dict | None) -> dict:
+    """The stored snapshot; legacy rows fall back to their recorded amount + the plan's duration."""
+    rec = rec or {}
+    if rec.get("purchase"):
+        return rec["purchase"]
+    snap = purchase_from_plan(await get_pricing_plan(rec.get("plan_key") or rec.get("plan_id")))
+    if rec.get("amount"):
+        snap["amount"] = rec["amount"]
+    return snap
+
+
+async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", purchase: dict | None = None,
                         order_id: str | None = None, payment_row: dict | None = None):
     """Extend access exactly once per Razorpay payment_id, atomically with its ledger entry and payment row.
     Returns the new end date, or None if already applied."""
@@ -41,7 +58,7 @@ async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", p
                                                  "status": "applied", "created_at": now}, session=s)
         await checkpoint("subscription.after_ledger")
         sub = org.get("subscription", {})
-        plan = await get_pricing_plan(plan_id or sub.get("plan"))
+        plan = purchase or await resolve_purchase({"plan_id": sub.get("plan")})
         base = sub.get("subscription_ends_at")
         if base is not None and base.tzinfo is None:
             base = base.replace(tzinfo=timezone.utc)
@@ -50,9 +67,10 @@ async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", p
             "subscription.status": "active",
             "subscription.subscription_started_at": sub.get("subscription_started_at") or now,
             "subscription.subscription_ends_at": ends,
-            "subscription.plan": plan["id"],
+            "subscription.plan": plan["plan_id"],
+            "subscription.plan_name": plan.get("plan_name"),
             "subscription.plan_months": plan["months"],
-            "subscription.amount": plan["effective_price"],
+            "subscription.amount": plan["amount"],
             "subscription.billing_issue": False,
         }}, session=s)
         await checkpoint("subscription.after_grant")
@@ -72,19 +90,20 @@ async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", p
         return None
     ends, plan = res
     await best_effort(audit(actor, "subscription.activated", org_id, {"payment_id": payment_id, "ends": ends.isoformat()}, org_id))
-    await best_effort(track("payment_successful", org_id, props={"payment_id": payment_id, "plan": plan["id"], "amount": plan["effective_price"]}))
-    await best_effort(track("subscription_started", org_id, props={"plan": plan["id"]}, once=True))
+    await best_effort(track("payment_successful", org_id, props={"payment_id": payment_id, "plan": plan["plan_id"], "amount": plan["amount"]}))
+    await best_effort(track("subscription_started", org_id, props={"plan": plan["plan_id"]}, once=True))
     return ends
 
 
 async def record_autodebit_payment(local: dict, payment_id: str, amount_paise: int | None, kind: str):
     """Paid autodebit payment row + access grant in one transaction (verify + webhook may both report it)."""
     ts = now_utc()
-    amount = round(amount_paise / 100) if amount_paise else (local.get("amount") or await get_plan_price())
+    purchase = await resolve_purchase(local)
+    amount = round(amount_paise / 100) if amount_paise else purchase["amount"]
     row = {"id": new_id(), "organisation_id": local["organisation_id"], "order_id": local["razorpay_subscription_id"],
            "payment_id": payment_id, "amount": amount, "currency": "INR", "status": "paid", "kind": kind,
-           "plan_id": local.get("plan_key"), "created_at": ts, "paid_at": ts}
-    await apply_payment(local["organisation_id"], payment_id, plan_id=local.get("plan_key"), payment_row=row)
+           "plan_id": purchase["plan_id"], "purchase": purchase, "created_at": ts, "paid_at": ts}
+    await apply_payment(local["organisation_id"], payment_id, purchase=purchase, payment_row=row)
 
 
 async def cancel_remote_subscription(razorpay_request, sub: dict, reason: str) -> bool:
@@ -187,7 +206,7 @@ async def handle_payment_event(event_name: str, event: dict) -> str:
         if not payment_matches(entity, record):
             logger.error("payment.captured mismatch for order %s; not applied", order_id)
             return "mismatch"
-        await apply_payment(record["organisation_id"], entity.get("id", ""), plan_id=record.get("plan_id"), order_id=order_id)
+        await apply_payment(record["organisation_id"], entity.get("id", ""), purchase=await resolve_purchase(record), order_id=order_id)
     elif event_name == "payment.failed" and record.get("status") != "paid":
         await db.subscription_payments.update_one({"order_id": order_id, "status": {"$ne": "paid"}},
                                                   {"$set": {"status": "failed", "failure_reason": entity.get("error_reason") or entity.get("error_description")}})
@@ -265,7 +284,7 @@ async def reconcile(razorpay_request) -> dict:
         items = pays.get("items", [])
         captured = next((p for p in items if p.get("status") == "captured"), None)
         if captured:
-            if await apply_payment(rec["organisation_id"], captured["id"], plan_id=rec.get("plan_id"), order_id=rec["order_id"]):
+            if await apply_payment(rec["organisation_id"], captured["id"], purchase=await resolve_purchase(rec), order_id=rec["order_id"]):
                 stats["payments_applied"] += 1
         elif items and all(p.get("status") == "failed" for p in items):
             await db.subscription_payments.update_one({"id": rec["id"]}, {"$set": {"status": "failed"}})

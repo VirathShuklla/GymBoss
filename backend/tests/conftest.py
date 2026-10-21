@@ -7,10 +7,12 @@ import pytest
 import requests
 from dotenv import dotenv_values
 
-frontend_env = dotenv_values("/app/frontend/.env")
+from paths import FRONTEND_ENV, CREDENTIALS
+
+frontend_env = dotenv_values(FRONTEND_ENV)
 base_url = os.environ.get("REACT_APP_BACKEND_URL") or frontend_env.get("REACT_APP_BACKEND_URL")
 if not base_url:
-    raise RuntimeError("REACT_APP_BACKEND_URL is missing from the process environment and /app/frontend/.env")
+    raise RuntimeError(f"REACT_APP_BACKEND_URL is missing from the process environment and {FRONTEND_ENV}")
 BASE_URL = base_url.rstrip("/")
 API = f"{BASE_URL}/api"
 
@@ -30,10 +32,10 @@ def client():
 
 @pytest.fixture(scope="session")
 def creds():
-    """Parse /app/memory/test_credentials.md for demo + super admin credentials."""
-    p = Path("/app/memory/test_credentials.md")
+    """Parse memory/test_credentials.md for demo + super admin credentials."""
+    p = CREDENTIALS
     if not p.exists():
-        pytest.skip("Missing /app/memory/test_credentials.md")
+        pytest.skip(f"Missing {CREDENTIALS}")
     content = p.read_text(encoding="utf-8")
     emails = re.findall(r"(?im)^\s*[-*]?\s*(?:\*\*)?Email(?:\*\*)?\s*:\s*`?([^`\s]+)", content)
     usernames = re.findall(r"(?im)^\s*[-*]?\s*(?:\*\*)?Username(?:\*\*)?\s*:\s*`?([^`\s]+)", content)

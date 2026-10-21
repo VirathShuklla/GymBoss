@@ -11,10 +11,12 @@ from datetime import datetime, timedelta, timezone, date
 import pytest
 import requests
 from dotenv import dotenv_values
+
+from paths import BACKEND_ENV, FRONTEND_ENV
 from pymongo import MongoClient
 
-FE = dotenv_values("/app/frontend/.env")
-BE = dotenv_values("/app/backend/.env")
+FE = dotenv_values(FRONTEND_ENV)
+BE = dotenv_values(BACKEND_ENV)
 BASE_URL = (os.environ.get("REACT_APP_BACKEND_URL") or FE["REACT_APP_BACKEND_URL"]).rstrip("/")
 API = f"{BASE_URL}/api"
 db = MongoClient(BE["MONGO_URL"])[BE["DB_NAME"]]

@@ -95,7 +95,7 @@ export default function Reports() {
         <TabsContent value="dues">
           {dues && (
             <p className="mb-3 text-sm text-muted-foreground" data-testid="dues-total">
-              Total outstanding: <span className="font-num font-bold text-danger">{inr(dues.total)}</span> across {dues.items.length} members
+              Total outstanding: <span className="font-num font-bold text-danger">{inr(dues.total)}</span> across {dues.count ?? dues.items.length} members
             </p>
           )}
           <DataTable testid="report-dues-table" columns={duesColumns} rows={dues?.items || []} loading={!dues}

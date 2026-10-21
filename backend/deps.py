@@ -279,6 +279,34 @@ async def audit(actor: str, action: str, target: str = "", meta: dict | None = N
 FAULTS: set[str] = set()
 
 
+def parse_day(value: str | None, field: str = "date") -> date | None:
+    """Strict YYYY-MM-DD (IST calendar day) parser for query params; 422 instead of a 500."""
+    if value in (None, ""):
+        return None
+    s = str(value)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        _bad_day(field)
+    try:
+        return date.fromisoformat(s)
+    except ValueError:
+        _bad_day(field)
+
+
+def _bad_day(field: str):
+    raise HTTPException(422, f"Invalid {field}: use YYYY-MM-DD")
+
+
+def ist_day(dt: datetime | None) -> str:
+    """IST calendar day of a UTC timestamp (used for legacy rows without a transaction date)."""
+    return (dt or now_utc()).astimezone(IST).date().isoformat()
+
+
+def page_params(page: int, limit: int, max_limit: int = 200) -> tuple[int, int]:
+    if page < 1 or limit < 1 or limit > max_limit:
+        raise HTTPException(422, f"page must be >= 1 and limit between 1 and {max_limit}")
+    return page, limit
+
+
 async def checkpoint(name: str):
     """Test-only fault injection: tests add a name to FAULTS to crash once at that point."""
     if name in FAULTS:

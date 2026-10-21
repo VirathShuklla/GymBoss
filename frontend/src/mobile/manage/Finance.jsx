@@ -18,12 +18,13 @@ export default function Finance() {
   const [range, setRange] = useState("month");
   const [sum, setSum] = useState(null);
   const [txns, setTxns] = useState(null);
+  const [txTotal, setTxTotal] = useState(0);
 
   useEffect(() => {
     setSum(null);
     setTxns(null);
     api.get(`/finance/summary?range=${range}`).then(({ data }) => setSum(data)).catch(() => setSum({}));
-    api.get(`/finance/transactions?range=${range}`).then(({ data }) => setTxns(data)).catch(() => setTxns([]));
+    api.get(`/finance/transactions?range=${range}`).then(({ data }) => { setTxns(data.items); setTxTotal(data.total); }).catch(() => setTxns([]));
   }, [range]);
 
   const cards = sum ? [
@@ -74,11 +75,12 @@ export default function Finance() {
             <div key={t.id} className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{t.member_name}</p>
-                <p className="text-xs text-muted-foreground">{formatDate(t.created_at)} · {t.method}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(t.payment_date || t.created_at)} · {t.method}</p>
               </div>
-              <p className="font-num text-sm font-bold text-success">{inr(t.amount)}</p>
+              <p className={`font-num text-sm font-bold ${t.amount < 0 ? "text-danger" : "text-success"}`}>{t.amount < 0 ? `-${inr(Math.abs(t.amount))}` : inr(t.amount)}</p>
             </div>
           ))}
+          {txTotal > txns.length && <p className="pt-1 text-center text-xs text-muted-foreground" data-testid="m-finance-txn-count">Showing latest {txns.length} of {txTotal}</p>}
         </div>
       )}
     </div>

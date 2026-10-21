@@ -13,7 +13,7 @@ from deps import (
     db, now_utc, today_ist, new_id, get_org_user, require_write, get_current_user, audit,
     add_duration, member_status, days_left, member_public,
     next_receipt_no, next_member_code, normalize_phone, put_object, get_object, require_full,
-    run_txn, checkpoint, best_effort, idem_key, idem_lookup, idem_save, fingerprint,
+    run_txn, checkpoint, best_effort, idem_key, idem_lookup, idem_save, fingerprint, parse_day, page_params,
 )
 from member_ledger import validate_method, membership_plan, cycle_payable, create_invoice, recompute
 from pymongo.errors import DuplicateKeyError
@@ -646,19 +646,15 @@ async def list_payments(
         q["method"] = method
     if type:
         q["type"] = type
-    try:
-        if date_from:
-            q["created_at"] = {"$gte": datetime.combine(date.fromisoformat(date_from[:10]), datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30)}
-        if date_to:
-            q.setdefault("created_at", {})["$lt"] = datetime.combine(date.fromisoformat(date_to[:10]), datetime.min.time(), tzinfo=timezone.utc) - timedelta(hours=5, minutes=30) + timedelta(days=1)
-    except ValueError:
-        raise HTTPException(422, "Invalid date filter")
-    page, limit = max(page, 1), min(max(limit, 1), 200)
+    d_from, d_to = parse_day(date_from, "date_from"), parse_day(date_to, "date_to")
+    if d_from or d_to:
+        q["payment_date"] = {**({"$gte": d_from.isoformat()} if d_from else {}), **({"$lte": d_to.isoformat()} if d_to else {})}
+    page, limit = page_params(page, limit)
     if search:
         rx = {"$regex": re.escape(search.strip()), "$options": "i"}
         q["$or"] = [{"member_name": rx}, {"receipt_no": rx}]
     total = await db.payments.count_documents(q)
-    items = await db.payments.find(q, {"_id": 0}).sort("created_at", -1).skip((max(page, 1) - 1) * limit).limit(limit).to_list(limit)
+    items = await db.payments.find(q, {"_id": 0}).sort([("payment_date", -1), ("created_at", -1)]).skip((page - 1) * limit).limit(limit).to_list(limit)
     return {"items": items, "total": total, "page": page, "limit": limit}
 
 
@@ -755,29 +751,56 @@ async def attendance_history(month: Optional[int] = None, year: Optional[int] = 
 
 # ---------------- File uploads (object storage) ----------------
 
-MIME_TYPES = {
-    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-    "gif": "image/gif", "webp": "image/webp", "pdf": "application/pdf",
-}
+MAX_UPLOAD = 5 * 1024 * 1024
+SAFE_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf"}
+
+
+def sniff_type(data: bytes) -> str | None:
+    """Detect the real file type from its leading bytes (client MIME and extension are ignored)."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:5] == b"%PDF-":
+        return "application/pdf"
+    return None
+
+
+async def read_limited_body(request: Request, limit: int) -> None:
+    """Stream the request body and abort as soon as it exceeds the limit (never buffers an oversized upload)."""
+    if int(request.headers.get("content-length") or 0) > limit:
+        raise HTTPException(413, "File too large (max 5 MB)")
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            raise HTTPException(413, "File too large (max 5 MB)")
+    request._body = bytes(body)
 
 
 @router.post("/uploads")
 async def upload_file(request: Request, user: dict = Depends(require_write)):
+    await read_limited_body(request, MAX_UPLOAD + 64 * 1024)
     form = await request.form()
     file = form.get("file")
     kind = form.get("kind", "attachment")
+    if kind not in ("attachment", "photo"):
+        raise HTTPException(422, "Invalid upload kind")
     if not file or not getattr(file, "filename", None):
         raise HTTPException(422, "No file provided")
-    data = await file.read()
+    data = await file.read(MAX_UPLOAD + 1)
     if not data:
         raise HTTPException(422, "Empty file")
-    if len(data) > 10 * 1024 * 1024:
-        raise HTTPException(413, "File too large (max 10 MB)")
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
-    allowed = {"jpg", "jpeg", "png", "webp", "gif", "pdf"} if kind == "attachment" else {"jpg", "jpeg", "png", "webp"}
-    if ext not in allowed:
-        raise HTTPException(422, f"Only {', '.join(sorted(allowed))} files are allowed")
-    content_type = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, "File too large (max 5 MB)")
+    content_type = sniff_type(data)
+    allowed = SAFE_TYPES if kind == "attachment" else {k: v for k, v in SAFE_TYPES.items() if k.startswith("image/")}
+    if content_type not in allowed:
+        raise HTTPException(422, "Only JPG, PNG, WebP" + (" or PDF" if kind == "attachment" else "") + " files are allowed")
+    ext = SAFE_TYPES[content_type]
+    filename = re.sub(r"[^A-Za-z0-9._ -]", "_", file.filename)[:120]
     path = f"gymbossvvo/{user['organisation_id']}/{uuid.uuid4()}.{ext}"
     try:
         result = await put_object(path, data, content_type)
@@ -787,15 +810,15 @@ async def upload_file(request: Request, user: dict = Depends(require_write)):
         "id": new_id(),
         "organisation_id": user["organisation_id"],
         "storage_path": result["path"],
-        "original_filename": file.filename,
+        "original_filename": filename,
         "content_type": content_type,
-        "size": result.get("size", len(data)),
+        "size": len(data),
         "kind": kind,
         "is_deleted": False,
         "created_at": now_utc(),
     }
     await db.files.insert_one(doc)
-    return {"id": doc["id"], "url": f"/api/files/{doc['id']}", "filename": file.filename}
+    return {"id": doc["id"], "url": f"/api/files/{doc['id']}", "filename": filename}
 
 
 @router.get("/files/{file_id}")
@@ -805,5 +828,13 @@ async def get_file(file_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "File not found")
     if user.get("role") != "super_admin" and user.get("organisation_id") != record.get("organisation_id"):
         raise HTTPException(403, "Not authorized")
-    data, content_type = await get_object(record["storage_path"])
-    return Response(content=data, media_type=record.get("content_type") or content_type)
+    data, _ = await get_object(record["storage_path"])
+    # Existing attachments are preserved; the served type comes from the bytes, never from what a client claimed.
+    real = sniff_type(data)
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"}
+    if real:
+        headers["Content-Disposition"] = "inline"
+        return Response(content=data, media_type=real, headers=headers)
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", record.get("original_filename") or "file")[:120]
+    headers.update({"Content-Disposition": f'attachment; filename="{name}"', "Content-Security-Policy": "sandbox"})
+    return Response(content=data, media_type="application/octet-stream", headers=headers)

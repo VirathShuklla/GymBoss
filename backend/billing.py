@@ -15,7 +15,7 @@ from typing import Optional
 from deps import db, now_utc, new_id, get_org_user, require_super_admin, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans, best_effort
 from analytics import track
 from billing_sync import (apply_payment, record_autodebit_payment, claim_event, finish_event, handle_subscription_event,
-                          handle_payment_event, reconcile, cancel_remote_subscription, OPEN_SUB_STATUSES)
+                          handle_payment_event, reconcile, cancel_remote_subscription, OPEN_SUB_STATUSES, purchase_from_plan, resolve_purchase)
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ async def create_order(request: Request, body: PlanChoice | None = None, user: d
     order = resp.json()
     await db.subscription_payments.insert_one({
         "id": new_id(), "organisation_id": org_id, "order_id": order["id"],
-        "amount": price, "currency": "INR", "status": "created", "plan_id": plan["id"], "created_at": now_utc(),
+        "amount": price, "currency": "INR", "status": "created", "plan_id": plan["id"], "purchase": purchase_from_plan(plan), "created_at": now_utc(),
     })
     await track("payment_initiated", org_id, user["id"], props={"plan": plan["id"], "amount": price, "mode": "order"})
     return {"order_id": order["id"], "amount": price * 100, "currency": "INR", "key_id": key_id, "plan": plan}
@@ -94,8 +94,8 @@ class VerifyBody(BaseModel):
     razorpay_signature: str
 
 
-async def activate_subscription(org_id: str, payment_id: str, actor: str = "razorpay", plan_id: str | None = None, order_id: str | None = None):
-    return await apply_payment(org_id, payment_id, actor=actor, plan_id=plan_id, order_id=order_id)
+async def activate_subscription(org_id: str, payment_id: str, actor: str = "razorpay", purchase: dict | None = None, order_id: str | None = None):
+    return await apply_payment(org_id, payment_id, actor=actor, purchase=purchase, order_id=order_id)
 
 
 STORE_PLATFORMS = ("android_store", "ios_store")
@@ -136,7 +136,7 @@ async def verify_payment(body: VerifyBody, user: dict = Depends(get_org_user)):
         raise HTTPException(400, "Payment could not be verified with Razorpay")
     if not payment_matches(pay, rec):
         raise HTTPException(400, "Payment does not match this order")
-    await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], plan_id=rec.get("plan_id"), order_id=body.razorpay_order_id)
+    await activate_subscription(user["organisation_id"], body.razorpay_payment_id, actor=user["id"], purchase=await resolve_purchase(rec), order_id=body.razorpay_order_id)
     org = await db.organisations.find_one({"id": user["organisation_id"]})
     return {"message": "Subscription activated", "subscription": derive_subscription(org, await get_plan_price())}
 
@@ -229,7 +229,7 @@ async def autodebit_start(request: Request, body: PlanChoice | None = None, user
     })
     await db.subscriptions.insert_one({
         "id": new_id(), "organisation_id": org_id, "razorpay_subscription_id": data["id"],
-        "plan_id": plan_id, "plan_key": plan["id"], "amount": price, "status": "created", "key_id": key_id, "created_at": now_utc(),
+        "plan_id": plan_id, "plan_key": plan["id"], "amount": price, "purchase": purchase_from_plan(plan), "status": "created", "key_id": key_id, "created_at": now_utc(),
     })
     await audit(user["id"], "subscription.autodebit_started", org_id, {"rzp_subscription": data["id"]}, org_id)
     return {"subscription_id": data["id"], "key_id": key_id, "amount": price * 100, "currency": "INR", "status": "created"}
@@ -296,6 +296,6 @@ async def subscription_invoice(payment_id: str, user: dict = Depends(get_org_use
     if not rec:
         raise HTTPException(404, "Invoice not found")
     org = await db.organisations.find_one({"id": user["organisation_id"]}, {"_id": 0, "name": 1, "city": 1})
-    plan = await get_pricing_plan(rec.get("plan_id"))
-    pdf = build_saas_invoice_pdf(rec, org or {}, plan)
+    plan = await resolve_purchase(rec)
+    pdf = build_saas_invoice_pdf(rec, org or {}, {"name": plan.get("plan_name") or "Monthly", "months": plan["months"]})
     return Response(pdf, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="GymBoss-Invoice-{payment_id[:8]}.pdf"'})
