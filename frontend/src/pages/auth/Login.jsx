@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../../contexts/AuthContext";
@@ -12,13 +12,14 @@ import { Label } from "../../components/ui/label";
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
+  const next = (useSearchParams()[0].get("next") || "").startsWith("/billing") ? "/billing" : null;
   const [form, setForm] = useState({ identifier: "", password: "" });
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   if (user) {
-    return <Navigate to={user.role === "super_admin" ? "/superadmin" : "/app"} replace />;
+    return <Navigate to={user.role === "super_admin" ? "/superadmin" : next || "/app"} replace />;
   }
 
   const submit = async (e) => {
@@ -28,7 +29,7 @@ export default function Login() {
     try {
       const logged = await login(form.identifier, form.password);
       toast.success("Welcome back!");
-      navigate("/app", { replace: true });
+      navigate(next || "/app", { replace: true });
     } catch (err) {
       setError(apiError(err, "Unable to log in."));
     } finally {

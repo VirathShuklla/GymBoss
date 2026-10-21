@@ -33,7 +33,7 @@ function loadRazorpayScript() {
   });
 }
 
-export default function Subscription() {
+export default function Subscription({ portal = false }) {
   const { user, reload } = useAuth();
   const config = usePublicConfig();
   const [data, setData] = useState(null);
@@ -81,7 +81,7 @@ export default function Subscription() {
   const sub = data?.subscription;
   const autodebit = data?.autodebit;
   const autodebitActive = autodebit?.status === "active";
-  const autodebitHalted = autodebit?.status === "halted";
+  const autodebitHalted = ["halted", "pending"].includes(autodebit?.status);
   const price = sub?.plan_price_inr || 999;
   const isTrial = sub?.status === "trial";
   const isActive = sub?.status === "active";
@@ -105,11 +105,35 @@ export default function Subscription() {
     { key: "order_id", label: "Reference", render: (p) => <span className="font-num text-xs text-muted-foreground">{p.order_id}</span> },
     { key: "amount", label: "Amount", align: "right", render: (p) => <span className="font-num font-bold text-foreground">{inr(p.amount)}</span> },
     { key: "status", label: "Status", align: "right", render: (p) => <StatusBadge status={p.status} label={p.status === "paid" ? "Paid" : p.status === "failed" ? "Failed" : "Pending"} /> },
+    { key: "invoice", label: "Invoice", align: "right", render: (p) => p.status === "paid" ? <button onClick={() => openInvoice(p.id)} className="text-xs font-semibold text-brand hover:underline" data-testid={`invoice-${p.id}`}>Download</button> : <span className="text-xs text-muted-foreground">—</span> },
   ];
+
+  const openInvoice = async (id) => {
+    try {
+      const res = await api.get(`/subscription/payments/${id}/invoice.pdf`, { responseType: "blob" });
+      window.open(URL.createObjectURL(res.data), "_blank", "noopener");
+    } catch (e) {
+      toast.error(apiError(e, "Could not open invoice"));
+    }
+  };
+
+  const cancelAutoRenew = async () => {
+    if (!window.confirm("Cancel auto-renewal? You keep full access until the end of your paid period.")) return;
+    setBusy(true);
+    try {
+      const { data: r } = await api.post("/subscription/autodebit/cancel");
+      toast.success(r.message);
+      load();
+    } catch (e) {
+      toast.error(apiError(e, "Could not cancel auto-renewal"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div data-testid="subscription-page">
-      <PageHeader title="Subscription" subtitle="Your GymBoss_VVO plan and billing." testid="subscription-header" />
+      {!portal && <PageHeader title="Subscription" subtitle="Your GymBoss_VVO plan and billing." testid="subscription-header" />}
 
       <div className="grid items-start gap-5 lg:grid-cols-5">
         <div className="rounded-xl border border-border bg-card p-6 shadow-card lg:col-span-3" data-testid="subscription-status-card">
@@ -148,8 +172,12 @@ export default function Subscription() {
               <Check className="h-4 w-4 shrink-0 text-success" strokeWidth={3} />
               <p className="text-sm text-foreground">
                 Billing is active — {inr(shown)}/{period}{sub?.subscription_ends_at ? `, paid through ${formatDate(sub.subscription_ends_at)}` : ""}.
-                <span className="text-muted-foreground"> Manage it from My Profile.</span>
               </p>
+              {!inApp && (
+                <button onClick={cancelAutoRenew} disabled={busy} className="ml-auto shrink-0 text-xs font-semibold text-muted-foreground hover:text-danger" data-testid="cancel-autorenew-button">
+                  Cancel auto-renewal
+                </button>
+              )}
             </div>
           )}
           {autodebitHalted && (
@@ -162,7 +190,7 @@ export default function Subscription() {
           <div className="mt-5 flex items-start gap-2.5 rounded-lg bg-secondary/50 px-4 py-3">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Your gym data is always safe — we never delete it, even if a trial ends. Cancel anytime from My Profile; access continues until the end of your paid period.
+              Your gym data is always safe — we never delete it, even if a trial ends. Cancel auto-renewal anytime here; access continues until the end of your paid period.
             </p>
           </div>
         </div>
@@ -214,8 +242,8 @@ export default function Subscription() {
               </div>
             )}
             {needsPayment && !inApp && data?.razorpay_configured && (
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
-                Secure payment via Razorpay · UPI, cards & netbanking
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-muted-foreground" data-testid="renewal-disclosure">
+                {inr(shown)} is charged now and automatically every {period} until you cancel. Cancel anytime from this page; access continues until the end of the paid period. If a renewal payment fails, Razorpay retries it and your data stays safe in read-only mode until paid. Secure payment via Razorpay · UPI, cards & netbanking.
               </p>
             )}
           </div>

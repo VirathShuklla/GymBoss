@@ -1,0 +1,14 @@
+{
+  "appId": "in.gymboss.app",
+  "appName": "GymBoss",
+  "webDir": "build",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 0 }
+  }
+}

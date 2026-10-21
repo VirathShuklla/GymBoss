@@ -20,6 +20,8 @@ GymBoss_VVO lets a gym owner run day-to-day operations from one app: members, me
 | **Super Admin** (BuildVVO) | `GymBoss` | `GymBoss@2026` | `/login` → `/superadmin` |
 | **Demo gym owner** | `demo@gymbossvvo.in` | `Demo@2026` | `/login` → `/app/dashboard`, or `/m` (mobile) |
 
+> **Self-hosting, billing portal, Razorpay webhooks and Android/iOS builds:** see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ---
 
 ## Table of Contents

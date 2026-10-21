@@ -95,3 +95,61 @@ def build_receipt_pdf(r: dict) -> bytes:
     c.showPage()
     c.save()
     return buf.getvalue()
+
+
+def build_saas_invoice_pdf(rec: dict, org: dict, plan: dict) -> bytes:
+    """GymBoss_VVO subscription invoice issued by BuildVVO to the gym."""
+    from reportlab.lib.pagesizes import A4
+    buf = io.BytesIO()
+    W, H = A4
+    c = canvas.Canvas(buf, pagesize=A4)
+    c.setTitle(f"GymBoss_VVO Invoice {rec.get('payment_id', '')}")
+    c.setFillColor(BRAND)
+    c.rect(0, H - 34 * mm, W, 34 * mm, fill=1, stroke=0)
+    c.setFillColor(colors.white)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(18 * mm, H - 17 * mm, "GymBoss_VVO")
+    c.setFont("Helvetica", 9)
+    c.drawString(18 * mm, H - 24 * mm, "BuildVVO Technologies Private Limited · India · buildvvotechnologies@gmail.com")
+    c.setFont("Helvetica-Bold", 14)
+    c.drawRightString(W - 18 * mm, H - 17 * mm, "TAX INVOICE / RECEIPT")
+    y = H - 50 * mm
+    rows = [
+        ("Billed to", org.get("name") or "-"),
+        ("City", org.get("city") or "-"),
+        ("Invoice date", _date(rec.get("paid_at") or rec.get("created_at"))),
+        ("Payment ID", rec.get("payment_id") or "-"),
+        ("Reference", rec.get("order_id") or "-"),
+        ("Plan", f"GymBoss_VVO {plan.get('name', 'Monthly')} ({plan.get('months', 1)} month{'s' if plan.get('months', 1) > 1 else ''})"),
+        ("Billing", "Auto-renewing subscription" if str(rec.get("kind", "")).startswith("autodebit") else "One-time payment"),
+    ]
+    for label, value in rows:
+        c.setFillColor(MUTED)
+        c.setFont("Helvetica", 10)
+        c.drawString(18 * mm, y, label)
+        c.setFillColor(INK)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(60 * mm, y, str(value))
+        y -= 8 * mm
+    y -= 4 * mm
+    c.setStrokeColor(colors.HexColor("#E2E8F0"))
+    c.line(18 * mm, y, W - 18 * mm, y)
+    y -= 12 * mm
+    c.setFillColor(INK)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(18 * mm, y, "Amount paid")
+    c.setFillColor(GREEN)
+    c.drawRightString(W - 18 * mm, y, _inr(rec.get("amount")))
+    y -= 14 * mm
+    c.setFillColor(MUTED)
+    c.setFont("Helvetica", 8.5)
+    for line in [
+        "Paid via Razorpay. Prices are inclusive of applicable taxes unless stated otherwise.",
+        "Auto-renewing plans renew at the same price each period until cancelled. Cancel anytime from the billing portal;",
+        "access continues until the end of the paid period. This is a computer-generated invoice and needs no signature.",
+    ]:
+        c.drawString(18 * mm, y, line)
+        y -= 5 * mm
+    c.showPage()
+    c.save()
+    return buf.getvalue()

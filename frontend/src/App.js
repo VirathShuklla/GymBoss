@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { isInApp, STORE_BLOCKED } from "./lib/inApp";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -33,6 +34,17 @@ const MobileApp = lazy(() => import("./mobile/MobileApp"));
 const Attendance = lazy(() => import("./pages/app/Attendance"));
 const CheckIn = lazy(() => import("./pages/CheckIn"));
 const Legal = lazy(() => import("./pages/Legal"));
+const BillingPortal = lazy(() => import("./pages/BillingPortal"));
+
+const PORTAL_HOST = process.env.REACT_APP_PORTAL_HOST;
+
+// Store builds never reach selling pages; the payments subdomain opens straight into billing.
+function PlatformGate({ children }) {
+  const { pathname } = useLocation();
+  if (isInApp() && STORE_BLOCKED.test(pathname)) return <Navigate to={pathname.includes("subscription") ? "/m/profile" : "/m"} replace />;
+  if (PORTAL_HOST && window.location.hostname === PORTAL_HOST && pathname === "/") return <Navigate to="/billing" replace />;
+  return children;
+}
 
 installWhatsAppTracking();
 
@@ -81,7 +93,8 @@ function App() {
         <AuthProvider>
           <Suspense fallback={<FullPageLoader />}>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<PlatformGate><Landing /></PlatformGate>} />
+            <Route path="/billing" element={<PlatformGate><BillingPortal /></PlatformGate>} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -104,7 +117,7 @@ function App() {
               <Route path="reports" element={<FinanceRoute><Reports /></FinanceRoute>} />
               <Route path="export-center" element={<FinanceRoute><ExportCenter /></FinanceRoute>} />
               <Route path="settings" element={<Settings />} />
-              <Route path="subscription" element={<Subscription />} />
+              <Route path="subscription" element={<PlatformGate><Subscription /></PlatformGate>} />
               <Route path="support" element={<Support />} />
               <Route path="profile" element={<Profile />} />
               <Route path=":module" element={<ComingSoon />} />

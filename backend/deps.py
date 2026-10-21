@@ -76,9 +76,23 @@ def create_refresh_token(user: dict) -> str:
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
+COOKIE_KW = {"domain": os.environ.get("COOKIE_DOMAIN") or None}
+NATIVE_PLATFORMS = ("android_store", "ios_store")
+
+
 def set_auth_cookies(response: Response, user: dict):
-    response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/")
-    response.set_cookie("refresh_token", create_refresh_token(user), httponly=True, secure=True, samesite="none", max_age=604800, path="/")
+    response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/", **COOKIE_KW)
+    response.set_cookie("refresh_token", create_refresh_token(user), httponly=True, secure=True, samesite="none", max_age=604800, path="/", **COOKIE_KW)
+
+
+def issue_native_tokens(request: Request, user: dict, refresh: bool = True) -> dict:
+    """Store apps (Capacitor) can't rely on cross-site cookies, so they get Bearer tokens in the body."""
+    if request.headers.get("X-Client-Platform", "").lower() not in NATIVE_PLATFORMS:
+        return {}
+    tokens = {"access_token": create_access_token(user)}
+    if refresh:
+        tokens["refresh_token"] = create_refresh_token(user)
+    return {"tokens": tokens}
 
 
 async def get_current_user(request: Request) -> dict:
@@ -327,6 +341,7 @@ async def get_razorpay_keys() -> tuple:
     )
 
 
+STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "emergent").lower()
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 _storage_key = None
@@ -344,7 +359,32 @@ async def init_storage(force: bool = False) -> str:
     return _storage_key
 
 
+def _s3():
+    import boto3
+    return boto3.client("s3", endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None, region_name=os.environ.get("S3_REGION") or None,
+                        aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"], aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"])
+
+
+def _local_path(path: str):
+    from pathlib import Path
+    root = Path(os.environ["LOCAL_STORAGE_DIR"]).resolve()
+    target = (root / path).resolve()
+    if root not in target.parents:
+        raise HTTPException(400, "Invalid path")
+    return target
+
+
 async def put_object(path: str, data: bytes, content_type: str) -> dict:
+    import asyncio
+    if STORAGE_BACKEND == "s3":
+        await asyncio.to_thread(_s3().put_object, Bucket=os.environ["S3_BUCKET"], Key=path, Body=data, ContentType=content_type)
+        return {"path": path, "size": len(data)}
+    if STORAGE_BACKEND == "local":
+        target = _local_path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        target.with_suffix(target.suffix + ".ctype").write_text(content_type)
+        return {"path": path, "size": len(data)}
     key = await init_storage()
     async with httpx.AsyncClient(timeout=120) as http:
         resp = await http.put(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key, "Content-Type": content_type}, content=data)
@@ -356,6 +396,19 @@ async def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 
 async def get_object(path: str) -> tuple:
+    import asyncio
+    if STORAGE_BACKEND == "s3":
+        try:
+            obj = await asyncio.to_thread(_s3().get_object, Bucket=os.environ["S3_BUCKET"], Key=path)
+        except Exception:
+            raise HTTPException(404, "File not found")
+        return obj["Body"].read(), obj.get("ContentType", "application/octet-stream")
+    if STORAGE_BACKEND == "local":
+        target = _local_path(path)
+        if not target.exists():
+            raise HTTPException(404, "File not found")
+        ct = target.with_suffix(target.suffix + ".ctype")
+        return target.read_bytes(), ct.read_text() if ct.exists() else "application/octet-stream"
     key = await init_storage()
     async with httpx.AsyncClient(timeout=60) as http:
         resp = await http.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key})

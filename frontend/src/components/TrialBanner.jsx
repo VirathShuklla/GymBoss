@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { PartyPopper, Clock, ShieldCheck, ArrowRight, Users, IndianRupee, ClipboardCheck, RefreshCw } from "lucide-react";
 import api from "../lib/api";
 import { inr } from "../lib/format";
+import { isInApp } from "../lib/inApp";
+
+const inApp = isInApp();
 
 const STAT_ROWS = [
   ["members", "members managed", Users],
@@ -40,6 +43,13 @@ export function TrialBanner({ planPath }) {
   const left = t.days_left;
   const from = inr(t.from_price);
   const dayWord = `${left} day${left === 1 ? "" : "s"}`;
+  if (inApp) {
+    return (
+      <div className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground" data-testid="trial-banner" data-phase="store">
+        <span className="font-semibold text-foreground">{dayWord} left</span> in your organisation's free trial
+      </div>
+    );
+  }
 
   if (left <= 2) {
     return (
@@ -77,6 +87,15 @@ export function TrialBanner({ planPath }) {
 // Shown after the trial ends: app stays viewable, data is safe, writes are paused.
 export function ExpiredBanner({ planPath, price, status }) {
   const due = status === "payment_due";
+  if (inApp) {
+    return (
+      <div className="mb-5 rounded-2xl border border-warning/30 bg-warning/10 p-4" data-testid="trial-expired-banner" data-mode="store">
+        <p className="font-display text-base font-bold text-foreground">Your organisation's subscription is not active</p>
+        <p className="mt-1 flex items-start gap-1.5 text-sm text-foreground/80"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-success" />Your data is safe. You can still view everything; adding or editing is paused.</p>
+        <p className="mt-1 text-xs text-muted-foreground">For billing questions, contact your account administrator.</p>
+      </div>
+    );
+  }
   return (
     <div className="mb-5 rounded-2xl border border-warning/30 bg-warning/10 p-4 sm:p-5" data-testid="trial-expired-banner">
       <div className="flex flex-wrap items-center justify-between gap-4">

@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field, EmailStr
 from deps import (
     db, now_utc, today_ist, new_id, normalize_phone, hash_password, verify_password,
     create_access_token, create_refresh_token, set_auth_cookies, get_current_user,
-    get_org_user, derive_subscription, public_user, org_public, audit, init_storage,
+    get_org_user, derive_subscription, public_user, org_public, audit, init_storage, STORAGE_BACKEND, COOKIE_KW, issue_native_tokens,
     get_plan_price, TRIAL_DAYS, PLAN_PRICE_INR, get_pricing_plans,
 )
 from members import router as members_router
@@ -49,10 +49,31 @@ EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME") or "GymBoss_VVO"
 
 # ---------------- Email (password reset only) ----------------
 
+async def send_smtp_email(to_email: str, subject: str, html: str) -> bool:
+    import asyncio
+    import smtplib
+    from email.mime.text import MIMEText
+
+    def _send():
+        msg = MIMEText(html, "html")
+        msg["Subject"], msg["From"], msg["To"] = subject, f"{EMAIL_FROM_NAME} <{os.environ['SMTP_FROM']}>", to_email
+        with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587")), timeout=30) as s:
+            s.starttls()
+            s.login(os.environ["SMTP_USER"], os.environ["SMTP_PASSWORD"])
+            s.send_message(msg)
+    try:
+        await asyncio.to_thread(_send)
+        return True
+    except Exception as e:
+        logger.error("SMTP send failed: %s", e)
+        return False
+
+
 async def send_password_reset_email(to_email: str, token: str) -> bool:
     base = os.environ.get("FRONTEND_URL", "").rstrip("/")
     link = f"{base}/reset-password?token={token}"
-    if not EMAIL_KEY or EMAIL_KEY.startswith("{") or not base.startswith("https://"):
+    smtp = os.environ.get("EMAIL_PROVIDER", "emergent").lower() == "smtp"
+    if (not smtp and (not EMAIL_KEY or EMAIL_KEY.startswith("{"))) or not base.startswith("https://"):
         if urlparse(base).hostname in ("localhost", "127.0.0.1", "::1"):
             logger.warning("Email not configured; password reset link: %s", link)
         else:
@@ -68,6 +89,8 @@ async def send_password_reset_email(to_email: str, token: str) -> bool:
         f'<p style="font-size:12px;color:#888">Sent by {brand}. We never ask for your password by email.</p>'
         f"</td></tr></table>"
     )
+    if smtp:
+        return await send_smtp_email(to_email, f"Reset your {EMAIL_FROM_NAME} password", html)
     try:
         async with httpx.AsyncClient(timeout=30) as http:
             resp = await http.post(
@@ -120,7 +143,7 @@ class OnboardingBody(BaseModel):
 # ---------------- Auth endpoints ----------------
 
 @api.post("/auth/register")
-async def register(body: RegisterBody, response: Response):
+async def register(body: RegisterBody, request: Request, response: Response):
     email = body.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="An account with this email already exists")
@@ -162,7 +185,7 @@ async def register(body: RegisterBody, response: Response):
     await audit(user["id"], "org.registered", org_id, {"gym": org["name"]}, org_id)
     await link_visitor(body.visitor_id, org_id, user["id"])
     set_auth_cookies(response, user)
-    return {"user": public_user(user), "organisation": org_public(org)}
+    return {"user": public_user(user), "organisation": org_public(org), **issue_native_tokens(request, user)}
 
 
 async def find_user_by_identifier(identifier: str) -> Optional[dict]:
@@ -198,19 +221,24 @@ async def login(body: LoginBody, request: Request, response: Response):
         raise HTTPException(status_code=403, detail="This account has been disabled.")
     await db.login_attempts.delete_many({"$or": [{"identifier": lock_key}, {"email": ident.lower()}]})
     set_auth_cookies(response, user)
-    return {"user": public_user(user)}
+    return {"user": public_user(user), **issue_native_tokens(request, user)}
 
 
 @api.post("/auth/logout")
 async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("access_token", path="/", **COOKIE_KW)
+    response.delete_cookie("refresh_token", path="/", **COOKIE_KW)
     return {"message": "Logged out"}
 
 
 @api.post("/auth/refresh")
 async def refresh(request: Request, response: Response):
     token = request.cookies.get("refresh_token")
+    if not token and request.headers.get("content-type", "").startswith("application/json"):
+        try:
+            token = (await request.json() or {}).get("refresh_token")
+        except Exception:
+            token = None
     if not token:
         raise HTTPException(status_code=401, detail="No refresh token")
     try:
@@ -222,8 +250,8 @@ async def refresh(request: Request, response: Response):
     user = await db.users.find_one({"id": payload["sub"]})
     if not user or payload.get("ver", 0) != user.get("token_version", 0):
         raise HTTPException(status_code=401, detail="Session expired")
-    response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/")
-    return {"message": "refreshed"}
+    response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/", **COOKIE_KW)
+    return {"message": "refreshed", **issue_native_tokens(request, user, refresh=False)}
 
 
 @api.get("/auth/me")
@@ -355,8 +383,8 @@ async def delete_account(body: DeleteAccountBody, response: Response, user: dict
         await audit(user["id"], "user.deleted_self", user["id"], org_id=org_id)
         msg = "Your login has been permanently deleted."
     await db.password_reset_tokens.delete_many({"user_id": user["id"]})
-    response.delete_cookie("access_token", path="/")
-    response.delete_cookie("refresh_token", path="/")
+    response.delete_cookie("access_token", path="/", **COOKIE_KW)
+    response.delete_cookie("refresh_token", path="/", **COOKIE_KW)
     return {"message": msg}
 
 
@@ -777,8 +805,7 @@ async def seed_settings():
         await db.settings.insert_one({"id": "platform", "whatsapp_number": "", "support_email": "", "play_store_url": "", "app_store_url": ""})
 
 
-@app.on_event("startup")
-async def startup():
+async def ensure_indexes():
     await db.users.create_index("email", unique=True, sparse=True)
     await db.users.create_index("username", unique=True, sparse=True)
     await db.users.create_index("organisation_id")
@@ -825,6 +852,17 @@ async def startup():
         await db.members.create_index([("organisation_id", 1), ("member_code", 1)], unique=True)
     except Exception as e:
         logger.error("member_code unique index creation failed: %s", e)
+    await db.subscription_ledger.create_index("payment_id", unique=True)
+    await db.subscription_ledger.create_index("organisation_id")
+    await db.webhook_events.create_index("event_id", unique=True)
+    await db.webhook_events.create_index("received_at", expireAfterSeconds=60 * 60 * 24 * 45)
+    await db.subscription_payments.create_index("payment_id", sparse=True)
+    await db.subscription_payments.create_index("order_id")
+
+
+@app.on_event("startup")
+async def startup():
+    await ensure_indexes()
     demo_org = await db.organisations.find_one({"is_demo": True})
     if demo_org and not await db.plans.find_one({"organisation_id": demo_org["id"], "type": "pt"}):
         ts = now_utc()
@@ -841,14 +879,16 @@ async def startup():
         demo_members = await db.members.find({"organisation_id": demo_org["id"]}, {"id": 1}).to_list(10000)
         for i, m in enumerate(demo_members):
             await db.members.update_one({"id": m["id"]}, {"$set": {"batch": batch_names[i % 3]}})
-    try:
-        await init_storage()
-        logger.info("Object storage initialized")
-    except Exception as e:
-        logger.error("Object storage init failed: %s", e)
+    if STORAGE_BACKEND == "emergent":
+        try:
+            await init_storage()
+            logger.info("Object storage initialized")
+        except Exception as e:
+            logger.error("Object storage init failed: %s", e)
     await seed_settings()
     await seed_super_admin()
-    await seed_demo()
+    if os.environ.get("SEED_DEMO", "true").lower() == "true":
+        await seed_demo()
     # Keep the demo tenant always usable in preview: refresh a lapsed trial
     demo = await db.organisations.find_one({"is_demo": True})
     if demo:
@@ -894,10 +934,11 @@ app.include_router(analytics_router, prefix="/api")
 app.include_router(adms_router, prefix="/api")
 app.include_router(adms_router)
 
-frontend_origin = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+allowed_origins = [o.strip().rstrip("/") for o in [os.environ.get("FRONTEND_URL", ""), os.environ.get("PORTAL_URL", ""),
+                   *os.environ.get("CORS_ORIGINS", "").split(",")] if o.strip() and o.strip() != "*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_origin],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

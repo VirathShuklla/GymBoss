@@ -53,7 +53,7 @@ export default function Profile() {
 
   const autodebit = billing?.autodebit;
   const autodebitActive = autodebit?.status === "active";
-  const autodebitHalted = autodebit?.status === "halted";
+  const autodebitHalted = ["halted", "pending"].includes(autodebit?.status);
   const isActive = subscription?.status === "active";
   const needsPayment = !isActive || autodebitHalted;
   const plans = billing?.plans || [];
@@ -140,7 +140,7 @@ export default function Profile() {
           <Crown className="h-4 w-4 opacity-90" />
           <p className="text-xs font-bold uppercase tracking-wider opacity-90">GymBoss_VVO Pro</p>
         </div>
-        <p className="mt-2 font-num text-3xl font-extrabold" data-testid="m-sub-price">{inr(shownPrice)}<span className="text-sm font-semibold opacity-80">/{shownPeriod}</span></p>
+        {!inApp && <p className="mt-2 font-num text-3xl font-extrabold" data-testid="m-sub-price">{inr(shownPrice)}<span className="text-sm font-semibold opacity-80">/{shownPeriod}</span></p>}
         {isActive && activePlan && <p className="text-xs opacity-80">{activePlan.name} plan</p>}
         <p className="mt-1 text-sm opacity-90">{statusText}</p>
       </div>
@@ -150,7 +150,7 @@ export default function Profile() {
         <div className="mt-3 space-y-2.5">
           <div className="flex items-center gap-2.5 rounded-2xl border border-success/25 bg-success/8 px-4 py-3.5 text-sm text-foreground" data-testid="m-billing-active">
             <Check className="h-4 w-4 shrink-0 text-success" strokeWidth={3} />
-            Billing active — {inr(shownPrice)}/{shownPeriod}{subscription?.subscription_ends_at ? `, paid through ${formatDate(subscription.subscription_ends_at)}` : ""}.
+            {inApp ? "Subscription active" : `Billing active — ${inr(shownPrice)}/${shownPeriod}`}{subscription?.subscription_ends_at ? `, paid through ${formatDate(subscription.subscription_ends_at)}` : ""}.
           </div>
           <button onClick={cancelAutodebit} disabled={cancelBusy} data-testid="m-cancel-autodebit"
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-3 text-xs font-semibold text-muted-foreground active:scale-[0.99] disabled:opacity-60">
