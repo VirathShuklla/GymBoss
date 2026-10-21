@@ -40,9 +40,8 @@ Run it under systemd, supervisor or Docker. Put Nginx/Caddy in front for HTTPS.
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | Razorpay API keys. Super Admin → Settings can override them at runtime (stored in DB) |
 | `RAZORPAY_WEBHOOK_SECRET` | **Required.** Webhooks are rejected (503) without it |
 | `CRON_SECRET` | Protects `POST /api/internal/billing/reconcile` |
-| `STORAGE_BACKEND` | `s3` (recommended), `local`, or `emergent` (preview only) |
+| `STORAGE_BACKEND` | `s3` (any S3-compatible store: AWS S3, Cloudflare R2, DigitalOcean Spaces, self-hosted MinIO) or `emergent` (preview only) |
 | `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | AWS S3 / Cloudflare R2 / DigitalOcean Spaces (set `S3_ENDPOINT_URL` for non-AWS) |
-| `LOCAL_STORAGE_DIR` | Disk path when `STORAGE_BACKEND=local` (single server only; back it up) |
 | `EMAIL_PROVIDER` + `SMTP_HOST/PORT/USER/PASSWORD/FROM`, `EMAIL_FROM_NAME` | Password-reset email via any SMTP (Zoho, SES, Gmail Workspace) |
 | `SUPER_ADMIN_USERNAME/PASSWORD/EMAIL` | Seeded BuildVVO super admin. **Change the password** |
 | `SEED_DEMO` | `false` in production, so the demo gym isn't created |

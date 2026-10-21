@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 20 - Razorpay billing sync + billing portal + store-build protection. Backend: new suite test_iter20_billing_sync.py 23/23 PASS (webhook signature 400s, event-id dedupe, activated+charged same payment = single +30d, new payment +30d, pending/halted -> billing_issue + failed row then charged clears, cancelled, unknown sub, one-time order payment.captured once (retry with new event id no double extension), payment.failed marks row failed and never downgrades a paid row, verify bad sig 400 / unknown order 404, invoice PDF 200 own paid / 404 unpaid / 404 other org, cron reconcile 200 stats / 403 wrong or missing secret, admin reconcile 403 for owner / 200 super admin, android_store+ios_store: create-order & autodebit/start 403, register+login return tokens, Bearer /auth/me works, JSON refresh returns new access token; web login/register have no tokens; expired trial -> member create 402 but create-order 200; CORS preflight capacitor://localhost allowed with credentials). Frontend (Playwright): /billing unauth -> /login?next=/billing -> lands on /billing; portal-org-name/back-to-app/logout work; trial org sees plan picker (Monthly 999/Quarterly/Yearly) + subscribe-button + renewal-disclosure, Pay opens Razorpay test checkout; active-autodebit org sees autodebit-active-card + cancel-autorenew-button + payment history with invoice download (invoice.pdf 200 application/pdf); receptionist staff sees portal-no-permission and no Pay button. Store mode (/m/login?app=1): X-Client-Platform android_store sent, /m/profile shows in-app-billing-note, no m-sub-price/m-pay-button/price text; trial-banner data-phase=store no CTA; expired account trial-expired-banner data-mode=store, no price, no reactivate-button; /, /billing, /pricing -> /m/home, /app/subscription -> /m/profile. Removing gb-in-app restores m-sub-price + m-pay-button + reactivate-button and landing page. Web regression: forgot-password 200, login, /app members/attendance/payments, /m/attendance load fine.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/webhooks/razorpay", "issue": "claim_event() inserts the event id BEFORE processing; if handle_*_event raises (DB blip, etc.) Razorpay's retry with the same X-Razorpay-Event-Id returns {status: duplicate} and the event is lost (only daily reconcile would recover subscriptions; one-time order failures are not recovered). Consider deleting the webhook_events row on exception or marking processed after success."},
+      {"endpoint": "billing_sync.apply_payment", "issue": "Ledger row inserted before the org update; if the org update fails, the payment_id is permanently consumed and never applied on retry. Same pattern as above."},
+      {"endpoint": "POST /api/subscription/create-order, /autodebit/start, /autodebit/cancel", "issue": "Only get_org_user is required - any staff (e.g. receptionist) can start/cancel billing via API although the portal UI restricts to owner/admin. Add an owner/admin role check server-side."},
+      {"endpoint": "_flag_billing_issue", "issue": "Each pending/halted event (distinct event ids, Razorpay sends several during retries) inserts a new failed payment row - history may show many duplicate failed rows for one renewal."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Invoice download", "issue": "openInvoice does window.open(blobURL) after an await - Safari/iOS popup blockers may block it since it's no longer in the user-gesture tick. Consider an <a download> fallback.", "affected_selectors": ["[data-testid^='invoice-']"]}
+    ],
+    "design_issues": [
+      {"screen": "Billing portal plan picker", "issues": ["Plan options (Monthly/Quarterly/Yearly) have no data-testid attributes"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter20_billing_sync.py", "/app/backend/tests/seed_iter20_ui.py", "/app/test_reports/pytest/pytest_iter20.xml"],
+  "action_items": [
+    "Make webhook dedupe failure-safe (release claim_event / ledger row if processing throws)",
+    "Enforce owner/admin role server-side on create-order / autodebit start / cancel / verify",
+    "Add data-testid to plan picker options",
+    "Update stale regression tests: test_iter9_subscription.py (3), test_milestones.py TestSubscription (2) + TestStaff email requirement (1), test_iter15 pricing default (quarterly now 2499) - they assume Razorpay keys unconfigured / old pricing. NOTE test_iter9 runs autodebit start+cancel on the DEMO org against real Razorpay test API (creates real test subscriptions on demo) - rewrite to use throwaway orgs."
+  ],
+  "critical_code_review_comments": [
+    "billing_sync idempotency is solid at payment level (unique subscription_ledger.payment_id + unique webhook_events.event_id indexes verified present)",
+    "claim-before-process pattern can drop events on transient failures",
+    "Billing mutation endpoints lack role guard (UI-only restriction)",
+    "suite must run with -p no:xdist (pytest.ini enables xdist; module fixture shared across classes)"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter20_billing_sync.py", "/app/backend/tests/seed_iter20_ui.py"],
+  "success_rate": {"backend": "100% (23/23 new); 6 stale failures in older suites due to changed expectations", "frontend": "100%"},
+  "seed_data_creation": "Throwaway orgs (password QaTest@2026): active-autodebit test_bill_8c0989f009@testgym.in (+ receptionist test_staff_7ff7040a@testgym.in / QaStaff@2026), expired test_bill_368fdd11f2@testgym.in, trial test_bill_1846337463@testgym.in (clicked Pay -> real Razorpay TEST subscription in 'created'). Many TEST Billing Gym orgs from pytest runs. Demo org untouched by iter20 tests (old test_iter9 created/cancelled razorpay test subs on demo).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend/tests && python -m pytest test_iter20_billing_sync.py -p no:xdist -o addopts=''. Webhooks are simulated by signing raw body with whsec_preview_test_only; tests seed db.subscriptions directly via MONGO_URL. Store mode via /m/login?app=1 (localStorage gb-in-app). Native APK/IPA and biometric not tested."
+}

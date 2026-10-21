@@ -26,9 +26,18 @@ async def apply_payment(org_id: str, payment_id: str, actor: str = "razorpay", p
         await db.subscription_ledger.insert_one({"payment_id": payment_id, "organisation_id": org_id, "order_id": order_id, "created_at": now_utc()})
     except DuplicateKeyError:
         return None
+    try:
+        return await _extend_access(org_id, payment_id, actor, plan_id, order_id)
+    except Exception:
+        await db.subscription_ledger.delete_one({"payment_id": payment_id})
+        raise
+
+
+async def _extend_access(org_id: str, payment_id: str, actor: str, plan_id: str | None, order_id: str | None):
     now = now_utc()
     org = await db.organisations.find_one({"id": org_id})
     if not org:
+        await db.subscription_ledger.delete_one({"payment_id": payment_id})
         return None
     sub = org.get("subscription", {})
     plan = await get_pricing_plan(plan_id or sub.get("plan"))
@@ -79,6 +88,10 @@ async def _set_sub_status(local: dict, status: str, extra: dict | None = None):
 async def _flag_billing_issue(local: dict, reason: str):
     org_id = local["organisation_id"]
     await db.organisations.update_one({"id": org_id}, {"$set": {"subscription.billing_issue": True}})
+    recent = await db.subscription_payments.find_one({"organisation_id": org_id, "order_id": local["razorpay_subscription_id"], "status": "failed",
+                                                      "created_at": {"$gt": now_utc() - timedelta(hours=24)}})
+    if recent:
+        return
     await db.subscription_payments.insert_one({
         "id": new_id(), "organisation_id": org_id, "order_id": local["razorpay_subscription_id"], "amount": local.get("amount"),
         "currency": "INR", "status": "failed", "kind": "autodebit_renewal", "failure_reason": reason, "created_at": now_utc(),
@@ -140,6 +153,11 @@ async def claim_event(event_id: str, event_name: str) -> bool:
         return True
     except DuplicateKeyError:
         return False
+
+
+async def release_event(event_id: str):
+    if event_id:
+        await db.webhook_events.delete_one({"event_id": event_id})
 
 
 async def reconcile(razorpay_request) -> dict:

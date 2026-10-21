@@ -187,3 +187,16 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Root cause: Razorpay keys were switched to a new account, but the cached Razorpay plan ID (settings.razorpay_plan_cache*) and the pending "created" subscriptions belonged to the old account → checkout got a non-existent subscription_id.
 - Fix: the plan cache is now tied to key_id; reused pending subscriptions are re-validated with Razorpay (and abandoned if invalid or from another key); saving new keys in Super Admin clears the plan cache and abandons pending subs. Yearly plan also failed (total_count 120 > Razorpay max) → total_count = 120 // months.
 - Verified: monthly/quarterly/half-yearly/yearly autodebit start OK; checkout opens with payment options in test mode.
+
+## Self-hosting + Store compliance Phase 1 + Billing sync + Billing portal (2026-06)
+- Compliance assessment: memory/STORE_BILLING_COMPLIANCE.md. Decision: consumption-only store apps (no purchase UI); website/portal keep Razorpay.
+- Store builds: REACT_APP_STORE_BUILD / Capacitor / ?app=1 → X-Client-Platform header, Bearer tokens, PlatformGate redirects selling routes to /m, neutral banners, backend 403 on purchase endpoints from store clients.
+- Billing portal /billing (payments.gymboss.in via REACT_APP_PORTAL_HOST): plans, Razorpay pay, renewal disclosure, cancel auto-renew, history, invoice PDF. Owner/admin only (server-enforced).
+- billing_sync.py: payment ledger (exactly-once extension), webhook event dedupe (failure-safe), pending/halted/paused/resumed/cancelled/completed/updated handling, failed-renewal rows (24h dedupe), reconcile (cron endpoint + scripts/reconcile.py). Webhooks now require a secret.
+- Env-driven: CORS_ORIGINS/PORTAL_URL/COOKIE_DOMAIN, STORAGE_BACKEND (emergent|s3|local), EMAIL_PROVIDER smtp, SEED_DEMO, CRON_SECRET. .env.example files, scripts/migrate.py, backend Dockerfile, DEPLOYMENT.md, memory/TEST_LOG.md.
+- Capacitor 7: frontend/android + frontend/ios generated, camera permissions, scripts/build-mobile.sh. Native binaries NOT built (no SDK/Xcode in env).
+
+## Backlog
+- P1: Phase 2 Android Play Billing + India user choice billing (needs native billing plugin, Play service account)
+- P1: one-step signup; WhatsApp demo hero button
+- P2: Revenue & Profit view in Super Admin; testimonials manager; iOS IAP only if Apple rejects 3.1.3(c)

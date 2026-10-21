@@ -111,7 +111,12 @@ export default function Subscription({ portal = false }) {
   const openInvoice = async (id) => {
     try {
       const res = await api.get(`/subscription/payments/${id}/invoice.pdf`, { responseType: "blob" });
-      window.open(URL.createObjectURL(res.data), "_blank", "noopener");
+      const url = URL.createObjectURL(res.data);
+      const a = Object.assign(document.createElement("a"), { href: url, download: `GymBoss-Invoice-${id.slice(0, 8)}.pdf` });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
     } catch (e) {
       toast.error(apiError(e, "Could not open invoice"));
     }

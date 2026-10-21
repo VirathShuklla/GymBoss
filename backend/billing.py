@@ -14,7 +14,7 @@ from typing import Optional
 
 from deps import db, now_utc, new_id, get_org_user, require_super_admin, derive_subscription, audit, get_plan_price, get_razorpay_keys, get_pricing_plan, get_pricing_plans
 from analytics import track
-from billing_sync import apply_payment, record_autodebit_payment, claim_event, handle_subscription_event, handle_payment_event, reconcile
+from billing_sync import release_event, apply_payment, record_autodebit_payment, claim_event, handle_subscription_event, handle_payment_event, reconcile
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ class PlanChoice(BaseModel):
 @router.post("/subscription/create-order")
 async def create_order(request: Request, body: PlanChoice | None = None, user: dict = Depends(get_org_user)):
     block_store_clients(request)
+    require_billing_role(user)
     key_id, key_secret = await get_razorpay_keys()
     if not key_id or not key_secret:
         raise HTTPException(503, "Online payments are being configured. Please contact BuildVVO support to activate your subscription.")
@@ -99,6 +100,11 @@ async def activate_subscription(org_id: str, payment_id: str, actor: str = "razo
 STORE_PLATFORMS = ("android_store", "ios_store")
 
 
+def require_billing_role(user: dict):
+    if user.get("role") not in ("owner", "admin"):
+        raise HTTPException(403, "Only the gym owner or an admin can manage billing.")
+
+
 def block_store_clients(request: Request):
     if request.headers.get("X-Client-Platform", "").lower() in STORE_PLATFORMS:
         raise HTTPException(403, "Subscriptions can't be purchased in the mobile app.")
@@ -106,6 +112,7 @@ def block_store_clients(request: Request):
 
 @router.post("/subscription/verify")
 async def verify_payment(body: VerifyBody, user: dict = Depends(get_org_user)):
+    require_billing_role(user)
     _, key_secret = await get_razorpay_keys()
     if not key_secret:
         raise HTTPException(503, "Payments are not configured")
@@ -137,11 +144,15 @@ async def razorpay_webhook(request: Request):
     event_name = event.get("event", "")
     if not await claim_event(request.headers.get("X-Razorpay-Event-Id", ""), event_name):
         return {"status": "duplicate"}
-    if event_name.startswith("subscription."):
-        return {"status": await handle_subscription_event(event_name, event)}
-    if event_name.startswith("payment."):
-        return {"status": await handle_payment_event(event_name, event)}
-    return {"status": "ignored"}
+    try:
+        if event_name.startswith("subscription."):
+            return {"status": await handle_subscription_event(event_name, event)}
+        if event_name.startswith("payment."):
+            return {"status": await handle_payment_event(event_name, event)}
+        return {"status": "ignored"}
+    except Exception:
+        await release_event(request.headers.get("X-Razorpay-Event-Id", ""))
+        raise
 
 
 # ---------------- Auto-debit subscriptions (UPI Autopay / card recurring) ----------------
@@ -175,6 +186,7 @@ async def reusable_subscription(sub: dict, key_id: str) -> bool:
 @router.post("/subscription/autodebit/start")
 async def autodebit_start(request: Request, body: PlanChoice | None = None, user: dict = Depends(get_org_user)):
     block_store_clients(request)
+    require_billing_role(user)
     org_id = user["organisation_id"]
     plan = await get_pricing_plan(body.plan_id if body else None)
     price = plan["effective_price"]
@@ -210,6 +222,7 @@ class AutodebitVerifyBody(BaseModel):
 
 @router.post("/subscription/autodebit/verify")
 async def autodebit_verify(body: AutodebitVerifyBody, user: dict = Depends(get_org_user)):
+    require_billing_role(user)
     _, key_secret = await get_razorpay_keys()
     if not key_secret:
         raise HTTPException(503, "Payments are not configured")
@@ -230,6 +243,7 @@ async def autodebit_verify(body: AutodebitVerifyBody, user: dict = Depends(get_o
 
 @router.post("/subscription/autodebit/cancel")
 async def autodebit_cancel(user: dict = Depends(get_org_user)):
+    require_billing_role(user)
     org_id = user["organisation_id"]
     sub = await db.subscriptions.find_one({"organisation_id": org_id, "status": {"$in": ["active", "created", "authenticated", "pending", "halted", "paused"]}})
     if not sub:

@@ -273,7 +273,7 @@ async def update_staff(staff_id: str, body: StaffBody, user: dict = Depends(requ
         data["permission"] = "view"
     if body.phone:
         data["phone"] = f"+91{normalize_phone(body.phone)}"
-    email = (body.email or "").strip().lower() or None
+    email = existing.get("email") if body.email is None else ((body.email or "").strip().lower() or None)
     data["email"] = email
     if body.password and len(body.password) < 8:
         raise HTTPException(422, "Password must be at least 8 characters")
