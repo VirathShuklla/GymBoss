@@ -115,11 +115,13 @@ class TestEditReversePayment:
             assert due3 == price
             assert st3 == "Due"
 
-            # Payment gone from list
+            # Since iter22 reversals never delete: original stays (status reversed) plus a compensating entry
             r = demo_client.get(f"{API}/payments", params={"search": member["full_name"]})
             assert r.status_code == 200
-            ids = [p["id"] for p in r.json().get("items", [])]
-            assert pid not in ids
+            items = r.json().get("items", [])
+            orig = next(p for p in items if p["id"] == pid)
+            assert orig["status"] == "reversed"
+            assert any(p.get("reversal_of") == pid and p["amount"] == -5000 for p in items)
         finally:
             demo_client.delete(f"{API}/members/{mid}")
 

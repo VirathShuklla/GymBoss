@@ -104,19 +104,20 @@ export default function Payments() {
     { key: "receipt_no", label: "Receipt", render: (p) => <span className="font-num text-xs text-muted-foreground">{p.receipt_no}</span> },
     { key: "type", label: "Type", render: (p) => <StatusBadge status={p.type} /> },
     { key: "plan_name", label: "Plan", render: (p) => p.plan_name || "—" },
-    { key: "amount", label: "Amount", align: "right", render: (p) => <span className="font-num font-bold text-success">{inr(p.amount)}</span> },
+    { key: "amount", label: "Amount", align: "right", render: (p) => <span className={`font-num font-bold ${p.amount < 0 ? "text-danger" : p.status === "reversed" ? "text-muted-foreground line-through" : "text-success"}`}>{p.amount < 0 ? `-${inr(Math.abs(p.amount))}` : inr(p.amount)}</span> },
     { key: "method", label: "Method" },
     { key: "actions", label: "", align: "right", render: (p) => (
       <div className="flex items-center justify-end gap-3">
         <button onClick={() => viewReceipt(p.id)} className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline" data-testid={`payment-receipt-${p.id}`}>
           <Receipt className="h-3.5 w-3.5" />Receipt
         </button>
-        {!readOnly && (
+        {p.status === "reversed" && <span className="text-[10px] font-semibold uppercase text-danger" data-testid={`payment-reversed-badge-${p.id}`}>Reversed</span>}
+        {!readOnly && p.status !== "reversed" && p.type !== "reversal" && (
           <button onClick={() => openEdit(p)} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground" data-testid={`payment-edit-${p.id}`}>
             <Pencil className="h-3.5 w-3.5" />Edit
           </button>
         )}
-        {!readOnly && (
+        {!readOnly && p.status !== "reversed" && p.type !== "reversal" && (
           <button onClick={() => setReverseTarget(p)} className="inline-flex items-center gap-1 text-xs font-medium text-danger hover:underline" data-testid={`payment-reverse-${p.id}`}>
             <RotateCcw className="h-3.5 w-3.5" />Reverse
           </button>

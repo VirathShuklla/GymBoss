@@ -294,12 +294,12 @@ export default function Members({ autoAdd }) {
                   <div key={p.id} className="rounded-2xl border border-border bg-card p-3" data-testid={`m-history-${p.id}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{p.plan_name || "Payment"}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">{p.plan_name || "Payment"}{(p.status === "reversed" || p.type === "reversal") && <span className="ml-2 text-[10px] font-semibold uppercase text-danger" data-testid={`m-history-reversed-${p.id}`}>{p.type === "reversal" ? "Reversal" : "Reversed"}</span>}</p>
                         <p className="text-xs text-muted-foreground">{formatDate(p.created_at)} · {p.method} · {p.receipt_no}</p>
                       </div>
-                      <p className="font-num text-sm font-bold text-success">{inr(p.amount)}</p>
+                      <p className={`font-num text-sm font-bold ${p.amount < 0 ? "text-danger" : p.status === "reversed" ? "text-muted-foreground line-through" : "text-success"}`}>{p.amount < 0 ? `-${inr(Math.abs(p.amount))}` : inr(p.amount)}</p>
                     </div>
-                    {editP === p.id ? (
+                    {(p.status === "reversed" || p.type === "reversal") ? null : editP === p.id ? (
                       <div className="mt-2 flex items-center gap-2">
                         <TextInput inputMode="numeric" value={editAmt} onChange={(e) => setEditAmt(e.target.value)} data-testid={`m-history-edit-input-${p.id}`} />
                         <button onClick={saveEditP} disabled={abusy} className="shrink-0 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white" data-testid={`m-history-save-${p.id}`}>Save</button>

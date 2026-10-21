@@ -260,22 +260,22 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
                     <p className="py-8 text-center text-sm text-muted-foreground">No transactions yet</p>
                   ) : (
                     <div className="space-y-2" data-testid="drawer-payments-list">
-                      {data.payments.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5" data-testid={`drawer-payment-${p.id}`}>
+                      {data.payments.map((p) => { const rev = p.status === "reversed" || p.type === "reversal"; return (
+                        <div key={p.id} className={`flex items-center justify-between rounded-lg border border-border px-3 py-2.5 ${rev ? "opacity-70" : ""}`} data-testid={`drawer-payment-${p.id}`}>
                           <div>
-                            <p className="text-sm font-semibold text-foreground">{p.plan_name || "Payment"}</p>
+                            <p className="text-sm font-semibold text-foreground">{p.plan_name || "Payment"}{rev && <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-danger" data-testid={`payment-reversed-badge-${p.id}`}>{p.type === "reversal" ? "Reversal" : "Reversed"}</span>}</p>
                             <p className="text-xs text-muted-foreground">{formatDate(p.created_at)} · {p.method} · {p.receipt_no}</p>
                           </div>
                           <div className="text-right">
-                            <p className="font-num text-sm font-bold text-success">{inr(p.amount)}</p>
+                            <p className={`font-num text-sm font-bold ${p.amount < 0 ? "text-danger" : p.status === "reversed" ? "text-muted-foreground line-through" : "text-success"}`}>{p.amount < 0 ? `-${inr(Math.abs(p.amount))}` : inr(p.amount)}</p>
                             <div className="mt-0.5 flex items-center justify-end gap-2.5">
                               <button onClick={() => viewReceipt(p.id)} className="text-xs font-medium text-brand hover:underline" data-testid={`receipt-view-${p.id}`}>Receipt</button>
-                              {!readOnly && <button onClick={() => { setEditPay(p); setEditPayForm({ amount: String(p.amount), method: p.method || "Cash" }); }} className="text-xs font-medium text-muted-foreground hover:text-foreground" data-testid={`payment-edit-${p.id}`}>Edit</button>}
-                              {!readOnly && <button onClick={() => setReversePay(p)} className="text-xs font-medium text-danger hover:underline" data-testid={`payment-reverse-${p.id}`}>Reverse</button>}
+                              {!readOnly && !rev && <button onClick={() => { setEditPay(p); setEditPayForm({ amount: String(p.amount), method: p.method || "Cash" }); }} className="text-xs font-medium text-muted-foreground hover:text-foreground" data-testid={`payment-edit-${p.id}`}>Edit</button>}
+                              {!readOnly && !rev && <button onClick={() => setReversePay(p)} className="text-xs font-medium text-danger hover:underline" data-testid={`payment-reverse-${p.id}`}>Reverse</button>}
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   )}
                 </div>

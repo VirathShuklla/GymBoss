@@ -99,14 +99,14 @@ async def cancel_remote_subscription(razorpay_request, sub: dict, reason: str) -
     try:
         data, _ = await razorpay_request("POST", f"/subscriptions/{rzp_id}/cancel")
         remote_status = data.get("status")
-    except HTTPException as e:
-        error = f"cancel failed: {e.detail}"
+    except Exception as e:
+        error = f"cancel failed: {getattr(e, 'detail', None) or e}"
     if remote_status not in REMOTE_ENDED:
         try:
             data, _ = await razorpay_request("GET", f"/subscriptions/{rzp_id}")
             remote_status = data.get("status")
-        except HTTPException as e:
-            error = f"{error or ''} status check failed: {e.detail}".strip()
+        except Exception as e:
+            error = f"{error or ''} status check failed: {getattr(e, 'detail', None) or e}".strip()
     confirmed = remote_status in REMOTE_ENDED
     await db.razorpay_ops.update_one({"id": op_id}, {
         "$set": {"status": "succeeded" if confirmed else "failed", "remote_status": remote_status,

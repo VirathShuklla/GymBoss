@@ -13,7 +13,7 @@ from deps import (
     db, now_utc, today_ist, new_id, get_org_user, require_write, get_current_user, audit,
     add_duration, member_status, days_left, member_public,
     next_receipt_no, next_member_code, normalize_phone, put_object, get_object, require_full,
-    run_txn, checkpoint, best_effort, idem_key, idem_lookup, idem_save,
+    run_txn, checkpoint, best_effort, idem_key, idem_lookup, idem_save, fingerprint,
 )
 from member_ledger import validate_method, membership_plan, cycle_payable, create_invoice, recompute
 from pymongo.errors import DuplicateKeyError
@@ -21,15 +21,21 @@ from pymongo.errors import DuplicateKeyError
 router = APIRouter(tags=["members"])
 
 
-async def commit(org_id: str, key: str | None, scope: str, fn, conflict_msg: str):
-    """Run a financial transaction. Returns (result, prior_idempotency_doc_or_None)."""
+async def commit(org_id: str, key: str | None, scope: str, fn, conflict_msg: str, fp: str | None = None):
+    """Run a financial transaction. Returns (result, prior_idempotency_doc_or_None).
+    A concurrent request with the same key may lose the race with any error; it then replays the winner."""
     try:
         return await run_txn(fn), None
     except DuplicateKeyError:
-        prior = await idem_lookup(org_id, key, scope)
+        prior = await idem_lookup(org_id, key, scope, fp)
         if prior:
             return None, prior
         raise HTTPException(409, conflict_msg)
+    except HTTPException:
+        prior = await idem_lookup(org_id, key, scope, fp)
+        if prior:
+            return None, prior
+        raise
 
 
 # ---------------- Plans & Catalogue ----------------
@@ -122,8 +128,8 @@ class MemberBody(BaseModel):
 
 async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None = None, key: str | None = None) -> dict:
     org_id = user["organisation_id"]
-    scope = "member.create"
-    prior = await idem_lookup(org_id, key, scope)
+    scope, fp = "member.create", fingerprint(body)
+    prior = await idem_lookup(org_id, key, scope, fp)
     if prior:
         return member_public(await db.members.find_one({"id": prior["ref"]}))
     plan = await membership_plan(org_id, body.plan_id)
@@ -176,11 +182,11 @@ async def create_membership(user: dict, body: MemberBody, enquiry_id: str | None
         await db.organisations.update_one({"id": org_id}, {"$set": onboarding}, session=s)
         if enquiry_id:
             await db.enquiries.update_one({"id": enquiry_id, "organisation_id": org_id}, {"$set": {"status": "Converted", "converted_member_id": member_id}}, session=s)
-        await idem_save(s, org_id, key, scope, member_id)
+        await idem_save(s, org_id, key, scope, member_id, fp)
         member.update(await recompute(s, org_id, member_id))
         return member
 
-    member, prior = await commit(org_id, key, scope, txn, "A member with this code already exists. Please retry.")
+    member, prior = await commit(org_id, key, scope, txn, "A member with this code already exists. Please retry.", fp)
     if prior:
         return member_public(await db.members.find_one({"id": prior["ref"]}))
     await best_effort(audit(user["id"], "member.created", member_id, {"name": member["full_name"]}, org_id))
@@ -431,8 +437,8 @@ class RenewBody(BaseModel):
 @router.post("/members/{member_id}/renew")
 async def renew_member(member_id: str, body: RenewBody, request: Request, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
-    key, scope = idem_key(request), f"member.renew:{member_id}"
-    if await idem_lookup(org_id, key, scope):
+    key, scope, fp = idem_key(request), f"member.renew:{member_id}", fingerprint(body)
+    if await idem_lookup(org_id, key, scope, fp):
         return member_public(await db.members.find_one({"id": member_id, "organisation_id": org_id}))
     plan = await membership_plan(org_id, body.plan_id)
     validate_method(body.payment_method)
@@ -467,10 +473,10 @@ async def renew_member(member_id: str, body: RenewBody, request: Request, user: 
                 "payment_date": today.isoformat(), "created_at": ts, "created_by": user["id"],
             }, session=s)
             await checkpoint("renew.after_payment")
-        await idem_save(s, org_id, key, scope, member_id)
+        await idem_save(s, org_id, key, scope, member_id, fp)
         await recompute(s, org_id, member_id)
 
-    _, prior = await commit(org_id, key, scope, txn, "This membership cycle already has an invoice. Please refresh.")
+    _, prior = await commit(org_id, key, scope, txn, "This membership cycle already has an invoice. Please refresh.", fp)
     if not prior:
         await best_effort(audit(user["id"], "member.renewed", member_id, {"plan": plan["name"]}, org_id))
         await best_effort(after_change(org_id, user["id"]))
@@ -499,8 +505,8 @@ async def _payment_response(payment_id: str) -> dict:
 async def record_payment(body: PaymentBody, request: Request, user: dict = Depends(require_write)):
     org_id = user["organisation_id"]
     validate_method(body.method)
-    key, scope = idem_key(request), "payment.record"
-    prior = await idem_lookup(org_id, key, scope)
+    key, scope, fp = idem_key(request), "payment.record", fingerprint(body)
+    prior = await idem_lookup(org_id, key, scope, fp)
     if prior:
         return await _payment_response(prior["ref"])
     payment_id = new_id()
@@ -519,11 +525,11 @@ async def record_payment(body: PaymentBody, request: Request, user: dict = Depen
         }, session=s)
         await checkpoint("payment.record.after_payment")
         await db.organisations.update_one({"id": org_id}, {"$set": {"onboarding.payment": True}}, session=s)
-        await idem_save(s, org_id, key, scope, payment_id)
+        await idem_save(s, org_id, key, scope, payment_id, fp)
         await recompute(s, org_id, m["id"])
         return m
 
-    m, prior = await commit(org_id, key, scope, txn, "This payment was already recorded.")
+    m, prior = await commit(org_id, key, scope, txn, "This payment was already recorded.", fp)
     if prior:
         return await _payment_response(prior["ref"])
     await best_effort(audit(user["id"], "payment.recorded", payment_id, {"amount": body.amount, "member": m["full_name"]}, org_id))
@@ -578,14 +584,14 @@ async def edit_payment(payment_id: str, body: PaymentEditBody, user: dict = Depe
 async def reverse_payment(payment_id: str, request: Request, body: ReverseBody | None = None, user: dict = Depends(require_full)):
     """Never deletes: atomically adds a compensating negative entry and marks the original reversed."""
     org_id = user["organisation_id"]
-    key, scope = idem_key(request), f"payment.reverse:{payment_id}"
+    key, scope, fp = idem_key(request), f"payment.reverse:{payment_id}", fingerprint(body)
     reason = body.reason if body else None
 
     async def due_of(member_id: str) -> float:
         m = await db.members.find_one({"id": member_id}, {"due_amount": 1})
         return (m or {}).get("due_amount", 0)
 
-    if await idem_lookup(org_id, key, scope):
+    if await idem_lookup(org_id, key, scope, fp):
         p = await db.payments.find_one({"id": payment_id, "organisation_id": org_id})
         return {"message": "Payment reversed", "member_due_remaining": await due_of(p["member_id"])}
 
@@ -609,11 +615,11 @@ async def reverse_payment(payment_id: str, request: Request, body: ReverseBody |
         if not res.modified_count:
             raise HTTPException(404, "Payment not found or already reversed")
         await checkpoint("payment.reverse.after_mark_original")
-        await idem_save(s, org_id, key, scope, payment_id)
+        await idem_save(s, org_id, key, scope, payment_id, fp)
         await recompute(s, org_id, p["member_id"])
         return p
 
-    p, prior = await commit(org_id, key, scope, txn, "Payment not found or already reversed")
+    p, prior = await commit(org_id, key, scope, txn, "Payment not found or already reversed", fp)
     if prior:
         p = await db.payments.find_one({"id": payment_id})
     else:

@@ -307,18 +307,23 @@ def idem_key(request: Request) -> str | None:
     return key or None
 
 
-async def idem_lookup(org_id: str, key: str | None, scope: str) -> dict | None:
+async def idem_lookup(org_id: str, key: str | None, scope: str, fp: str | None = None) -> dict | None:
     if not key:
         return None
     doc = await db.idempotency_keys.find_one({"organisation_id": org_id, "key": key})
-    if doc and doc["scope"] != scope:
-        raise HTTPException(422, "This Idempotency-Key was already used for a different action")
+    if doc and (doc["scope"] != scope or (fp and doc.get("fp") and doc["fp"] != fp)):
+        raise HTTPException(422, "This Idempotency-Key was already used for a different request")
     return doc
 
 
-async def idem_save(s, org_id: str, key: str | None, scope: str, ref: str):
+def fingerprint(body) -> str:
+    import hashlib
+    return hashlib.sha256((body.model_dump_json() if body is not None else "").encode()).hexdigest()
+
+
+async def idem_save(s, org_id: str, key: str | None, scope: str, ref: str, fp: str | None = None):
     if key:
-        await db.idempotency_keys.insert_one({"organisation_id": org_id, "key": key, "scope": scope, "ref": ref, "created_at": now_utc()}, session=s)
+        await db.idempotency_keys.insert_one({"organisation_id": org_id, "key": key, "scope": scope, "ref": ref, "fp": fp, "created_at": now_utc()}, session=s)
 
 
 def add_duration(start: date, dtype: str, duration: int) -> date:

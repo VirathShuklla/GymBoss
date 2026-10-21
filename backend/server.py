@@ -372,11 +372,8 @@ async def delete_account(body: DeleteAccountBody, response: Response, user: dict
         unconfirmed = [s for s in subs if not await cancel_remote_subscription(razorpay_request, s, "account_deletion")]
         if unconfirmed:
             raise HTTPException(status_code=409, detail="We couldn't confirm that your Razorpay auto-debit is cancelled, so nothing was deleted. Please try again in a few minutes or contact support.")
-        scope = {"$or": [{"organisation_id": org_id}, {"org_id": org_id}]}
-        for name in await db.list_collection_names():
-            if name not in ("organisations", "settings", "razorpay_ops"):
-                await db[name].delete_many(scope)
-        await db.organisations.delete_one({"id": org_id})
+        await db.organisations.update_one({"id": org_id}, {"$set": {"deleting_at": now_utc(), "disabled": True}})
+        await purge_org(org_id)
         await audit(user["id"], "organisation.deleted_by_owner", org_id, {"gym": org.get("name")})
         msg = "Your account and all gym data have been permanently deleted."
     else:
@@ -389,6 +386,21 @@ async def delete_account(body: DeleteAccountBody, response: Response, user: dict
     response.delete_cookie("access_token", path="/", **COOKIE_KW)
     response.delete_cookie("refresh_token", path="/", **COOKIE_KW)
     return {"message": msg}
+
+
+async def purge_org(org_id: str):
+    """Idempotent tenant purge. The org doc is removed last, so an interrupted purge is resumed at startup."""
+    scope = {"$or": [{"organisation_id": org_id}, {"org_id": org_id}]}
+    for name in await db.list_collection_names():
+        if name not in ("organisations", "settings", "razorpay_ops"):
+            await db[name].delete_many(scope)
+    await db.organisations.delete_one({"id": org_id})
+
+
+async def resume_purges():
+    async for org in db.organisations.find({"deleting_at": {"$ne": None, "$exists": True}}, {"id": 1}):
+        logger.warning("Resuming interrupted deletion of organisation %s", org["id"])
+        await purge_org(org["id"])
 
 
 # ---------------- Public config ----------------
@@ -901,6 +913,7 @@ async def require_transactions():
 async def startup():
     await require_transactions()
     await ensure_indexes()
+    await resume_purges()
     await run_migrations()
     demo_org = await db.organisations.find_one({"is_demo": True})
     if demo_org and not await db.plans.find_one({"organisation_id": demo_org["id"], "type": "pt"}):
