@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Users, RefreshCw, IndianRupee, MessageCircle, ChevronRight, ChevronLeft, Search, X, Receipt } from "lucide-react";
 import { toast } from "sonner";
 import api, { apiError } from "../../lib/api";
@@ -20,7 +21,8 @@ export default function Members({ autoAdd }) {
   const [f, setF] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
-  const [chip, setChip] = useState("all");
+  const initialChip = useSearchParams()[0].get("chip");
+  const [chip, setChip] = useState(["active", "expiring", "due"].includes(initialChip) ? initialChip : "all");
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   // member actions

@@ -231,7 +231,7 @@ export default function Profile() {
         </button>
       </div>
       <DeleteAccountSheet open={delOpen} onOpenChange={setDelOpen} />
-      <p className="mt-6 text-center text-xs text-muted-foreground/60">GymBoss_VVO · v1.0.0</p>
+      <p className="mt-6 text-center text-xs text-muted-foreground">GymBoss_VVO · v1.0.0</p>
       <ChangePasswordSheet open={pwOpen} onOpenChange={setPwOpen} />
     </div>
   );

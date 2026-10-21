@@ -274,12 +274,19 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 │   ├── comms.py           # Announcements engine (kept server-side; UI module currently
 │   │                      # removed per product decision)
 │   ├── finance.py         # Finance summary/transactions, reports, CSV export center
-│   ├── billing.py         # Subscription status, Razorpay order/verify, webhook
+│   ├── billing.py         # Subscription status, Razorpay order/verify/autodebit, webhook,
+│   │                      # store-client blocking, invoices, reconcile endpoints
+│   ├── billing_sync.py    # Payment ledger (exactly-once), webhook event handling, reconcile
+│   ├── attendance.py      # QR check-in, biometric ADMS (/iclock), devices
+│   ├── analytics.py       # Internal conversion event tracking + funnel
+│   ├── receipt_pdf.py     # Member receipt PDF + GymBoss subscription invoice PDF
+│   ├── scripts/           # migrate.py (indexes), reconcile.py (daily cron)
+│   ├── Dockerfile, .env.example
 │   ├── admin.py           # Super admin: overview, gyms, disable/reactivate, platform
 │   │                      # settings, audit logs
 │   ├── requirements.txt
 │   ├── .env               # Secrets & config (see below)
-│   └── tests/             # 163 pytest tests (auth, milestones, iterations), cleanup helpers
+│   └── tests/             # pytest suites (auth, milestones, iterations, billing sync)
 │
 ├── frontend/
 │   ├── public/index.html  # Title, fonts, favicon (no watermark)
@@ -306,11 +313,19 @@ The dashboard shows today's attendance count, and Super Admin shows platform-wid
 │   │       │              # Expenses, Outlets, Staff, Finance, Reports, ExportCenter,
 │   │       │              # Settings, Subscription, Support, Profile, ComingSoon
 │   │       └── SuperAdmin.jsx
+│   ├── src/mobile/        # /m mobile app (screens, manage modules, ui primitives)
+│   ├── src/pages/BillingPortal.jsx, src/pages/Legal.jsx
+│   ├── src/lib/inApp.js   # platform detection (web / android_store / ios_store)
+│   ├── android/           # Capacitor Android Studio project
+│   ├── ios/               # Capacitor Xcode project
+│   ├── capacitor.config.json, scripts/build-mobile.sh, .env.example
 │   └── package.json
 │
 ├── memory/
 │   ├── PRD.md             # Product requirements + milestone history + backlog
+│   ├── STORE_BILLING_COMPLIANCE.md, TEST_LOG.md
 │   └── test_credentials.md
+├── DEPLOYMENT.md          # Short self-hosting reference
 └── design_guidelines.json
 ```
 
@@ -334,7 +349,11 @@ All collections are tenant-scoped (`organisation_id`, often `outlet_id`); string
 | `staff` | Staff profiles (linked `user_id` when login exists) |
 | `batches` | Batch names per gym (auto-created on member save) |
 | `announcements` | Bulk messaging engine records (module hidden from gyms for now) |
-| `subscription_payments` | Gym → BuildVVO Razorpay orders/payments |
+| `subscription_payments` | Gym → BuildVVO Razorpay orders/payments (paid, failed, renewals) |
+| `subscriptions` | Razorpay auto-debit subscriptions (status synced by webhooks + reconcile) |
+| `subscription_ledger` | One row per applied Razorpay `payment_id` (unique): exactly-once access extension |
+| `webhook_events` | Processed Razorpay event ids (unique, 45-day TTL): duplicate protection |
+| `events` | Internal conversion analytics events |
 | `settings` | `platform` doc: support contact, store URLs, `plan_price_inr`, Razorpay keys |
 | `files` | Object-storage metadata (tenant-scoped) |
 | `counters` | Per-org sequences (member codes, receipts) |
@@ -356,20 +375,19 @@ Key indexes: `users.email` (unique), `users.username` (unique), `(organisation_i
   - `require_super_admin` — BuildVVO console only
 - **Derived state, never stored manually**: membership status (Active/Expiring Soon/Expired/Frozen), days left, trial countdown, subscription status — all computed from authoritative records at read time.
 - **Startup migrations** keep the seeded demo org upgrade-safe (plan-type backfill, staff-role casing, counter initialisation, batch/catalogue backfill).
-- **Mobile-ready**: the same API supports cookie auth (web) and `Authorization: Bearer` (future Android/iOS apps share the same backend, database and business rules).
+- **Mobile-ready**: the same API supports cookie auth (web) and `Authorization: Bearer` (the Capacitor Android/iOS apps share the same backend, database and business rules).
 
 ---
 
 ## Billing & Subscription
 
-1. Registration starts a **10-day trial** (`trial_ends_at` on the org) — no card required.
-2. Trial end → status `expired` → paywall screen (price shown from platform settings). Data is never deleted.
-3. **Subscribe Now** → `POST /api/subscription/create-order` (Razorpay order, amount = platform price) → checkout.js → `POST /api/subscription/verify` (HMAC-SHA256 signature check) → subscription active for +30 days (stacks if paid early).
-4. Webhook `POST /api/webhooks/razorpay` handles `payment.captured` / `payment.failed` idempotently.
-5. Razorpay keys and price are managed in **Super Admin → Platform Settings** (DB), with env vars as fallback.
-6. `payment_due` (active period lapsed) behaves like expired until the next payment.
-
----
+1. Registration starts a **10-day trial**, no card required.
+2. When the trial ends, the status becomes `expired` and the gym is read-only. Data is never deleted.
+3. The owner/admin subscribes on the **website or billing portal**: Razorpay auto-debit (`/subscription/autodebit/start` → checkout → `/verify`) or a one-time order (`/create-order` → `/verify`). Both are HMAC-verified.
+4. Access is extended exactly once per payment (`subscription_ledger`) and stacks if paid early.
+5. Renewals, failures, pauses and cancellations arrive by webhook and are double-checked by the daily reconciliation (see Feature 18).
+6. Store apps never sell (see [Store Payment Rules](#store-payment-rules-why-the-apps-dont-sell)).
+7. Prices and Razorpay keys are managed in **Super Admin → Platform Settings** (DB), with env vars as fallback.
 
 ---
 

@@ -67,18 +67,17 @@ export default function Staff() {
       ) : items.length === 0 ? (
         <EmptyRow icon={UserCog} title="No staff yet" subtitle="Give your team controlled access." testid="m-staff-empty" />
       ) : (
-        <div className="space-y-2.5">
-          {items.map((s, i) => (
-            <button key={s.id} onClick={() => openEdit(s)} style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
-              className="m-anim m-row flex w-full items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-left" data-testid={`m-staff-${s.id}`}>
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/12 font-display text-xs font-bold text-brand">
+        <div className="m-group">
+          {items.map((s) => (
+            <button key={s.id} onClick={() => openEdit(s)}               className="m-group-row text-left" data-testid={`m-staff-${s.id}`}>
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary font-display text-xs font-bold text-foreground">
                 {s.name?.slice(0, 2).toUpperCase()}
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-foreground">{s.name}</p>
                 <p className="truncate text-xs text-muted-foreground"><span className="capitalize">{s.role}</span> · {s.has_login ? s.email : "No login"}</p>
               </div>
-              <span className={`badge-status ${s.status === "active" ? "badge-active" : "badge-expired"}`}>{s.status}</span>
+              <span className={`badge-status capitalize ${s.status === "active" ? "badge-active" : "badge-expired"}`}>{s.status}</span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </button>
           ))}

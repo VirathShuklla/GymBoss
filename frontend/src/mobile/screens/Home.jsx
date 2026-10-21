@@ -8,22 +8,21 @@ import { ListSkeleton, MThemeToggle, EmptyRow } from "../ui";
 import { TrialBanner } from "../../components/TrialBanner";
 
 const ATTENTION = [
-  { key: "due_members", label: "Members with dues", hint: "Collect pending payments", tone: "bg-danger", to: "/m/manage?tab=members" },
-  { key: "expiring_today", label: "Expiring today", hint: "Renew before they lapse", tone: "bg-warning", to: "/m/manage?tab=members" },
+  { key: "due_members", label: "Members with dues", hint: "Collect pending payments", tone: "bg-danger", to: "/m/manage?tab=members&chip=due" },
+  { key: "expiring_today", label: "Expiring today", hint: "Renew before they lapse", tone: "bg-warning", to: "/m/manage?tab=members&chip=expiring" },
   { key: "today_enquiries", label: "New enquiries", hint: "Follow up while warm", tone: "bg-info", to: "/m/manage?tab=enquiries" },
 ];
 const GLANCE = [
-  { key: "active_members", label: "Active", to: "/m/manage?tab=members" },
+  { key: "active_members", label: "Active", to: "/m/manage?tab=members&chip=active" },
   { key: "total_members", label: "Members", to: "/m/manage?tab=members" },
   { key: "attendance_today", label: "Check-ins", to: "/m/attendance" },
 ];
 const ACTIONS = [
   { label: "Add Member", icon: UserPlus, to: "/m/manage?add=member" },
-  { label: "Payment", icon: IndianRupee, to: "/m/manage?tab=members" },
+  { label: "Payment", icon: IndianRupee, to: "/m/manage?tab=members&chip=due" },
   { label: "Check-in", icon: ClipboardCheck, to: "/m/attendance" },
-  { label: "Renewals", icon: RefreshCw, to: "/m/manage?tab=members" },
+  { label: "Renewals", icon: RefreshCw, to: "/m/manage?tab=members&chip=expiring" },
 ];
-const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
 
 export default function Home() {
   const navigate = useNavigate();
@@ -40,6 +39,7 @@ export default function Home() {
 
   const ob = onb || organisation?.onboarding;
   const showOnboarding = ob && !ob.dismissed && !["plan", "member", "staff", "payment"].every((k) => ob[k]);
+  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" });
   const val = (k) => (summary ? summary[k] ?? 0 : "—");
 
   return (

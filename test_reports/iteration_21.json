@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only visual/functional regression of the refined mobile app (/m) at 390x844 in light and dark themes, logged in as demo owner (gb-in-app removed, verified null). Home, the bottom nav, Manage (all 8 tabs), Profile, Attendance and logout all work. No horizontal overflow on any screen (scrollWidth=390), and no white-on-light contrast problems were found. One real UX bug: when you switch tabs from the bottom nav, the page keeps the previous scroll position instead of going back to the top.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MobileLayout / route change", "issue": "There is no scroll-to-top on navigation. If you scroll Home to the bottom (scrollY=447) and tap Profile, Profile opens at scrollY=447. Attendance opened at scrollY=570, past the hero and quick actions, so users land mid-page and miss the header and summary cards. Nothing in /m resets window scroll (only Legal.jsx calls scrollTo).", "selector": "[data-testid=m-bottomnav] a", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home quick actions / Needs attention", "issues": ["The 'Payment' and 'Renewals' quick actions, and the 'Members with dues' and 'Expiring today' rows, all go to the same /m/manage?tab=members with the 'All' chip selected. Consider passing a filter (e.g. ?chip=due / expiring) so each shortcut lands on the matching list. This behaviour existed before and is not a regression."]},
+      {"screen": "Manage > Staff, Attendance lists", "issues": ["These still use separate bordered cards per row, while Members, Home and Profile now use the grouped m-group list. The visual language is inconsistent. Staff status chips are lowercase ('disabled', 'active') while member chips are capitalized ('Expired', 'Active')."]},
+      {"screen": "Profile footer", "issues": ["The version text 'GymBoss_VVO · v1.0.0' uses text-muted-foreground/60, which is very low contrast on the light background (decorative, minor)."]},
+      {"screen": "Home header", "issues": ["The date const `today` in Home.jsx is computed once at module load. If the PWA stays open past midnight it shows yesterday's date. Move it inside the component."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Add a ScrollToTop effect in MobileLayout (useEffect on pathname -> window.scrollTo(0,0)) so bottom-nav and quick-action navigation start at the top of the page.",
+    "Optional: make the Home shortcuts deep-link to a member filter chip (due / expiring).",
+    "Optional: convert Staff and Attendance lists to the m-group grouped style and capitalize the staff status chip labels for consistency.",
+    "Optional: compute the Home date inside the component."
+  ],
+  "critical_code_review_comments": [
+    "Home.jsx: `today` is a module-level const, so the date goes stale in a long-lived PWA session.",
+    "Members.jsx is 391 lines and still mixes the list, the add sheet and 5 action sub-views. Consider splitting it into MemberActionsSheet.",
+    "MobileLayout has no scroll restoration or reset on route change."
+  ],
+  "verified_passing": [
+    "Login /m/login works for demo@gymbossvvo.in and lands on /m/home",
+    "Home header: date 'WEDNESDAY, 21 OCT', 'Hi, Demo', 'Iron Paradise Fitness', m-trial-badge 'Trial · 6d' goes to /m/profile",
+    "m-theme-toggle switches the html.dark class both ways",
+    "m-today-card shows ₹14,300, Online ₹12,000, Cash ₹2,300, Joined 7, with good contrast in both themes",
+    "All 4 quick actions navigate correctly; Add Member opens m-member-sheet",
+    "Needs attention (9/0/3) and At a glance (9/26/14) rows navigate correctly (enquiries row goes to the enquiries tab, check-ins to /m/attendance)",
+    "m-txn-list shows exactly 5 rows; m-onboarding is hidden (all steps done)",
+    "Bottom nav: the correct item gets m-navitem-active on every route. The last item on Home, Members and Profile is reachable above the nav (bottoms 754, 770 and 755 vs nav top 779)",
+    "Manage: segmented tabs readable in both themes; 26 m-member-<id> grouped rows; a row opens the actions sheet (renew/payment/reminder/history); m-members-add opens the sheet; plans/enquiries/expenses/outlets/staff/finance/reports tabs all render without overflow",
+    "Profile: grouped sections Your gym / Appearance / Account; m-change-password and m-delete-account open sheets; m-privacy-link=/privacy; m-support-link points to wa.me; the plan picker (m-plan-monthly/quarterly/yearly) and m-pay-button are present on web; m-theme-light/dark work; m-logout goes to /m/welcome",
+    "Attendance renders the hero, QR/Biometric/Manual tiles, the Members/Staff seg and the list in both themes"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "95%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Theme is set via localStorage 'gb-theme' (light|dark|system). Make sure 'gb-in-app' is removed. Demo data includes TEST_ prefixed members/staff from earlier iterations. To check the scroll-reset fix: scroll Home to the bottom, tap m-nav-attendance, and expect window.scrollY==0."
+}

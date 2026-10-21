@@ -200,3 +200,11 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - P1: Phase 2 Android Play Billing + India user choice billing (needs native billing plugin, Play service account)
 - P1: one-step signup; WhatsApp demo hero button
 - P2: Revenue & Profit view in Super Admin; testimonials manager; iOS IAP only if Apple rejects 3.1.3(c)
+
+## Mobile UI minimal refinement + README guide (2026-06)
+- /m refined to a calm, minimal look:
+  - Home: date + greeting; an ink "Today's collection" hero; borderless quick actions; "Needs attention" and "At a glance" grouped lists; max 5 recent payments; a compact onboarding progress card.
+  - Navigation and lists: frosted full-width bottom nav with an indicator; grouped iOS-style lists in Profile, Members, Staff and Attendance; quiet segmented tabs.
+  - Behaviour: scroll-to-top on navigation; Home shortcuts deep-link to member filter chips (?chip=due|expiring|active).
+- README.md rewritten as a full step-by-step guide: Done/To-do status, features (incl. billing portal, store mode, billing sync), hosting (VPS + Nginx + DNS + HTTPS + cron), Razorpay setup, Android APK/AAB build, Google Play publishing, iOS build and App Store publishing, store payment rules, go-live checklist.
+- Tested: iteration_21 (frontend 95%; the scroll-position bug and consistency nits fixed afterwards).

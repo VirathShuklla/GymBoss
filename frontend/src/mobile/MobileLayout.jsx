@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Home, LayoutGrid, User, ClipboardCheck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -13,6 +14,7 @@ const NAV = [
 export default function MobileLayout() {
   const { subscription } = useAuth();
   const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
   const expired = ["expired", "payment_due"].includes(subscription?.status);
   return (
     <div className="min-h-screen bg-background" data-testid="m-app-shell">

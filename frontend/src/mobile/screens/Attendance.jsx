@@ -24,8 +24,8 @@ function Tile({ icon: Icon, title, desc, onClick, testid, dot }) {
 
 function Visit({ name, sub, a, onOut }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3">
-      <span className={`flex h-10 w-10 items-center justify-center rounded-full ${a.check_out ? "bg-secondary text-muted-foreground" : "bg-success/12 text-success"}`}>
+    <div className="m-group-row">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${a.check_out ? "bg-secondary text-muted-foreground" : "bg-success/12 text-success"}`}>
         {a.check_out ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
       </span>
       <div className="min-w-0 flex-1">
@@ -63,12 +63,12 @@ export default function Attendance() {
       <h1 className="font-display text-[26px] font-bold tracking-tight text-foreground">Attendance</h1>
       <p className="text-sm text-muted-foreground">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
 
-      <div className="mt-4 rounded-3xl bg-gradient-to-br from-brand to-[#5B21B6] p-5 text-white shadow-xl shadow-brand/25" data-testid="m-att-hero">
+      <div className="m-hero mt-4 text-white" data-testid="m-att-hero">
         <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Inside the gym now</p>
         <p className="font-num mt-1 text-5xl font-extrabold" data-testid="m-att-inside">{summary?.inside_now ?? "—"}</p>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
           {[["Today", summary?.today], ["Staff", summary?.staff_today], ["Devices", summary ? `${summary.devices_online}/${summary.devices}` : "—"]].map(([l, v]) => (
-            <div key={l} className="rounded-2xl bg-white/15 py-2"><p className="text-[11px] opacity-80">{l}</p><p className="font-num text-base font-bold">{v ?? "—"}</p></div>
+            <div key={l} className="rounded-2xl bg-white/[0.07] py-2"><p className="text-[11px] opacity-80">{l}</p><p className="font-num text-base font-bold">{v ?? "—"}</p></div>
           ))}
         </div>
       </div>
@@ -88,7 +88,7 @@ export default function Attendance() {
       {!list ? <ListSkeleton rows={3} /> : list.length === 0 ? (
         <EmptyRow icon={ClipboardCheck} title={seg === "members" ? "No check-ins yet today" : "No staff check-ins today"} subtitle="Share your QR code or connect a fingerprint device to get started." testid="m-att-empty" />
       ) : (
-        <div className="space-y-2.5" data-testid="m-att-list">
+        <div className="m-group" data-testid="m-att-list">
           {list.map((a) => seg === "members"
             ? <Visit key={a.id} a={a} name={a.member_name} sub={`${a.member_code} · ${SOURCE[a.source] || "Manual"}`} onOut={checkOut} />
             : <Visit key={a.id} a={a} name={a.staff_name} sub={a.role || "staff"} />)}
