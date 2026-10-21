@@ -227,6 +227,8 @@ async def reconcile(razorpay_request) -> dict:
     """Pull truth from Razorpay for open subscriptions and recent unpaid orders. Safe to run repeatedly."""
     stats = {"subscriptions_checked": 0, "status_updates": 0, "payments_applied": 0, "orders_checked": 0, "errors": 0,
              "cancellations_confirmed": await retry_pending_cancellations(razorpay_request)}
+    from server import resume_purges
+    await resume_purges()
     async for local in db.subscriptions.find({"status": {"$in": OPEN_SUB_STATUSES}}):
         stats["subscriptions_checked"] += 1
         sid = local["razorpay_subscription_id"]

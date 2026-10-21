@@ -44,6 +44,7 @@ const STATUS_STYLES = {
   failed: ["badge-expired", "Failed"],
   admission: ["badge-active", "Admission"],
   renewal: ["badge-frozen", "Renewal"],
+  reversal: ["badge-expired", "Reversal"],
   due: ["badge-expiring", "Due Payment"],
 };
 

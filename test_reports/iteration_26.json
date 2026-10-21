@@ -1,0 +1,34 @@
+{
+  "summary": "Iter26 RETEST of iter25 findings + new features. iter25 in-process suite (isolated DB gymboss_txn_tests, -n 0): 20/20 PASS, including the concurrent same-key DELETE /api/payments/{id} which now returns [200]*4. New in-process suite test_iter26_idem_fp_purge.py: 5/6 pass. Passing: same Idempotency-Key with a different body gives 422 and the same body replays 200 with the same id, for payments, member create and renew; fp is stored as a sha256. Concurrent different bodies on one key give [200,422,422] with 1 payment. httpx.ConnectError during delete-account gives 409 (not 500), with razorpay_ops failed, last_error set and attempts incremented 1 then 2, and the org is not marked deleting or disabled. Autodebit cancel with ConnectError gives 503 and the sub stays active. resume_purges() finishes a partly done purge, keeps razorpay_ops, leaves other orgs alone, and purge_org is idempotent. A disabled org gets 403 on its APIs. Failing: POST /api/auth/login for a user of a disabled org returns 200 and sets cookies, not 403. HTTP regression against preview (iter22 + iter23 + iter13, -n 0): 48/48 PASS. Frontend reversal UI passes in all 3 places on a TEST_ member in the demo org, all expected testids checked: MemberDrawer Transaction History, Payments table and mobile /m Payment History. The reversed original shows a Reversed badge, a struck-through amount and no Edit/Reverse buttons. The reversal entry shows -₹100 in red (rgb 239,68,68) with no Edit/Reverse buttons. The normal payment keeps Edit/Reverse. TEST_ data was cleaned up afterwards.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login (and /auth/refresh, /auth/me)", "issue": "An org with disabled=True (including one mid-deletion with deleting_at set) can still log in: the response is 200 and auth cookies/native tokens are issued. Only org-scoped APIs (get_org_user) return 403. The review request expected login to be rejected with 403. Fix: in login and refresh, look up the user's organisation and raise 403 when org.disabled is set (super_admin excluded)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Payments page table", "issues": ["Reversal rows show only the generic StatusBadge with raw lowercase text 'reversal' (blue) in the Type column. There is no 'Reversal' badge, unlike the drawer and mobile, which show an uppercase red 'REVERSAL' badge. The 'Reversed' badge for originals sits in the actions column, not next to the type/plan. Suggest adding a label map entry for 'reversal' in StatusBadge."]},
+      {"screen": "Mobile /m Manage members", "issues": ["Counter reads '1 members' (should be singular)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter25_txn_recovery.py", "/app/backend/tests/test_iter26_idem_fp_purge.py", "/app/backend/tests/seed_iter26_ui.py", "/app/test_reports/pytest/iter26_regression.xml"],
+  "action_items": [
+    "Reject login/refresh with 403 when the user's organisation has disabled=True (or deleting_at is set), so a tenant being deleted cannot get fresh sessions.",
+    "Optional: also call resume_purges() from the periodic reconcile loop. Today, if purge_org raises mid-request, the org stays disabled and half-purged until the next backend restart.",
+    "Optional: Payments table should show a proper 'Reversal' label/badge for type=reversal rows (StatusBadge mapping)."
+  ],
+  "critical_code_review_comments": [
+    "deps.idem_lookup skips the fingerprint check when the stored doc has no fp (legacy keys). This is fine for back-compat, but keys created before this change can still be replayed with a different body.",
+    "fingerprint() uses body.model_dump_json(), which includes defaulted fields. Clients that omit vs. explicitly send a default value get the same fp, which is fine. However, reverse_payment fingerprints an optional body, so a DELETE with no body and a DELETE with {} or {reason:null} may hash differently depending on how the body is parsed. Worth a quick check.",
+    "purge_org only removes docs keyed by organisation_id/org_id. Collections keyed by user_id or email (e.g. password_reset_tokens, login_attempts) depend on delete_account's separate cleanup. resume_purges cannot redo that, because the user doc is already gone."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter26_idem_fp_purge.py", "/app/backend/tests/seed_iter26_ui.py", "/app/backend/tests/cleanup_test_data.py (also deletes member_invoices of TEST_ members)"],
+  "success_rate": {"backend": "iter25 20/20, iter26 5/6, regression 48/48 (~99%)", "frontend": "100% (3/3 surfaces)"},
+  "seed_data_creation": "Created TEST_Iter26 Reversal member in demo org with ₹100 payment (reversed) + ₹50 payment via tests/seed_iter26_ui.py; removed afterwards by tests/cleanup_test_data.py.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run in-process suites separately (each drops/creates gymboss_txn_tests): cd /app/backend && pytest tests/test_iter25_txn_recovery.py -n 0 ; pytest tests/test_iter26_idem_fp_purge.py -n 0 (it imports helpers from iter25). test_disabled_org_login_and_api_rejected is the expected failure until login checks org.disabled. UI: seed with python tests/seed_iter26_ui.py (prints ids), then check /app/payments, /app/members drawer -> action-transaction-history, /m/manage?tab=members -> m-action-history. Afterwards run python tests/cleanup_test_data.py. Auth playbook items were not re-tested this iteration (covered in earlier iterations)."
+}

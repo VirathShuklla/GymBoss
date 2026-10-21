@@ -251,3 +251,17 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - credit balance is shown in the web drawer and mobile member list/actions;
   - the mobile renew sheet preselects the current plan;
   - client IP is taken from the right-most trusted X-Forwarded-For hop, or REAL_IP_HEADER, so spoofing is blocked.
+
+
+## Round 1 completion — transactional money writes (2026-10-21)
+- User choices: MongoDB transactions (not step records); block account deletion until Razorpay confirms cancellation; idempotency keys for payments/renewals/reversals/migration; tests for crashes, retries, races, concurrent migrations.
+- Preview MongoDB switched to single-member replica set rs0 (supervisord `--replSet rs0`, rs.initiate). Backup taken first: /root/mongo_backup_2026-10-21. MONGO_URL unchanged. API refuses to start on standalone Mongo (require_transactions); DEPLOYMENT.md documents this.
+- deps.run_txn (snapshot/majority, auto-retry on conflicts), best_effort (audit/analytics after commit), checkpoint/FAULTS (test-only fault injection), Idempotency-Key helpers with body fingerprint (same key + different body → 422; TTL 7 days).
+- Atomic: member create, renew (expiry CAS), record payment, edit payment, reversal (negative entry + mark original + recompute), subscription grant (ledger + access + payment row; ledger never deleted), opening-balance migration.
+- Unique indexes: uniq_opening_invoice, uniq_member_cycle (member_id+cycle_key), uniq_reversal (reversal_of), idempotency_keys(org,key), migrations.id.
+- Webhooks: claim lease (processing/done/failed, 5-min stale reclaim, 409 while busy) — crashed events are re-processed, never skipped.
+- Razorpay cancellations: durable razorpay_ops records; confirmed only when Razorpay reports cancelled/completed/expired; failures (incl. network) block delete-account (409) / autodebit cancel (503); reconcile retries failed ops and resumes interrupted purges.
+- Account purge: org marked deleting_at+disabled first, purge idempotent, resumed at startup/reconcile; disabled/deleting orgs can't log in or refresh.
+- Frontend: api.js auto-adds Idempotency-Key to money writes (reused on retry, cleared on success); reversed/reversal rows show badges, red -₹ amounts, no Edit/Reverse (web drawer, Payments table, mobile).
+- Tests: iteration_25 + iteration_26 — in-process suites tests/test_iter25_txn_recovery.py (20/20) and test_iter26_idem_fp_purge.py (6/6) on isolated DB gymboss_txn_tests; HTTP regression 48/48. Razorpay MOCKED in those tests only.
+- Next: Round 2 (reports aggregation + IST accounting dates, typed params, upload sniffing/limits, lockfile/pins/health checks, portable isolated tests, ADMS device auth review).

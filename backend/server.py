@@ -221,9 +221,18 @@ async def login(body: LoginBody, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.get("status") == "disabled":
         raise HTTPException(status_code=403, detail="This account has been disabled.")
+    await reject_disabled_org(user)
     await db.login_attempts.delete_many({"$or": [{"identifier": lock_key}, {"email": ident.lower()}]})
     set_auth_cookies(response, user)
     return {"user": public_user(user), **issue_native_tokens(request, user)}
+
+
+async def reject_disabled_org(user: dict):
+    if user.get("role") == "super_admin" or not user.get("organisation_id"):
+        return
+    org = await db.organisations.find_one({"id": user["organisation_id"]}, {"disabled": 1, "deleting_at": 1})
+    if org and (org.get("disabled") or org.get("deleting_at")):
+        raise HTTPException(status_code=403, detail="This gym account has been disabled. Contact BuildVVO support.")
 
 
 @api.post("/auth/logout")
@@ -254,6 +263,7 @@ async def refresh(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Session expired")
     if user.get("status") == "disabled":
         raise HTTPException(status_code=403, detail="This account has been disabled.")
+    await reject_disabled_org(user)
     response.set_cookie("access_token", create_access_token(user), httponly=True, secure=True, samesite="none", max_age=1800, path="/", **COOKIE_KW)
     return {"message": "refreshed", **issue_native_tokens(request, user, refresh=False)}
 

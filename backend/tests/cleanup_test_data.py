@@ -19,6 +19,7 @@ async def main():
     if mids:
         report["attendance"] = (await db.attendance.delete_many({"member_id": {"$in": mids}})).deleted_count
         report["payments"] = (await db.payments.delete_many({"member_id": {"$in": mids}})).deleted_count
+        report["member_invoices"] = (await db.member_invoices.delete_many({"member_id": {"$in": mids}})).deleted_count
         report["members"] = (await db.members.delete_many({"id": {"$in": mids}})).deleted_count
 
     report["outlets"] = (await db.outlets.delete_many({"name": RX})).deleted_count

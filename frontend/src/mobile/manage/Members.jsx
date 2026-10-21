@@ -158,7 +158,7 @@ export default function Members({ autoAdd }) {
 
   return (
     <div data-testid="m-members">
-      <ModuleHeader title={items ? `${items.length} members` : "Members"} onAdd={() => setOpen(true)} addLabel="Add Member" testid="m-members-add" />
+      <ModuleHeader title={items ? `${items.length} member${items.length === 1 ? "" : "s"}` : "Members"} onAdd={() => setOpen(true)} addLabel="Add Member" testid="m-members-add" />
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <input
