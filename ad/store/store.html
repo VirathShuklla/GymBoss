@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Grotesk:wght@500;600;700&display=block" rel="stylesheet">
+<style>
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0A0712; }
+  .card { position:relative; overflow:hidden; background:#0A0712; color:#fff; font-family:'Space Grotesk'; }
+  .glow { position:absolute; border-radius:50%; filter:blur(110px); }
+  .grid { position:absolute; inset:0; background-image:linear-gradient(rgba(167,139,250,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(167,139,250,.08) 1px, transparent 1px); background-size:90px 90px; }
+  .burst { position:absolute; border-radius:50%; background:repeating-conic-gradient(rgba(124,58,237,.32) 0 6deg, transparent 6deg 18deg); -webkit-mask:radial-gradient(circle, #000 15%, transparent 68%); }
+  .grain { position:absolute; inset:0; opacity:.08; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .head { font-family:'Anton'; text-transform:uppercase; line-height:.98; letter-spacing:.5px; }
+  .lime { color:#C6FF3D; } .violet { color:#A78BFA; }
+  .tag { display:inline-flex; align-items:center; gap:12px; padding:12px 24px; border-radius:999px; background:#C6FF3D; color:#0A0712; font:700 30px 'Space Grotesk'; transform:rotate(-3deg); }
+  .phone { position:absolute; border-radius:84px; background:#111; padding:20px; box-shadow:0 60px 120px rgba(0,0,0,.6), 0 0 0 3px rgba(167,139,250,.45); }
+  .phone .scr { border-radius:66px; overflow:hidden; background:#fff; }
+  .phone img { display:block; width:100%; }
+  .notch { position:absolute; top:34px; left:50%; width:30px; height:30px; margin-left:-15px; border-radius:50%; background:#0A0712; z-index:2; }
+  .panda { position:absolute; filter:drop-shadow(0 30px 40px rgba(0,0,0,.55)); }
+  .logo { display:flex; align-items:center; gap:10px; font-family:'Anton'; letter-spacing:1px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const CROWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z"/><path d="M5 21h14"/></svg>';
+const SLIDES = [
+  { shot: "1_home", l1: "Today's collection", l2: "at a glance", tag: "GymBoss got you!", panda: "panda_phone", side: "right" },
+  { shot: "2_members", l1: "Every member,", l2: "one tap away", tag: "Manage. Grow. Repeat.", panda: "panda_tablet", side: "left" },
+  { shot: "3_attendance", l1: "QR check-ins", l2: "in seconds", tag: "Let's go!", panda: "panda_lifting", side: "right" },
+  { shot: "4_plans", l1: "Plans & renewals", l2: "made easy", tag: "No excuses, bro!", panda: "panda_flex", side: "left" },
+  { shot: "5b_member_detail", l1: "Record payments,", l2: "clear every due", tag: "Payment received!", panda: "panda_excited", side: "right" },
+  { shot: "6_reports", l1: "Reports & monthly", l2: "PDF in one tap", tag: "Fit gyms, happy members", panda: "panda_laptop", side: "left" },
+  { shot: "7_staff", l1: "Staff access", l2: "you control", tag: "Let's grow together", panda: "panda_wave", side: "right" },
+];
+const q = new URLSearchParams(location.search);
+const root = document.getElementById("root");
+const A = "../assets/cut/";
+
+function slide(s) {
+  const right = s.side === "right";
+  root.innerHTML = `<div class="card" style="width:1080px;height:1920px">
+    <div class="grid"></div>
+    <div class="glow" style="width:900px;height:900px;background:rgba(124,58,237,.6);left:${right ? 420 : -240}px;top:620px"></div>
+    <div class="glow" style="width:600px;height:600px;background:rgba(167,139,250,.25);left:${right ? -200 : 700}px;top:-160px"></div>
+    <div class="burst" style="width:1300px;height:1300px;left:${right ? 300 : -520}px;top:900px"></div>
+    <div class="logo" style="position:absolute;left:80px;top:84px;font-size:34px"><span class="lime" style="width:40px;height:40px">${CROWN}</span><span>GYMBOSS<span class="violet">_VVO</span></span></div>
+    <div class="head" style="position:absolute;left:80px;top:170px;font-size:122px">${s.l1}<br><span class="lime">${s.l2}</span></div>
+    <div style="position:absolute;left:84px;top:450px"><span class="tag">${s.tag}</span></div>
+    <div class="phone" style="left:${right ? 110 : 230}px;top:590px;width:740px"><div class="notch"></div><div class="scr"><img src="screens/${s.shot}.png"></div></div>
+    <img class="panda" src="${A}${s.panda}.png" style="height:${s.panda === "panda_laptop" ? 420 : 520}px;bottom:-24px;${right ? "right:-80px" : "left:-80px"}">
+    <div class="grain"></div></div>`;
+}
+
+function feature() {
+  root.innerHTML = `<div class="card" style="width:1024px;height:500px">
+    <div class="grid" style="background-size:60px 60px"></div>
+    <div class="glow" style="width:600px;height:600px;background:rgba(124,58,237,.65);left:-120px;top:-60px"></div>
+    <div class="glow" style="width:420px;height:420px;background:rgba(167,139,250,.28);left:700px;top:240px"></div>
+    <div class="burst" style="width:900px;height:900px;left:-200px;top:-200px"></div>
+    <img class="panda" src="${A}panda_hero.png" style="height:470px;left:70px;bottom:-14px">
+    <div style="position:absolute;left:440px;top:78px">
+      <div class="logo"><span class="lime" style="width:58px;height:58px">${CROWN}</span></div>
+      <div class="head" style="font-size:96px;margin-top:4px">GYMBOSS<span class="violet">_VVO</span></div>
+      <div style="font:700 22px 'Space Grotesk';letter-spacing:9px;color:#CFC6F2;margin-top:8px">MANAGE · GROW · REPEAT</div>
+      <div class="head lime" style="font-size:44px;margin-top:26px">Run your gym from your phone</div>
+      <div style="font:600 21px 'Space Grotesk';color:#A79FC7;margin-top:12px">Members · Fees & dues · Attendance · Reports · Staff</div>
+    </div>
+    <div class="grain"></div></div>`;
+}
+
+if (q.get("feature")) feature(); else slide(SLIDES[+q.get("i")]);
+window.READY = document.fonts.ready.then(() => Promise.all([...document.images].map((i) => i.complete ? 1 : new Promise((r) => { i.onload = i.onerror = r; }))));
+</script>
+</body>
+</html>

@@ -301,3 +301,9 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - Pipeline in /app/ad: AI-generated panda poses based on the user's character sheet, backgrounds removed with rembg (isnet-anime); real app screenshots from the demo account (capture.py); HTML/JS motion composition (ad.html, ad.js, ?fmt=wide|vertical) rendered frame by frame with Playwright, then ffmpeg (render.py); OpenAI TTS tts-1-hd "ash" voice (tts.py, fix_vo.py); original synthesized music (music.py); audio remix with ducking (remix.py).
 - Verified: Whisper transcripts of both final tracks match the scripts; key frames were reviewed visually.
 - Backlog: add a website URL or offer to the end card; Hindi voiceover version; square 1:1 feed cut.
+
+
+## Google Play listing assets — 2026-11-02
+- User request: "create a proper assets for me to have in the google playstore before they download the app". Screenshot priorities: Dashboard and collections, Member management, Attendance and QR check-in, Plans and renewals, Payment recording and dues, Reports, Staff access, Subscription plans. Choices: framed screenshots with headline and panda; Subscription plans left out; feature graphic 1024x500; captions combine a clear benefit with a panda catchphrase.
+- Outputs in /app/frontend/public/playstore/: 7 phone screenshots (1080x1920, 24-bit PNG), feature_graphic_1024x500.png, and GymBoss_PlayStore_Assets.zip.
+- Method: a temporary backend on port 8002 used an isolated DB (gymboss_store_demo) seeded with a sample gym, "Peak Fitness Studio" (owner "Rohan Mehta", 32 sample members). The real mobile app was screenshotted through Playwright API routing, then framed in /app/ad/store/store.html (render_store.py). The temporary DB and server were removed afterwards; the customer's DB was not touched.
