@@ -293,3 +293,11 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - P1: device-test native photo/attachment loading and PDF sharing after `npx cap sync`.
 - P2: show the member photo in the drawer header; make DateField clearable in Export Center.
 
+
+
+## Marketing ad videos — 2026-11-02
+- User request: "make a video for gym boss that looks like a good ad with the attached avatar as the gym boss". Choices: motion-graphics ad that explains all features; both Wide 16:9 ~30s and Vertical 9:16 ~20s; AI voiceover plus music; brand fun plus a gym-owner feature message; default end card ("Start your free trial", no website).
+- Outputs: /app/frontend/public/ad/GymBoss_Ad_16x9_30s.mp4 (1920x1080, 30s) and GymBoss_Ad_9x16_20s.mp4 (1080x1920, 20s), H.264 yuv420p + AAC.
+- Pipeline in /app/ad: AI-generated panda poses based on the user's character sheet, backgrounds removed with rembg (isnet-anime); real app screenshots from the demo account (capture.py); HTML/JS motion composition (ad.html, ad.js, ?fmt=wide|vertical) rendered frame by frame with Playwright, then ffmpeg (render.py); OpenAI TTS tts-1-hd "ash" voice (tts.py, fix_vo.py); original synthesized music (music.py); audio remix with ducking (remix.py).
+- Verified: Whisper transcripts of both final tracks match the scripts; key frames were reviewed visually.
+- Backlog: add a website URL or offer to the end card; Hindi voiceover version; square 1:1 feed cut.
