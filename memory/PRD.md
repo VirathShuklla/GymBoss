@@ -322,3 +322,11 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Ep2 "Missing Cash" – film noir teal, meme captions + noir jazz, no voice, logo-only ending
   - Ep3 "Planet Gym" – pastel savanna nature-doc parody, British narrator (fable), app punchline + free trial CTA
 - Output: /app/ad/series/final/ (+ GymBoss_Panda_Series.zip). Pipeline: series/kling.py (clips), voices.py, music.py (synth music + sfx), render_series.py (captions, end cards, grade, mix).
+
+## Planet Gym Season 1 (Nov 2026)
+- 4 nature-doc parody episodes (~23s, 9:16, 24fps), each with a 4-shot story (Kling v2.6 Pro, picked after an A/B test against v3 Pro: same 1176x1756 output, half the price), British narrator, music + ambience made for each world, a hook caption in the first 4s, species lower-thirds, and branded end cards.
+  - Ep1 The Wild Gym Owner (savanna, app CTA) – remake of the earlier episode with a new "collapse" shot
+  - Ep2 The January Migration (arctic aurora, logo only)
+  - Ep3 The Ghost Member (moonlit forest, app CTA)
+  - Ep4 The Protein Shake Addict (neon rainforest + chocolate shake falls, logo only)
+- Output: /app/ad/series/planet_gym/ (+ PlanetGym_Season1.zip). Pipeline: pg_kling.py, pg_voices.py, pg_music.py, pg_render.py.

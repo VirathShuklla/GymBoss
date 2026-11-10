@@ -1,0 +1,40 @@
+<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@800;900&family=Bungee&family=Playfair+Display:ital,wght@0,800;1,600;1,800&family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@700&display=block" rel="stylesheet"><style>*{margin:0;padding:0;box-sizing:border-box} html,body{width:1080px;height:1920px;background:transparent;overflow:hidden}
+.abs{position:absolute} .c{left:0;right:0;text-align:center}
+.retro{font-family:'Bungee';color:#fff;line-height:1.08;text-shadow:5px 5px 0 #FF4FA3,10px 10px 0 #18D6C9}
+.sub{font:700 54px 'Space Grotesk';color:#fff;line-height:1.2;-webkit-text-stroke:2px #000;paint-order:stroke fill;text-shadow:0 4px 14px rgba(0,0,0,.6);padding:0 70px}
+.tt{display:inline-block;background:#fff;color:#111;font:800 50px 'Archivo';line-height:1.25;padding:22px 34px;border-radius:22px;max-width:920px}
+.meme{font-family:'Anton';color:#fff;-webkit-text-stroke:6px #000;paint-order:stroke fill;text-transform:uppercase;line-height:1}
+.doc{font-family:'Playfair Display';color:#fff;text-shadow:0 3px 18px rgba(0,0,0,.55)}
+.toast{background:#fff;border-radius:30px;padding:24px 30px;display:flex;gap:22px;align-items:center;box-shadow:0 30px 60px rgba(0,0,0,.45);font-family:'Space Grotesk'}
+.toast .t1{font-size:24px;font-weight:700;color:#16A34A;letter-spacing:1.5px;text-transform:uppercase}
+.toast .amt{font:700 58px 'JetBrains Mono';color:#0A0712} .toast .t2{font-size:22px;color:#6B6680;font-weight:600}
+.wm{font-family:'Anton';font-size:40px;color:#fff;letter-spacing:1px;text-shadow:0 2px 10px rgba(0,0,0,.6)} .wm b{color:#A78BFA;font-weight:400}
+
+.badge{display:inline-block;border:8px solid #FFCE1F;padding:10px 24px;font:900 50px Archivo;color:#fff;letter-spacing:6px;text-shadow:0 3px 14px rgba(0,0,0,.5)}
+.ept{font-family:'Playfair Display';font-style:italic;font-size:44px;color:#fff;margin-top:14px;text-shadow:0 3px 16px rgba(0,0,0,.7)}
+.sp1{font-family:'Playfair Display';font-size:36px;font-weight:800;letter-spacing:5px;color:#FFCE1F;text-shadow:0 2px 10px rgba(0,0,0,.6)}
+.sp2{font-family:'Playfair Display';font-size:64px;font-style:italic;color:#fff;text-shadow:0 3px 16px rgba(0,0,0,.7)}
+.bar{width:260px;height:6px;background:#FFCE1F;margin-top:12px}
+.sub{font-size:50px}
+
+#s{position:absolute;inset:0;overflow:hidden}
+.lock{font-family:Anton;font-size:150px;line-height:1} .lock b{font-weight:400}
+.cta{display:inline-block;font:700 50px 'Space Grotesk';padding:28px 56px;border-radius:999px;box-shadow:0 0 0 12px rgba(255,255,255,.18)}
+.tag{font:700 32px 'Space Grotesk';letter-spacing:12px;text-shadow:0 2px 12px rgba(0,0,0,.45)}
+</style></head><body><div id="s"></div><script>
+const C=JSON.parse(decodeURIComponent(location.hash.slice(1)));
+const s=document.getElementById('s');s.style.background=C.bg;
+const mk=(h,css)=>{const e=document.createElement('div');e.className='abs';e.innerHTML=h;Object.assign(e.style,css);s.appendChild(e);return e};
+const badge=mk('<div style="text-align:center"><div class="badge" style="color:'+C.ink+';border-color:'+C.acc+'">PLANET GYM</div></div>',{left:0,right:0,top:'200px'});
+const line=mk('<div style="text-align:center;font:700 54px Space Grotesk;color:'+C.ink+'">'+C.line+'</div>',{left:0,right:0,top:C.cta?'640px':'360px'});
+const lock=mk('<div style="text-align:center"><div class="lock" style="color:'+C.ink+'">GYMBOSS<b style="color:'+C.acc2+'">_VVO</b></div><div class="tag" style="margin-top:16px;color:'+C.ink+'">MANAGE · GROW · REPEAT</div></div>',{left:0,right:0,top:C.cta?'360px':'450px'});
+const cta=C.cta?mk('<div style="text-align:center"><div class="cta" style="background:'+C.acc+';color:'+(C.acc==='#0A0712'?'#fff':'#0A0712')+'">Start your free trial</div></div>',{left:0,right:0,top:'760px'}):null;
+const p=mk('<img src="../assets/cut/'+C.panda+'.png" style="height:960px">',{left:0,right:0,top:'930px',textAlign:'center'});
+const cl=(x)=>Math.max(0,Math.min(1,x)),eb=(x)=>{const c1=1.8,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2)};
+window.render=(t)=>{const q0=cl(t/0.4);badge.style.opacity=q0;badge.style.transform='translateY('+(1-q0)*-30+'px)';
+ const q=cl((t-0.2)/0.5);lock.style.opacity=q;lock.style.transform='scale('+(0.6+0.4*eb(q))+')';
+ const q2=cl((t-(C.cta?0.5:0.1))/0.4);line.style.opacity=q2;line.style.transform='translateY('+(1-q2)*30+'px)';
+ if(cta){const q3=cl((t-0.8)/0.45);cta.style.opacity=q3>0?1:0;cta.style.transform='scale('+(q3>0?eb(q3)*(1+0.03*Math.abs(Math.sin(t*5))):0)+')'}
+ const q4=cl((t-0.15)/0.6);p.style.transform='translateY('+((1-eb(q4))*900-Math.abs(Math.sin(t*4.5))*14)+'px)'};
+window.render(0);
+</script></body></html>
