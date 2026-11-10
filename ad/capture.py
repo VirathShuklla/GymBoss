@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-BASE = "https://gym-hub-demo.preview.emergentagent.com"
+BASE = "https://gymboss-preview--66rae3xb.preview.emergentagent.com"
 OUT = Path(__file__).parent / "assets" / "screens"
 OUT.mkdir(parents=True, exist_ok=True)
 WEB = ["dashboard", "members", "attendance", "payments", "finance", "reports", "plans"]

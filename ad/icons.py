@@ -5,7 +5,7 @@ from pathlib import Path
 SRC = Path("/app/frontend/node_modules/lucide-react/dist/esm/icons")
 NAMES = ["users", "user-plus", "indian-rupee", "circle-check", "qr-code", "calendar-clock", "bell-ring",
          "chart-column", "file-text", "building-2", "shield-check", "smartphone", "monitor", "crown",
-         "fingerprint", "trending-up", "camera", "refresh-cw", "search", "wallet", "dumbbell"]
+         "fingerprint", "trending-up", "camera", "refresh-cw", "search", "wallet", "dumbbell", "triangle-alert", "x", "moon", "message-circle", "clock", "badge-check"]
 out = {}
 for n in NAMES:
     src = (SRC / f"{n}.js").read_text()

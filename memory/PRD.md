@@ -307,3 +307,11 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
 - User request: "create a proper assets for me to have in the google playstore before they download the app". Screenshot priorities: Dashboard and collections, Member management, Attendance and QR check-in, Plans and renewals, Payment recording and dues, Reports, Staff access, Subscription plans. Choices: framed screenshots with headline and panda; Subscription plans left out; feature graphic 1024x500; captions combine a clear benefit with a panda catchphrase.
 - Outputs in /app/frontend/public/playstore/: 7 phone screenshots (1080x1920, 24-bit PNG), feature_graphic_1024x500.png, and GymBoss_PlayStore_Assets.zip.
 - Method: a temporary backend on port 8002 used an isolated DB (gymboss_store_demo) seeded with a sample gym, "Peak Fitness Studio" (owner "Rohan Mehta", 32 sample members). The real mobile app was screenshotted through Playwright API routing, then framed in /app/ad/store/store.html (render_store.py). The temporary DB and server were removed afterwards; the customer's DB was not touched.
+
+## Marketing Reels (Nov 2026)
+- 3 vertical 9:16 reels (~20s each), every one opening with a 4-second hook, English AI voiceover, music + sound effects, ending on "Start your free trial".
+  - Reel 1 Fee Chase (funny: angry panda + flood of excuse chats)
+  - Reel 2 Money Leak (money stat: ₹40,000 stuck/month from 20 late payers × ₹2,000)
+  - Reel 3 Midnight Register (funny: tired panda doing accounts at 11:47 PM)
+- Output: /app/ad/reels/ (+ GymBoss_Reels.zip). Code: /app/ad/reels.js (scenes), reels_tts.py, sfx.py, render.py `vertical - <reel#>`.
+- New panda poses: angry, tired, shocked, confused, cash (assets/cut/).

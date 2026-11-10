@@ -48,14 +48,14 @@ def mix_audio(total, vo, out):
         w.writeframes(data.tobytes())
 
 
-async def render(fmt, preview_times=None):
+async def render(fmt, preview_times=None, reel=None):
     W, H = (1080, 1920) if fmt == "vertical" else (1920, 1080)
     async with async_playwright() as p:
         b = await p.chromium.launch()
         page = await b.new_page(viewport={"width": W, "height": H})
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
-        await page.goto(f"file://{ROOT}/ad.html?fmt={fmt}")
+        await page.goto(f"file://{ROOT}/ad.html?fmt={fmt}" + (f"&reel={reel}" if reel else ""))
         await page.evaluate("window.READY")
         await page.wait_for_timeout(800)
         tl = await page.evaluate("window.TIMELINE")
@@ -64,11 +64,11 @@ async def render(fmt, preview_times=None):
         if preview_times is not None:
             for t in preview_times:
                 await page.evaluate(f"render({t})")
-                await page.screenshot(path=str(ROOT / "preview" / f"{fmt}_{t:05.2f}.jpg"), type="jpeg", quality=60)
+                await page.screenshot(path=str(ROOT / "preview" / f"{fmt}{reel or ''}_{t:05.2f}.jpg"), type="jpeg", quality=60)
             await b.close()
             return
         total = tl["total"]
-        silent = ROOT / "out" / f"{fmt}_video.mp4"
+        silent = ROOT / "out" / f"{fmt}{reel or ''}_video.mp4"
         proc = subprocess.Popen([FFMPEG, "-y", "-loglevel", "error", "-f", "image2pipe", "-framerate", str(FPS), "-c:v", "mjpeg", "-i", "-",
                                  "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p", str(silent)], stdin=subprocess.PIPE)
         for i in range(int(total * FPS)):
@@ -79,9 +79,9 @@ async def render(fmt, preview_times=None):
         proc.stdin.close()
         proc.wait()
         await b.close()
-    audio = ROOT / "out" / f"{fmt}_audio.wav"
+    audio = ROOT / "out" / f"{fmt}{reel or ''}_audio.wav"
     mix_audio(total, tl["vo"], audio)
-    final = ROOT / "out" / f"GymBoss_Ad_{'16x9_30s' if fmt == 'wide' else '9x16_20s'}.mp4"
+    final = ROOT / "out" / (f"{tl['name']}.mp4" if reel else f"GymBoss_Ad_{'16x9_30s' if fmt == 'wide' else '9x16_20s'}.mp4")
     subprocess.run([FFMPEG, "-y", "-loglevel", "error", "-i", str(silent), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(final)], check=True)
     print("DONE", final)
 
@@ -90,5 +90,5 @@ if __name__ == "__main__":
     fmt = sys.argv[1]
     (ROOT / "out").mkdir(exist_ok=True)
     (ROOT / "preview").mkdir(exist_ok=True)
-    times = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 else None
-    asyncio.run(render(fmt, times))
+    times = [float(x) for x in sys.argv[2].split(",")] if len(sys.argv) > 2 and sys.argv[2] != "-" else None
+    asyncio.run(render(fmt, times, sys.argv[3] if len(sys.argv) > 3 else None))

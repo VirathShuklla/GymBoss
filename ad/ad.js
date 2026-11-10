@@ -335,9 +335,9 @@ const VERT = {
   vo: [["v1", 0.25], ["v2", 3.2], ["v3", 6.8], ["v4", 9.8], ["v5", 13.0], ["v6", 16.4]],
 };
 
-const TL = V ? VERT : WIDE;
+const TL = window.REEL_TL ? window.REEL_TL() : (V ? VERT : WIDE);
 TL.build();
-window.TIMELINE = { total: TL.total, vo: TL.vo };
+window.TIMELINE = { total: TL.total, vo: TL.vo, name: TL.name };
 
 window.render = (t) => {
   blobA.style.transform = `translate(${W * 0.55 + Math.sin(t * 0.5) * 260}px, ${H * 0.1 + Math.cos(t * 0.4) * 180}px)`;

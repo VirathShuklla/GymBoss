@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-BASE = "https://gym-hub-demo.preview.emergentagent.com"
+BASE = "https://gymboss-preview--66rae3xb.preview.emergentagent.com"
 LOCAL = "http://127.0.0.1:8002"
 OUT = Path(__file__).parent / "screens"
 OUT.mkdir(exist_ok=True)

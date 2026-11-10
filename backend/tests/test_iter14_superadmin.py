@@ -5,7 +5,7 @@ import os
 import pytest
 import requests
 
-BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://gym-hub-demo.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://gymboss-preview--66rae3xb.preview.emergentagent.com").rstrip("/")
 SA = {"identifier": "GymBoss", "password": "GymBoss@2026"}
 OWNER = {"identifier": "demo@gymbossvvo.in", "password": "Demo@2026"}
 
