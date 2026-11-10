@@ -330,3 +330,4 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Ep3 The Ghost Member (moonlit forest, app CTA)
   - Ep4 The Protein Shake Addict (neon rainforest + chocolate shake falls, logo only)
 - Output: /app/ad/series/planet_gym/ (+ PlanetGym_Season1.zip). Pipeline: pg_kling.py, pg_voices.py, pg_music.py, pg_render.py.
+- Audio pass: narrator switched to deep calm "onyx" (speed 0.92), cleaned up like broadcast audio (EQ, de-ess, compression, limiter, light room); music cut to about a third, ambience low, ducking under the voice; mixed to -14 LUFS with a fixed gain. Speech sits about 17 dB above the bed. Script: series/pg_remix.py (audio only, video copied). Old fable voice lines are in audio/fable_backup/.
