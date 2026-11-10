@@ -315,3 +315,10 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Reel 3 Midnight Register (funny: tired panda doing accounts at 11:47 PM)
 - Output: /app/ad/reels/ (+ GymBoss_Reels.zip). Code: /app/ad/reels.js (scenes), reels_tts.py, sfx.py, render.py `vertical - <reel#>`.
 - New panda poses: angry, tired, shocked, confused, cash (assets/cut/).
+
+## Panda Comedy Series (Nov 2026) – mascot-led, Duolingo-style
+- 3 AI-animated reels (Kling v3 image-to-video via the Universal Key; start frames made with Gemini image generation), each ~18s at 9:16 and 24fps, each in a different visual world:
+  - Ep1 "Six Tomorrows" – 80s retro pastel/neon, sarcastic panda voice (onyx), app punchline + free trial CTA
+  - Ep2 "Missing Cash" – film noir teal, meme captions + noir jazz, no voice, logo-only ending
+  - Ep3 "Planet Gym" – pastel savanna nature-doc parody, British narrator (fable), app punchline + free trial CTA
+- Output: /app/ad/series/final/ (+ GymBoss_Panda_Series.zip). Pipeline: series/kling.py (clips), voices.py, music.py (synth music + sfx), render_series.py (captions, end cards, grade, mix).
