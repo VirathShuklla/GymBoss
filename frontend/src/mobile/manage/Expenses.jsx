@@ -5,8 +5,9 @@ import api, { apiError } from "../../lib/api";
 import { inr, formatDate } from "../../lib/format";
 import { MButton, Field, TextInput, Pills, BottomSheet, ListSkeleton, EmptyRow } from "../ui";
 import { ModuleHeader } from "./ModuleHeader";
+import { localISODate } from "../../lib/date";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localISODate();
 const EMPTY = () => ({ name: "", category: "General", date: today(), amount: "", method: "Cash" });
 const CATS = ["Rent", "Salary", "Utilities", "Equipment", "Marketing", "General"];
 

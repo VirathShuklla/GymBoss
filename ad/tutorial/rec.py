@@ -96,7 +96,7 @@ class T:
         await asyncio.sleep(sec)
 
     async def scroll(self, dy, sec=1.2):
-        await self.page.evaluate(f"window.scrollBy({{top:{dy},behavior:'smooth'}})")
+        await self.page.evaluate(f"window.scrollBy({{top:{dy},behavior:'instant'}})")
         await asyncio.sleep(sec)
 
     async def esc(self):
@@ -131,7 +131,8 @@ async def record(chapters, durs, only=None):
         async def grab():
             while state["on"]:
                 try:
-                    r = await cdp.send("Page.captureScreenshot", {"format": "jpeg", "quality": 88, "optimizeForSpeed": True, "clip": {"x": 0, "y": 0, "width": 1440, "height": 810, "scale": 4 / 3}})
+                    sc = (await cdp.send("Runtime.evaluate", {"expression": "[window.scrollX, window.scrollY]", "returnByValue": True}))["result"]["value"]
+                    r = await cdp.send("Page.captureScreenshot", {"format": "jpeg", "quality": 88, "optimizeForSpeed": True, "clip": {"x": sc[0], "y": sc[1], "width": 1440, "height": 810, "scale": 4 / 3}})
                 except Exception:
                     await asyncio.sleep(0.05)
                     continue

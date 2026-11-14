@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { localISODate } from "../../lib/date";
 
 const CATEGORIES = ["Rent", "Utilities", "Salary", "Maintenance", "Housekeeping", "Marketing", "Equipment", "General"];
 const METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"];
@@ -29,7 +30,7 @@ export default function Expenses() {
   const [editExpense, setEditExpense] = useState(null);
   const [deleteExpense, setDeleteExpense] = useState(null);
   const [busy, setBusy] = useState(false);
-  const blank = { name: "", category: "General", date: now.toISOString().slice(0, 10), amount: "", method: "Cash", notes: "", outlet_id: "" };
+  const blank = { name: "", category: "General", date: localISODate(now), amount: "", method: "Cash", notes: "", outlet_id: "" };
   const [form, setForm] = useState(blank);
 
   const load = async () => {

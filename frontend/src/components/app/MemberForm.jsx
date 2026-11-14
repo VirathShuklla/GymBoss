@@ -10,13 +10,14 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
+import { localISODate } from "../../lib/date";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 const METHODS = ["Cash", "UPI", "Card", "Bank Transfer", "Other"];
 const GENDERS = ["Male", "Female", "Other"];
 const STEP_LABELS = ["Basic Details", "Optional Fields", "Membership"];
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => localISODate();
 
 function Stepper({ step, total }) {
   return (
@@ -61,7 +62,7 @@ function addDuration(start, dtype, d) {
   if (dtype === "days") dt.setDate(dt.getDate() + d);
   else if (dtype === "years") dt.setFullYear(dt.getFullYear() + d);
   else dt.setMonth(dt.getMonth() + d);
-  return dt.toISOString().slice(0, 10);
+  return localISODate(dt);
 }
 
 export function MemberForm({ open, onClose, member, prefill, plans, outlets, onSaved }) {

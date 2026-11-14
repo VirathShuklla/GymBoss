@@ -10,6 +10,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { localISODate } from "../../lib/date";
 
 const ROLES = ["Staff", "Trainer", "Receptionist", "Manager", "Admin", "Sales"];
 const cap = (r) => (r ? r[0].toUpperCase() + r.slice(1).toLowerCase() : "Staff");
@@ -27,7 +28,7 @@ export default function Staff() {
   const [editStaff, setEditStaff] = useState(null);
   const [toggleStaff, setToggleStaff] = useState(null);
   const [busy, setBusy] = useState(false);
-  const blank = { name: "", role: "Staff", email: "", phone: "", address: "", joining_date: new Date().toISOString().slice(0, 10), outlet_id: "", salary: "", password: "", permission: "view", enable_finance: false };
+  const blank = { name: "", role: "Staff", email: "", phone: "", address: "", joining_date: localISODate(), outlet_id: "", salary: "", password: "", permission: "view", enable_finance: false };
   const [form, setForm] = useState(blank);
 
   const load = async () => {

@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { localISODate } from "../../lib/date";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { StatusBadge, ConfirmDialog, DateField } from "./ui";
@@ -52,8 +53,8 @@ export function MemberDrawer({ memberId, onClose, onChanged, onEdit, plans }) {
   const [editPayForm, setEditPayForm] = useState({ amount: "", method: "Cash" });
   const [reversePay, setReversePay] = useState(null);
   const [busy, setBusy] = useState(false);
-  const defaultFreezeUntil = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
-  const [freezeForm, setFreezeForm] = useState({ freeze_from: new Date().toISOString().slice(0, 10), freeze_until: defaultFreezeUntil, reason: "" });
+  const defaultFreezeUntil = localISODate(new Date(Date.now() + 30 * 86400000));
+  const [freezeForm, setFreezeForm] = useState({ freeze_from: localISODate(), freeze_until: defaultFreezeUntil, reason: "" });
   const [renewForm, setRenewForm] = useState({ plan_id: "", discount: 0, amount_paid: 0, payment_method: "Cash" });
   const [payForm, setPayForm] = useState({ amount: "", method: "Cash", notes: "" });
   const [waTemplate, setWaTemplate] = useState("payment_reminder");
