@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only check of the IST date-default fix. Tested in a Playwright context with timezone_id='Asia/Kolkata' during the bug window. The browser clock read 00:51 IST on 15 Nov 2026, so the UTC date was still 14 Nov. Every check passed. Dashboard before: Today's Collection ₹0, Today's Admissions 0. Add Member (TZ Test Member, 9811122233, Male, first batch, Monthly ₹1,500, Cash) step 3: Joining Date and Payment Date both showed 15 Nov 2026. The expiry preview showed 15 Nov 2026 → 15 Dec 2026, exactly one month and not a day early. Member saved ('Member added successfully'). Dashboard after: ₹1,500 (Cash ₹1,500) and 1 admission, so +₹1,500 and +1. The member drawer showed Start 15 Nov 2026, Expiry 15 Dec 2026, 30 days left. Expenses > Add Expense date defaulted to 15 Nov 2026 and was cancelled without saving. Member drawer > Freeze: freeze_from 15 Nov 2026, freeze_until 15 Dec 2026, cancelled without saving. TZ Test Member was then deleted via drawer > Delete Member (toast 'Member deleted'; no longer in search).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: deleting a member is a soft delete (members.py delete_member sets deleted_at only). The member's admission payment stays in the payments collection, so the dashboard still shows Today's Collection ₹1,500 and Admissions 1 after TZ Test Member was deleted. This may be intended (money collected stays on record), but restore the demo data or remove that payment manually.",
+    "Optional, same bug class: pages/app/Announcements.jsx line 188 still uses new Date().toISOString().slice(0,10) for the scheduled date when the user sets only a time. Between 00:00 and 05:30 IST this would schedule for yesterday. Switch it to localISODate()."
+  ],
+  "critical_code_review_comments": [
+    "lib/date.js localISODate is correct (uses local getFullYear/getMonth/getDate).",
+    "MemberForm addDuration now parses 'YYYY-MM-DDT00:00:00' as local time and formats with localISODate, so there is no off-by-one.",
+    "Leftover toISOString uses: Announcements.jsx:188 (bug-prone, see action items); SuperAdmin.jsx:127 CSV filename (cosmetic); files.js:58 and MonthlyReportButton.jsx:7 use a manual +5.5h IST shift, which is correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "seed_data_creation": "Created member 'TZ Test Member' (9811122233) with a ₹1,500 Cash admission payment dated 15 Nov 2026, then deleted the member through the UI. The payment record remains (soft delete), so the demo org's today totals now include ₹1,500 / 1 admission.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "To reproduce the timezone bug window, use browser.new_context(timezone_id='Asia/Kolkata') between 00:00 and 05:30 IST. Selectors: kpi-today-collection, kpi-today-admissions, member-form-joining, member-form-payment-date, membership-window-preview, expense-form-date, freeze-from, freeze-until, action-delete-member."
+}

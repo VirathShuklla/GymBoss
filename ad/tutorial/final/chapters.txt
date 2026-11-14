@@ -8,9 +8,9 @@
 04:11 Renew a membership
 04:54 WhatsApp reminders
 05:44 Freeze a membership
-05:59 Track enquiries
-06:34 Record expenses
-07:02 Staff and branches
-07:23 Finance and reports
-08:06 Settings and help
-08:44 End of the day
+06:00 Track enquiries
+06:35 Record expenses
+07:04 Staff and branches
+07:25 Finance and reports
+08:07 Settings and help
+08:45 End of the day

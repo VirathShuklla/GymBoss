@@ -3,189 +3,189 @@
 Hi! In this video, I'll show you how to run your gym day to day with GymBoss. Start by opening GymBoss on your laptop, and sign in with your email and password.
 
 2
-00:00:15,743 --> 00:00:25,783
+00:00:15,742 --> 00:00:25,782
 This is your dashboard. The top cards show today's numbers: collection, new admissions, renewals and dues paid. They're at zero because the day has just started.
 
 3
-00:00:29,583 --> 00:00:35,213
+00:00:29,582 --> 00:00:35,213
 If you run more than one branch, use this outlet switcher to see one branch, or all of them together.
 
 4
-00:00:36,215 --> 00:00:44,355
+00:00:36,213 --> 00:00:44,353
 Scroll down for quick actions and your latest transactions. We'll come back here at the end of the day to see everything we did.
 
 5
-00:00:48,556 --> 00:00:53,726
+00:00:45,755 --> 00:00:50,925
 Before adding members, let's check your plans. Tap Plans and Catalogue in the menu.
 
 6
-00:00:54,726 --> 00:01:06,236
+00:00:54,725 --> 00:01:06,235
 Here are the gym's membership plans: monthly at fifteen hundred rupees, quarterly at four thousand, half-yearly and annual. The tabs above hold personal training, services and products.
 
 7
-00:01:07,960 --> 00:01:16,790
+00:01:07,903 --> 00:01:16,733
 Launching a new offer? Tap Add Membership, enter a name, the duration and the price, and save. Your new plan appears in the list straight away.
 
 8
-00:01:23,983 --> 00:01:28,233
+00:01:23,718 --> 00:01:27,968
 A new member has just walked in. Go to Members, and tap Add Member.
 
 9
-00:01:32,034 --> 00:01:41,644
+00:01:31,769 --> 00:01:41,379
 Step one is the basics. Type the member's name and mobile number, choose their gender, and the batch they'll train in. The member ID is created for you.
 
 10
-00:01:49,782 --> 00:01:57,202
+00:01:49,426 --> 00:01:56,846
 Step two is optional. Add an email, height and weight, and any health notes, like an old knee injury, so your trainers know.
 
 11
-00:02:02,084 --> 00:02:13,873
+00:02:02,033 --> 00:02:13,823
 Step three assigns the plan. Pick Quarterly for four thousand rupees, add a five hundred rupee admission fee, and a three hundred rupee discount. Karan pays two thousand rupees today, by UPI.
 
 12
-00:02:16,049 --> 00:02:27,849
+00:02:15,976 --> 00:02:27,776
 The summary shows a total of four thousand two hundred rupees, two thousand collected, and two thousand two hundred still due. Tap Save, and Karan appears at the top of your member list.
 
 13
-00:02:29,251 --> 00:02:35,321
+00:02:29,177 --> 00:02:35,247
 Later that evening, Karan comes back to clear his balance. Go to Payments, and tap Record Payment.
 
 14
-00:02:39,123 --> 00:02:46,903
+00:02:39,049 --> 00:02:46,829
 Search for Karan. GymBoss shows exactly how much he still owes. Enter two thousand two hundred rupees, pick Cash, and save.
 
 15
-00:02:54,919 --> 00:03:01,659
+00:02:54,977 --> 00:03:01,717
 A receipt is created instantly. You can download it as a PDF, print it, or share it with the member on WhatsApp.
 
 16
-00:03:02,659 --> 00:03:07,069
+00:03:02,718 --> 00:03:07,128
 The payment now sits at the top of your payments list, with its own receipt number.
 
 17
-00:03:08,471 --> 00:03:17,181
+00:03:08,530 --> 00:03:17,240
 Now, attendance. Tap Attendance. Members can scan your gym's QR code, punch in on a fingerprint machine, or you can check them in by hand.
 
 18
-00:03:20,982 --> 00:03:28,482
+00:03:21,041 --> 00:03:28,541
 For a manual check-in, search for Karan and tap Check In. He now shows under Members today, and the check-in count goes up.
 
 19
-00:03:32,594 --> 00:03:40,634
+00:03:32,697 --> 00:03:40,736
 Tap Show QR code to get one QR for your entrance. Print it, and members simply scan it with their phone camera. No app needed.
 
 20
-00:03:41,634 --> 00:03:47,734
+00:03:41,738 --> 00:03:47,838
 The Staff today and History tabs show which of your team came in, and past attendance month by month.
 
 21
-00:03:50,012 --> 00:03:57,122
+00:03:50,134 --> 00:03:57,244
 Every gym has members who haven't paid in full. On the Members page, tap Due to see only the people who owe you money.
 
 22
-00:04:01,081 --> 00:04:10,441
+00:04:01,210 --> 00:04:10,569
 For the full picture, open Reports and choose Outstanding Dues. You'll see the total owed, and each member's balance, so you know who to follow up with.
 
 23
-00:04:11,842 --> 00:04:18,612
+00:04:11,971 --> 00:04:18,741
 Dev's membership is running out soon. Search for him on the Members page, and tap his name to open his profile.
 
 24
-00:04:24,873 --> 00:04:30,513
+00:04:24,966 --> 00:04:30,605
 His card shows the plan, the expiry date, and how many days are left. Tap Renew Membership.
 
 25
-00:04:31,513 --> 00:04:40,583
+00:04:31,608 --> 00:04:40,678
 Choose the plan, enter what he's paying, fifteen hundred rupees for another month, pick UPI, and confirm. The new expiry date is worked out for you.
 
 26
-00:04:44,886 --> 00:04:49,516
+00:04:44,843 --> 00:04:49,473
 Done. His expiry date has moved forward, and the renewal is saved as a payment.
 
 27
-00:04:54,162 --> 00:04:59,652
+00:04:54,134 --> 00:04:59,625
 Next, reminders. Nisha still owes a balance. Open her profile and tap Send Payment Reminder.
 
 28
-00:05:09,680 --> 00:05:16,360
+00:05:09,694 --> 00:05:16,374
 Pick the type of reminder. GymBoss writes the message for you, with the member's name and the exact amount due.
 
 29
-00:05:17,361 --> 00:05:26,051
+00:05:17,374 --> 00:05:26,064
 Tap Send, and WhatsApp opens with the message already typed. You just press send. Messages go from your own WhatsApp, one member at a time.
 
 30
-00:05:27,051 --> 00:05:39,321
+00:05:27,066 --> 00:05:39,336
 You can also write your own message. Tap the WhatsApp button, type a holiday notice, and send it the same way. To message every member at once, you'll need the official WhatsApp Business connection.
 
 31
-00:05:44,024 --> 00:05:54,414
+00:05:44,429 --> 00:05:54,819
 If a member is travelling or injured, pause their membership. Tap Freeze, check the dates, add a reason, and save. The days they miss are added back to their expiry.
 
 32
-00:05:59,690 --> 00:06:07,380
+00:06:00,123 --> 00:06:07,813
 When someone walks in asking about prices, save them as an enquiry so you never lose the lead. Tap Enquiries, then Add Enquiry.
 
 33
-00:06:11,182 --> 00:06:17,282
+00:06:11,615 --> 00:06:17,715
 Enter their name and phone number, where they heard about you, and what they're interested in. Then save.
 
 34
-00:06:25,462 --> 00:06:33,392
+00:06:25,891 --> 00:06:33,821
 From the list, you can message them on WhatsApp, log a follow-up, or tap Convert when they join, which turns them into a member.
 
 35
-00:06:34,793 --> 00:06:39,843
+00:06:35,223 --> 00:06:40,273
 To see your real profit, record your expenses too. Tap Expenses, then Add Expense.
 
 36
-00:06:43,644 --> 00:06:53,734
+00:06:44,074 --> 00:06:54,164
 Enter the name, the category and the amount. Say, the electricity bill, eight thousand four hundred rupees by UPI. Save, and the monthly total updates right away.
 
 37
-00:07:02,771 --> 00:07:12,371
+00:07:04,095 --> 00:07:13,695
 Under Staff, you'll find your team. Tap Add Staff to add a trainer or receptionist, and choose what they're allowed to see, like keeping finance private.
 
 38
-00:07:17,490 --> 00:07:22,480
+00:07:18,765 --> 00:07:23,755
 Outlets lists your branches. Iron Paradise has two: Indiranagar and HSR Layout.
 
 39
-00:07:23,882 --> 00:07:30,172
+00:07:25,157 --> 00:07:31,447
 Finance shows this month's money in one place: revenue, expenses, net cash flow, and outstanding dues.
 
 40
-00:07:34,940 --> 00:07:41,890
+00:07:36,230 --> 00:07:43,180
 Reports has charts for revenue, member growth, dues, expiring memberships, and how many enquiries you convert.
 
 41
-00:07:50,216 --> 00:07:56,096
+00:07:51,415 --> 00:07:57,295
 Tap Monthly PDF to download the full finance report for the month, ready to send to your accountant.
 
 42
-00:07:57,097 --> 00:08:04,647
+00:07:58,296 --> 00:08:05,846
 And Export Center lets you download members, payments, attendance and more, as spreadsheet files, for any dates or branch.
 
 43
-00:08:06,048 --> 00:08:14,858
+00:08:07,247 --> 00:08:16,057
 In Settings, you can update your gym's name and city, switch between light and dark mode, and connect WhatsApp Business and online payments.
 
 44
-00:08:26,282 --> 00:08:33,612
+00:08:27,570 --> 00:08:34,900
 Your GymBoss plan and billing are under Subscription, and Help and Support connects you to our team on WhatsApp or email.
 
 45
-00:08:37,383 --> 00:08:42,573
+00:08:38,662 --> 00:08:43,852
 Your own name, phone number and password are under My Profile, in the top-right menu.
 
 46
-00:08:44,000 --> 00:08:54,679
+00:08:45,297 --> 00:08:55,976
 Let's head back to the dashboard. Today's collection now includes Karan's admission, his balance payment, and Dev's renewal. The new admission and renewal are counted too.
 
 47
-00:08:58,480 --> 00:09:03,400
+00:08:59,778 --> 00:09:04,697
 Scroll down, and every payment we recorded today is listed under recent transactions.
 
 48
-00:09:05,333 --> 00:09:13,053
+00:09:06,182 --> 00:09:13,903
 And that's a full day at the gym with GymBoss. Start your free trial today, and run your whole gym from one simple screen.

@@ -111,7 +111,7 @@ async def record(chapters, durs, only=None):
     log, frames = [], []
     async with async_playwright() as pw:
         b = await pw.chromium.launch()
-        ctx = await b.new_context(viewport={"width": 1440, "height": 810}, device_scale_factor=DPR, accept_downloads=True)
+        ctx = await b.new_context(viewport={"width": 1440, "height": 810}, device_scale_factor=DPR, accept_downloads=True, timezone_id="Asia/Kolkata")
         await ctx.add_init_script(CURSOR_JS)
         page = await ctx.new_page()
         t = T(page, log)
