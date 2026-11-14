@@ -331,3 +331,9 @@ Build GYMBOSS_VVO, a commercial gym management SaaS by BuildVVO Technologies Pri
   - Ep4 The Protein Shake Addict (neon rainforest + chocolate shake falls, logo only)
 - Output: /app/ad/series/planet_gym/ (+ PlanetGym_Season1.zip). Pipeline: pg_kling.py, pg_voices.py, pg_music.py, pg_render.py.
 - Audio pass: narrator switched to deep calm "onyx" (speed 0.92), cleaned up like broadcast audio (EQ, de-ess, compression, limiter, light room); music cut to about a third, ambience low, ducking under the voice; mixed to -14 LUFS with a fixed gain. Speech sits about 17 dB above the bed. Script: series/pg_remix.py (audio only, video copied). Old fable voice lines are in audio/fable_backup/.
+
+## Screen-Recorded Tutorial (Nov 2026)
+- Full 16:9 walkthrough (9:19, 1920x1080, 25fps) on the real web app with the demo account, plus 16 chapter clips, an .srt subtitle file and YouTube chapter timestamps. Friendly "nova" voice, captions, chapter cards, smooth zoom on taps, a visible cursor with click ripples.
+- Covers: sign in, dashboard, plans, add member (plan + payment), record payment + receipt, attendance (manual/QR/staff/history), outstanding dues, renewal, WhatsApp reminders + custom holiday message (shown honestly as one-by-one via the owner's WhatsApp), freeze, enquiries, expenses, staff, outlets, finance, reports + monthly PDF, export center, settings/theme/integrations, subscription, help, profile, then the dashboard at end of day.
+- Announcements left hidden at the user's request (the page exists in code but isn't routed). Demo data restored after recording (tutorial/snapshot.py).
+- Output: /app/ad/tutorial/final/ (GymBoss_Tutorial.zip). Pipeline: tutorial/steps.py (script), vo.py, rec.py (Playwright + CDP capture), compose.py.
